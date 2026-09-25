@@ -1,0 +1,45 @@
+{
+  "name": "ds-api-proxy",
+  "version": "1.0.0",
+  "description": "OpenAI-compatible proxy for the DeepSeek web chat API with PoW, multi-account rotation and tool-call parsing",
+  "main": "index.js",
+  "bin": {
+    "ds-api-proxy": "index.js"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "scripts/",
+    "README.md",
+    ".env.example"
+  ],
+  "scripts": {
+    "start": "node --env-file-if-exists=.env index.js",
+    "start:bg": "sh scripts/start.sh",
+    "stop:bg": "sh scripts/stop.sh",
+    "auth": "node --env-file-if-exists=.env ./scripts/auth.js",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=95 --test-coverage-functions=90 --test-coverage-branches=90",
+    "test:perf": "node --test perf/*.js",
+    "lint": "eslint .",
+    "check": "node --check index.js && node --check lib/*.js && eslint .",
+    "hooks:install": "sh scripts/install-hooks.sh",
+    "prepare": "sh scripts/install-hooks.sh"
+  },
+  "keywords": [
+    "deepseek",
+    "openai",
+    "proxy",
+    "chat-completions",
+    "responses-api"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "15.15.0"
+  }
+}

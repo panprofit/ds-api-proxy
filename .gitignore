@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.env
+.auth/*.json
+!.auth/.gitkeep
+*.tmp
+.DS_Store
+.run/*
+!.run/.gitkeep
