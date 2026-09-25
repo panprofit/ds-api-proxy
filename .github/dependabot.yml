@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Keep GitHub Actions used by the CI workflow current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+
+  # The project has no runtime dependencies; this keeps eslint/@eslint/js/
+  # globals (devDependencies) current.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"

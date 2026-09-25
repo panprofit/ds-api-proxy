@@ -1,0 +1,33 @@
+#!/bin/sh
+# Pre-commit hook. Dependency-free: no husky/lint-staged required.
+#
+#  * Auto-fix staged *.js with the project's eslint --fix and re-stage the
+#    result, so fixable nits (prefer-const, no-var, ...) never reach CI.
+#  * Run the same `npm run check` gate CI uses (node --check + eslint) so a
+#    syntactically broken or lint-dirty commit is blocked before it is made.
+#
+# Installed by scripts/install-hooks.sh, which the npm "prepare" script runs
+# after `npm install`; it points core.hooksPath at this committed directory so
+# the hook is version-controlled (unlike .git/hooks).
+set -eu
+
+ESLINT="./node_modules/.bin/eslint"
+
+# Word-splitting over $staged is intentional: tracked paths here never contain
+# whitespace, and a `for` loop (unlike a `cmd | while` pipeline) keeps `set -e`
+# effective for the eslint exit status.
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.js' || true)
+if [ -n "$staged" ]; then
+    if [ -x "$ESLINT" ]; then
+        echo "[pre-commit] eslint --fix on staged *.js"
+        for file in $staged; do
+            "$ESLINT" --fix -- "$file"
+            git add -- "$file"
+        done
+    else
+        echo "[pre-commit] eslint not installed; run 'npm install' for auto-fix" >&2
+    fi
+fi
+
+echo "[pre-commit] npm run check"
+npm run --silent check
