@@ -112,6 +112,26 @@ Flow:
 If a token/cookie cannot be extracted, nothing is written and the script exits
 with code `2`.
 
+### Deleting remote sessions
+
+DeepSeek keeps every chat session it created upstream. The proxy deletes its own
+remote sessions on idle sweep, rollover and graceful shutdown, but a hard kill
+(e.g. `SIGKILL`) can leave sessions behind, and repeated runs accumulate them.
+`npm run sessions:delete` wipes **all** remote chat sessions for every
+configured account via `POST /chat_session/delete_all`:
+
+```bash
+npm run sessions:delete                    # clear sessions on every account
+npm run sessions:delete -- --dry-run       # show what would run, no requests
+npm run sessions:delete -- --account <id>  # only one account (16-char id)
+npm run sessions:delete -- --help
+```
+
+Accounts are read from `DS_AUTH_DIR` (same loader as the server), requests go
+to `DS_REMOTE_HOST`, and a `401`/`403`/`429` puts that account into the usual
+cooldown. A failure on one account does not abort the others; the script exits
+non-zero if any account failed. `--dry-run` performs no network calls.
+
 ### Auth file format
 
 Each auth JSON file looks like:
