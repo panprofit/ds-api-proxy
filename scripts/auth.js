@@ -39,7 +39,8 @@ function sleepSync(ms) {
 }
 
 function killExistingTestingChrome() {
-    if (process.platform !== 'linux') return;
+    // pkill lives at /usr/bin/pkill on both Linux and macOS.
+    if (!['linux', 'darwin'].includes(process.platform)) return;
     const patterns = [`--remote-debugging-port=${port}`, profileDir].map(
         shellPatternSafe,
     );
@@ -96,17 +97,31 @@ const chromePath = env.CHROME_PATH;
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
+let activeRl = null;
 function ask(q) {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
+    activeRl = rl;
     return new Promise((resolve) =>
         rl.question(q, (ans) => {
             rl.close();
+            activeRl = null;
             resolve(ans);
         }),
     );
+}
+// Close the pending readline prompt. Without this, losing the Promise.race in
+// the ENTER prompt leaves readline attached to stdin and keeps the Node event
+// loop alive, so the process hangs after cleanup instead of exiting.
+function closeAsk() {
+    if (activeRl) {
+        try {
+            activeRl.close();
+        } catch {}
+        activeRl = null;
+    }
 }
 async function fetchJson(u, opts) {
     const r = await fetch(u, opts);
@@ -335,46 +350,105 @@ async function main() {
     );
     chrome.unref();
 
-    await waitDevtools();
-    const target = await getPageTarget();
-    const cdp = new CDP(target.webSocketDebuggerUrl);
-    await cdp.ready();
-    await cdp.send('Runtime.enable');
-    await cdp.send('Network.enable');
+    // Track manual Chrome close (user clicks the X) so we can stop waiting and
+    // always clean up the disposable profile instead of leaving it behind.
+    let chromeClosed = false;
+    let onChromeExit = null;
+    const chromeExitPromise = new Promise((resolve) => {
+        onChromeExit = resolve;
+    });
+    chrome.on('exit', () => {
+        chromeClosed = true;
+        closeAsk();
+        if (onChromeExit) onChromeExit();
+    });
 
-    console.log(
-        '\n[auth] Chrome is open. Log in to DeepSeek in THIS separate window.',
-    );
-    console.log(
-        '[auth] After logging in, send a short message to DeepSeek, for example: hi',
-    );
-    await ask(
-        '[auth] Once you are logged in and have sent a test message, press ENTER here: ',
-    );
+    // Declared outside try so finally can always close the CDP WebSocket.
+    // An open CDP socket keeps the Node event loop alive, which made the
+    // process hang after an early return (e.g. manual Chrome close).
+    let cdp = null;
 
-    let auth = null;
-    for (let i = 0; i < 20; i++) {
-        auth = await readPageAuth(cdp);
-        if (auth.token && auth.cookie) break;
-        await sleep(500);
+    // try/finally guarantees the temp profile is removed no matter how we exit
+    // (success, auth failure, manual Chrome close, or an unexpected error).
+    try {
+        await waitDevtools();
+        const target = await getPageTarget();
+        cdp = new CDP(target.webSocketDebuggerUrl);
+        await cdp.ready();
+        await cdp.send('Runtime.enable');
+        await cdp.send('Network.enable');
+
+        console.log(
+            '\n[auth] Chrome is open. Log in to DeepSeek in THIS separate window.',
+        );
+        console.log(
+            '[auth] After logging in, send a short message to DeepSeek, for example: hi',
+        );
+        // Race the ENTER prompt against Chrome being closed manually, so we
+        // never hang on the prompt after the user closes the browser window.
+        await Promise.race([
+            ask(
+                '[auth] Once you are logged in and have sent a test message, press ENTER here: ',
+            ),
+            chromeExitPromise,
+        ]);
+
+        if (chromeClosed) {
+            console.error(
+                '[auth] Chrome was closed before auth could be read. Nothing was saved.',
+            );
+            process.exitCode = 2;
+            return;
+        }
+
+        let auth = null;
+        for (let i = 0; i < 20; i++) {
+            if (chromeClosed) break;
+            try {
+                auth = await readPageAuth(cdp);
+            } catch (e) {
+                if (chromeClosed) break;
+                throw e;
+            }
+            if (auth.token && auth.cookie) break;
+            await sleep(500);
+        }
+
+        if (!auth || !auth.token || !auth.cookie) {
+            console.error('[auth] Could not extract both token and cookie from the page. Nothing was saved.');
+            process.exitCode = 2;
+            return;
+        }
+
+        const authDir = path.resolve(env.DS_AUTH_DIR);
+        fs.mkdirSync(authDir, { recursive: true });
+        const fileName = accounts.accountIdFromCredentials(auth);
+        const filePath = path.join(authDir, `${fileName}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(auth, null, 2), { mode: 0o600 });
+        console.log(`[auth] Saved: ${filePath}`);
+    } finally {
+        try {
+            if (cdp) cdp.close();
+        } catch {}
+        closeAsk();
+        clearAuthArtifacts();
     }
-
-    cdp.close();
-    clearAuthArtifacts();
-
-    if (!auth || !auth.token || !auth.cookie) {
-        console.error('[auth] Could not extract both token and cookie from the page. Nothing was saved.');
-        process.exitCode = 2;
-        return;
-    }
-
-    const authDir = path.resolve(env.DS_AUTH_DIR);
-    fs.mkdirSync(authDir, { recursive: true });
-    const fileName = accounts.accountIdFromCredentials(auth);
-    const filePath = path.join(authDir, `${fileName}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(auth, null, 2), { mode: 0o600 });
-    console.log(`[auth] Saved: ${filePath}`);
 }
+// On Ctrl+C / termination, clean up the disposable Chrome profile and process.
+let shuttingDown = false;
+function handleSignal(sig) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n[auth] Received ${sig}; cleaning up...`);
+    try {
+        clearAuthArtifacts();
+    } catch {}
+    process.exit(130);
+}
+process.on('SIGINT', () => handleSignal('SIGINT'));
+process.on('SIGTERM', () => handleSignal('SIGTERM'));
+process.on('SIGHUP', () => handleSignal('SIGHUP'));
+
 main().catch((e) => {
     console.error('[auth] ERROR:', e);
     process.exit(1);
