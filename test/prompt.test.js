@@ -98,6 +98,45 @@ test('markTurnsSent: marks user/tool turns and excludes them next time', () => {
     assert.deepEqual(prompt.collectPendingTurns(turns, session), []);
 });
 
+test('collectPendingTurns: two identical consecutive user turns are both pending', () => {
+    const session = { sentKeys: new Set() };
+    const messages = [
+        { role: 'user', content: 'ping' },
+        { role: 'user', content: 'ping' },
+    ];
+    const pending = prompt.collectPendingTurns(messages, session);
+    assert.equal(pending.length, 2);
+    prompt.markTurnsSent(session, pending);
+    // Both occurrences are marked; a third identical turn is still pending.
+    assert.equal(prompt.collectPendingTurns(messages, session).length, 0);
+    assert.equal(prompt.collectPendingTurns([...messages, { role: 'user', content: 'ping' }], session).length, 1);
+});
+
+test('collectPendingTurns: identical tool results in different turns are both kept', () => {
+    const session = { sentKeys: new Set() };
+    const messages = [
+        { role: 'tool', content: 'same', tool_call_id: 'a' },
+        { role: 'tool', content: 'same', tool_call_id: 'b' },
+    ];
+    assert.equal(prompt.collectPendingTurns(messages, session).length, 2);
+});
+
+test('markTurnsSent: a subset marks the same occurrence keys as the full list', () => {
+    // The reusing-session path calls collectPendingTurns(messages) then
+    // markTurnsSent(pendingTurns) with only the pending subset. The keys must
+    // still line up with the full-conversation occurrence indices.
+    const session = { sentKeys: new Set() };
+    const first = { role: 'user', content: 'dup' };
+    const second = { role: 'user', content: 'dup' };
+    const messages = [first, second];
+    // Pretend `first` was forwarded earlier.
+    prompt.markTurnsSent(session, [first]);
+    const pending = prompt.collectPendingTurns(messages, session);
+    assert.deepEqual(pending, [second]);
+    prompt.markTurnsSent(session, pending);
+    assert.equal(prompt.collectPendingTurns(messages, session).length, 0);
+});
+
 test('formatPendingTurns: renders user and tool turns', () => {
     const out = prompt.formatPendingTurns([
         { role: 'user', content: 'hello' },
