@@ -342,7 +342,7 @@ lib/
   config.js               central env parsing (single source of truth)
   handlers.js             per-request handling (CORS, body, session, response)
   health.js               GET /health liveness/readiness report
-  recovery.js             empty-retry / continuation / rotation loop (orchestration)
+  recovery.js             recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases)
   recovery-markup.js      tool-markup diagnostics + completion/strict-retry passes
   recovery-util.js        shared retry-delay / config helpers for the recovery passes
   upstream-session.js     one completion attempt + expired-session recreation
