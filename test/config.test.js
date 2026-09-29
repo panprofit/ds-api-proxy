@@ -12,6 +12,13 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.host, '127.0.0.1');
     assert.equal(c.remoteHost, '');
     assert.equal(c.maxConcurrent, 24);
+
+
+test('load: DS_MAX_CONCURRENT is capped at 256', () => {
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '100000' }).maxConcurrent, 256);
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '256' }).maxConcurrent, 256);
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '0' }).maxConcurrent, 1);
+});
     assert.equal(c.requestDeadlineMs, 120000);
     assert.equal(c.maxEmptyRetries, 2);
     assert.equal(c.maxUpstreamRetries, 3);
