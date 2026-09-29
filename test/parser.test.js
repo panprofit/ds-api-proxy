@@ -10,6 +10,28 @@ const silentLog = () => {};
 // ---------------------------------------------------------------------------
 // extractBalancedJsonAt
 // ---------------------------------------------------------------------------
+// --- regression corpus ------------------------------------------------------
+
+const CORPUS = require('./fixtures/broken-tool-calls');
+
+for (const entry of CORPUS) {
+    test(`corpus: ${entry.name}`, () => {
+        const tc = parser.parseToolCall(entry.input, () => {});
+        if (entry.call === null) {
+            assert.equal(tc, null, `expected no call, got ${JSON.stringify(tc)}`);
+            return;
+        }
+        assert.ok(tc, 'expected a parsed tool call');
+        assert.equal(tc.name, entry.call.name);
+        const args = JSON.parse(tc.arguments);
+        if (entry.call.argsAny) {
+            assert.equal(typeof args, 'object');
+        } else {
+            assert.deepEqual(args, entry.call.args);
+        }
+    });
+}
+
 test('extractBalancedJsonAt: simple object', () => {
   const text = 'prefix {"a":1} suffix';
   assert.equal(parser.extractBalancedJsonAt(text, text.indexOf('{')), '{"a":1}');
