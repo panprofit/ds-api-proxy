@@ -23,9 +23,10 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=95 --test-coverage-functions=90 --test-coverage-branches=90",
     "test:perf": "node --test perf/*.js",
     "lint": "eslint .",
-    "check": "node --check index.js && node --check lib/*.js && eslint .",
+    "check": "node --check index.js && node --check lib/*.js && eslint . && tsc -p jsconfig.json",
     "hooks:install": "sh scripts/install-hooks.sh",
-    "prepare": "sh scripts/install-hooks.sh"
+    "prepare": "sh scripts/install-hooks.sh",
+    "typecheck": "tsc -p jsconfig.json"
   },
   "keywords": [
     "deepseek",
@@ -40,7 +41,9 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@types/node": "^22.20.4",
     "eslint": "9.39.5",
-    "globals": "15.15.0"
+    "globals": "15.15.0",
+    "typescript": "5.9.3"
   }
 }
