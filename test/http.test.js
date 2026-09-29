@@ -162,6 +162,18 @@ test('redactError: strips long base64/JWT-looking blobs', () => {
     assert.ok(!out.includes(jwt));
 });
 
+test('redactError: strips the DS PoW header value', () => {
+    const out = http.redactError(new Error('sent X-DS-PoW-Response: s3cr3tPowValue to upstream'));
+    assert.ok(!out.includes('s3cr3tPowValue'));
+    assert.ok(out.includes('[redacted]'));
+});
+
+test('redactError: strips DS session cookies (ds_session_id / smidV2)', () => {
+    const out = http.redactError(new Error('cookie ds_session_id=abc123; smidV2=def456; other=keep'));
+    assert.ok(!out.includes('abc123'));
+    assert.ok(!out.includes('def456'));
+});
+
 test('redactError: truncates very long messages', () => {
     // Use hyphenated text so the long-base64 pattern does not consume it first.
     const out = http.redactError(new Error('a-'.repeat(1000)));
