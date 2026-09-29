@@ -359,6 +359,23 @@ test('runWithRecovery: empty response on all accounts returns 429 terminal error
     });
 });
 
+test('runWithRecovery: exhausting the account budget returns an error, not an empty ok:true', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        const ctx = baseCtx({
+            askDSStream: askStub([a1, a2]),
+            deadlineHit: () => false,
+            malformedCooldownMs: 1,
+            readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.ok(out.error, 'expected a terminal error body');
+        assert.equal(out.error.body.account_attempts, 2);
+    });
+});
+
 test('runWithRecovery: parses a strict JSON tool call', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
