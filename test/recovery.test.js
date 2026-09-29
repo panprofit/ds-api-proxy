@@ -679,6 +679,30 @@ test('runWithRecovery: context-too-long model error is surfaced as 400', async (
     });
 });
 
+test('runWithRecovery: context-too-long skips empty retries (deterministic failure)', async () => {
+    // Resending the same prompt to the same session cannot fix a context-limit
+    // error, so the empty-retry loop must not run: exactly one upstream call
+    // (the initial attempt) and retry_attempts == 0.
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const ctx = baseCtx({
+            maxEmptyRetries: 5,
+            deadlineHit: () => true,
+            askDSStream: askStub([a1], calls),
+            readDSResponse: async () => ({
+                content: '', reasoningContent: '', messageId: 'm1', finishReason: null,
+                modelError: { type: 'error', content: 'context too long', finish_reason: null },
+            }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(calls.length, 1, 'context-too-long must not be retried');
+        assert.equal(out.error.body.retry_attempts, 0);
+        assert.equal(out.error.body.type, 'context_length_exceeded');
+    });
+});
+
 test('backoffDelay: scales and caps at 3x', () => {
     const { backoffDelay } = require('../lib/recovery');
     assert.equal(backoffDelay(1, 100), 100);
