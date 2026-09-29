@@ -108,13 +108,16 @@ test('readRequestBody: a stream error is reported as errored, not tooLarge', asy
     assert.equal(errored, true);
 });
 
-test('readRequestBody: times out and destroys the socket when the body never ends', async () => {
+test('readRequestBody: times out without destroying the socket (router writes the 408)', async () => {
     // A client that opens the request but never finishes the body must not hold
-    // the handler forever: the read times out, the socket is torn down and the
-    // caller is told timedOut so it can reply 408.
+    // the handler forever: the read times out and the caller is told timedOut
+    // so it can reply 408. The socket must stay open for that reply, so
+    // readRequestBody stops reading and drains instead of destroying it.
     const req = new EventEmitter();
     let destroyed = false;
     req.destroy = () => { destroyed = true; };
+    let resumed = false;
+    req.resume = () => { resumed = true; };
     // readRequestBody's timeout timer is unref'd, so keep the loop alive with a
     // real (ref'd) timer while we await the read timeout.
     const keepAlive = setInterval(() => {}, 1000);
@@ -128,7 +131,8 @@ test('readRequestBody: times out and destroys the socket when the body never end
     assert.equal(result.tooLarge, false);
     assert.equal(result.errored, false);
     assert.equal(result.body, '');
-    assert.equal(destroyed, true, 'the stalled socket must be destroyed on timeout');
+    assert.equal(destroyed, false, 'the socket must survive so the router can send 408');
+    assert.equal(resumed, true, 'the remaining body should be drained after a timeout');
 });
 
 // --- parseChatRequest -------------------------------------------------------
