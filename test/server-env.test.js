@@ -76,6 +76,36 @@ test('server: reports a bad DS_AUTH_DIR at startup but still listens', async () 
     }
 });
 
+test('server: logs the effective CORS mode (loopback -> allow-any)', async () => {
+    const port = await freePort();
+    const { child, log } = await startServer(port);
+    try {
+        assert.match(log(), /CORS: reflecting any Origin/);
+    } finally {
+        child.kill('SIGTERM');
+    }
+});
+
+test('server: logs a CORS allowlist when DS_ALLOWED_ORIGINS is set', async () => {
+    const port = await freePort();
+    const { child, log } = await startServer(port, { DS_ALLOWED_ORIGINS: 'https://app.example' });
+    try {
+        assert.match(log(), /CORS: allowlist of 1 origin\(s\): https:\/\/app\.example/);
+    } finally {
+        child.kill('SIGTERM');
+    }
+});
+
+test('server: warns that CORS denies all origins on a non-loopback bind', async () => {
+    const port = await freePort();
+    const { child, log } = await startServer(port, { HOST: '0.0.0.0' });
+    try {
+        assert.match(log(), /CORS will deny all browser origins/);
+    } finally {
+        child.kill('SIGTERM');
+    }
+});
+
 // --- Router smoke tests (live server) ---------------------------------------
 //
 // server.smoke.test.js asserts the router *source* has the right shape by

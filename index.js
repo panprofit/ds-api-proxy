@@ -123,7 +123,15 @@ function main() {
     auditAuthDirAtStartup();
     const runtime = buildRuntime({ startedAt: Date.now() });
 
-    if (!configModule.get().hostIsLoopback && configModule.get().allowedOrigins.length === 0) {
+    // Report the effective CORS mode explicitly so an operator can see at a
+    // glance whether an arbitrary browser Origin is reflected, a specific
+    // allowlist is enforced, or all origins are denied (the safe default on a
+    // non-loopback bind).
+    if (configModule.get().corsAllowAnyOrigin) {
+        console.log(`[DS-API] CORS: reflecting any Origin (HOST=${HOST} is loopback and DS_ALLOWED_ORIGINS is empty).`);
+    } else if (configModule.get().allowedOrigins.length > 0) {
+        console.log(`[DS-API] CORS: allowlist of ${configModule.get().allowedOrigins.length} origin(s): ${configModule.get().allowedOrigins.join(', ')}`);
+    } else {
         console.warn(`[DS-API] WARNING: HOST=${HOST} is not loopback and DS_ALLOWED_ORIGINS is empty; CORS will deny all browser origins (anti-CSRF). Set DS_ALLOWED_ORIGINS to allow specific origins.`);
     }
 
