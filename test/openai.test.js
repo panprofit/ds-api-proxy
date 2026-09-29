@@ -47,6 +47,12 @@ test('estimateTokens: non-empty input never returns 0', () => {
     assert.equal(estimateTokens('\u{1F600}'), 2);
 });
 
+test('estimateTokens: mixed text is rounded once, not per class', () => {
+    // 5 ASCII (1.25 tok) + 5 Cyrillic (2.5 tok): per-class rounding gave
+    // ceil(1.25)+ceil(2.5)=2+3=5; a single rounding gives ceil(3.75)=4.
+    assert.equal(estimateTokens('abcdeабвгд'), 4);
+});
+
 test('estimateTokens: astral code points count as surrogate pairs', () => {
     // Each astral emoji is 2 JS units / 2 tokens; 3 emoji -> 6 tokens.
     assert.equal(estimateTokens('\u{1F600}\u{1F600}\u{1F600}'), 6);
