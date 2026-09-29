@@ -929,6 +929,22 @@ test('exported constants are defined and positive', () => {
   }
 });
 
+test('exported limits are the same values as parser-limits.js', () => {
+  // lib/parser.js re-exports these from lib/parser-limits.js. Assert identity so
+  // a future duplicate definition cannot drift from the source of truth.
+  const limits = require('../lib/parser-limits');
+  for (const key of [
+    'MAX_TOOL_MARKUP_CHARS',
+    'MAX_TOOL_ARGUMENT_CHARS',
+    'MAX_TOOL_JSON_CANDIDATES',
+    'MAX_DSML_PARAMETERS',
+    'MAX_DSML_STRUCTURAL_TAGS',
+    'MAX_DSML_TAG_CHARS',
+  ]) {
+    assert.equal(parser[key], limits[key], key);
+  }
+});
+
 test('repairJsonText is exported and is a function', () => {
   assert.equal(typeof parser.repairJsonText, 'function');
 });
