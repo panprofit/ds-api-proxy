@@ -212,6 +212,20 @@ test('sendOpenAIStream: text response emits content chunks + stop + [DONE]', () 
     assert.equal(res.ended, true);
 });
 
+test('sendOpenAIStream: every chunk carries the response model', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-m', created: 7, model: 'my-model',
+        choices: [{ message: { role: 'assistant', content: 'hi' } }],
+    });
+    const models = res.chunks
+        .map(c => c.replace(/^data: /, '').trim())
+        .filter(c => c && c !== '[DONE]')
+        .map(c => JSON.parse(c).model);
+    assert.ok(models.length > 0);
+    assert.ok(models.every(m => m === 'my-model'));
+});
+
 test('sendOpenAIStream: tool_calls emit a tool_calls finish reason', () => {
     const res = fakeRes();
     handlers.sendOpenAIStream(res, {
