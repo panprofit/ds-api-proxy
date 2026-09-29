@@ -138,6 +138,29 @@ test('handleHealth: a loopback peer gets the detailed report', () => {
     assert.ok(body.accounts);
 });
 
+test('buildHealthReport: includes the metrics snapshot only when provided', () => {
+    const without = health.buildHealthReport({ accounts: [acct()], sessionCount: 1 });
+    assert.equal(without.metrics, undefined);
+    const metrics = { requests: 3, completions: 2 };
+    const withMetrics = health.buildHealthReport({ accounts: [acct()], sessionCount: 1, metrics });
+    assert.deepEqual(withMetrics.metrics, { requests: 3, completions: 2 });
+});
+
+test('handleHealth: a non-loopback peer never receives metrics', () => {
+    const res = fakeRes();
+    health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, {
+        accounts: [acct()], sessionCount: 1, metrics: { requests: 9 },
+    });
+    assert.equal(JSON.parse(res.body).metrics, undefined);
+});
+
+test('handleHealth: a loopback peer receives the metrics block', () => {
+    const res = fakeRes();
+    health.handleHealth({ socket: { remoteAddress: '127.0.0.1' } }, res, {
+        accounts: [acct()], sessionCount: 1, metrics: { requests: 9 },
+    });
+    assert.deepEqual(JSON.parse(res.body).metrics, { requests: 9 });
+});
 test('handleHealth: an explicit detailed flag overrides the peer lookup', () => {
     const res = fakeRes();
     health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, { detailed: true, sessionCount: 7 });

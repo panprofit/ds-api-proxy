@@ -397,6 +397,55 @@ test('runWithRecovery: rotation stops once the rotation budget elapses', async (
     });
 });
 
+test('runWithRecovery: rotating to another account resets the transient-retry counter', async () => {
+    // The same-session upstream-retry budget is tracked per account via
+    // state.upstreamRetryAccountId. When a rotation lands on a DIFFERENT account
+    // the counter must restart from zero, so the new account gets its full
+    // DS_MAX_UPSTREAM_RETRIES budget instead of inheriting the previous one's.
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            let rr = 0;
+            const accountStub = async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                let account;
+                if (session.accountId) {
+                    account = [a1, a2].find(a => a.id === session.accountId) || a1;
+                } else {
+                    account = [a1, a2][rr % 2];
+                    rr++;
+                    session.accountId = account.id;
+                }
+                if (!session.id) { session.id = `sess-${account.id}`; session.messageCount = 0; }
+                return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
+            };
+            // 1) a1 hits one transient outage (budget counter -> 1 on a1).
+            // 2) a1 then returns a plain empty body, which rotates to a2.
+            // 3+) a2 hits the same transient outage and must get a fresh budget.
+            const transient = () => ({
+                content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err',
+                modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+            });
+            const empty = () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null });
+            const results = [transient(), empty(), transient(), transient(), transient(), transient(), transient()];
+            let i = 0;
+            const ctx = baseCtx({
+                maxEmptyRetries: 0,
+                askDSStream: accountStub,
+                readDSResponse: async () => results[Math.min(i++, results.length - 1)],
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'upstream_unavailable');
+            // If the counter had NOT reset on rotation, a2 would have inherited
+            // a1's single retry and given up after 2; the reset lets it spend the
+            // full 3. This is the observable difference.
+            assert.equal(out.error.body.upstream_retries, 3);
+            assert.equal(out.error.body.account, 'a2');
+        });
+    });
+});
 test('runWithRecovery: parses a strict JSON tool call', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
