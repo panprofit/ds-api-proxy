@@ -118,6 +118,15 @@ test('buildTextResponseFromTokens: echoes the requested model', () => {
     assert.equal(buildTextResponseFromTokens('hi', 1).model, 'deepseek-chat');
 });
 
+test('buildToolCallResponseFromTokens: ids are unique under rapid calls', () => {
+    const ids = new Set();
+    for (let i = 0; i < 1000; i++) {
+        const resp = buildToolCallResponseFromTokens({ name: 'read', arguments: '{}' });
+        ids.add(resp.choices[0].message.tool_calls[0].id);
+    }
+    assert.equal(ids.size, 1000);
+});
+
 test('buildToolCallResponseFromTokens: echoes the requested model', () => {
     const resp = buildToolCallResponseFromTokens({ name: 'read', arguments: '{}' }, 1, '', 'my-model');
     assert.equal(resp.model, 'my-model');
