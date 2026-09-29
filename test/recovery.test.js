@@ -376,6 +376,27 @@ test('runWithRecovery: exhausting the account budget returns an error, not an em
     });
 });
 
+test('runWithRecovery: rotation stops once the rotation budget elapses', async () => {
+    // Two accounts, both cooling down for a long time. With a tiny rotation
+    // budget the loop must stop waiting out cooldowns and report a terminal
+    // error instead of cycling until the (here never-hit) request deadline.
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_ROTATION_BUDGET_MS: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const ctx = baseCtx({
+                deadlineHit: () => false,
+                malformedCooldownMs: 60000,
+                askDSStream: askStub([a1, a2]),
+                readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.ok(out.error, 'expected a terminal error body');
+        });
+    });
+});
+
 test('runWithRecovery: parses a strict JSON tool call', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
