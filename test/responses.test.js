@@ -262,6 +262,18 @@ test('sendResponseStream: finishReason length -> incomplete terminal event', () 
     assert.equal(terminal.data.response.incomplete_details.reason, 'max_output_tokens');
 });
 
+test('buildResponse: echoes the requested model (default deepseek-chat)', () => {
+    assert.equal(responses.buildResponse({ content: 'x' }).model, 'deepseek-chat');
+    assert.equal(responses.buildResponse({ content: 'x', model: 'my-model' }).model, 'my-model');
+});
+
+test('sendResponseStream: honors an explicit model', () => {
+    const res = makeFakeRes();
+    responses.sendResponseStream(res, { content: 'x' }, { model: 'my-model' });
+    const created = res.events().find(e => e.event === 'response.created');
+    assert.equal(created.data.response.model, 'my-model');
+});
+
 test('sendResponseStream: honors an explicit responseId', () => {
     const res = makeFakeRes();
     responses.sendResponseStream(res, { content: 'x' }, { responseId: 'resp_fixed' });

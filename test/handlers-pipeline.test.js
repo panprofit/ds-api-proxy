@@ -95,6 +95,19 @@ test('handleChatCompletions: non-stream success writes JSON', async () => {
     });
 });
 
+test('handleChatCompletions: echoes the requested model in the response', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            model: 'my-model',
+            messages: [{ role: 'user', content: 'hi' }],
+        }), withDeps());
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.json().model, 'my-model');
+    });
+});
+
 test('handleChatCompletions: stream success writes SSE chunks', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();

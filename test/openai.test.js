@@ -106,6 +106,17 @@ test('buildToolCallResponseFromTokens: reports the accumulated prompt token coun
     assert.equal(resp.choices[0].message.tool_calls[0].function.name, 'read');
 });
 
+test('buildTextResponseFromTokens: echoes the requested model', () => {
+    assert.equal(buildTextResponseFromTokens('hi', 1, '', 'stop', 'my-model').model, 'my-model');
+    // Falls back to the default when no model was requested.
+    assert.equal(buildTextResponseFromTokens('hi', 1).model, 'deepseek-chat');
+});
+
+test('buildToolCallResponseFromTokens: echoes the requested model', () => {
+    const resp = buildToolCallResponseFromTokens({ name: 'read', arguments: '{}' }, 1, '', 'my-model');
+    assert.equal(resp.model, 'my-model');
+});
+
 test('splitIntoChunks: empty input -> []', () => {
     assert.deepEqual(splitIntoChunks(''), []);
     assert.deepEqual(splitIntoChunks(null), []);
