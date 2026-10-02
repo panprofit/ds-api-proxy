@@ -43,6 +43,27 @@ const profileDir = path.join(runDir, '.chrome-auth-profile');
 function baseUrl() { return `https://${config.get().remoteHost}`; }
 function signInUrl() { return `${baseUrl()}/sign_in`; }
 
+// Name the saved auth file after the login email when it is known (headless /
+// autofill), so files are human-readable and re-authenticating the same
+// account overwrites its file instead of accumulating content-hash names.
+// Falls back to the token+cookie hash for interactive logins where no email is
+// available. The loader keys accounts by that content hash (not the file name),
+// so this naming is purely cosmetic and safe to change.
+function authFileName(cfg, auth) {
+    const email = String(cfg.loginEmail || '').trim();
+    if (email) {
+        const slug = email.replace(/[^a-zA-Z0-9._@-]/g, '_').slice(0, 64);
+        if (slug) return slug;
+    }
+    return accounts.accountIdFromCredentials(auth);
+}
+
+// CloudFront rejects any request whose User-Agent contains "HeadlessChrome"
+// with HTTP 403, so a plain --headless run never reaches the login form. In
+// headless mode we present this ordinary desktop Chrome UA instead (see the
+// CDP setup in main).
+const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+
 // --- args -------------------------------------------------------------------
 
 function parseArgs(argv) {
@@ -251,13 +272,34 @@ function parseMaybeJson(s) {
     try { return JSON.parse(s); } catch { return null; }
 }
 
+// A DS bearer token is a long opaque string (JWT / hex). Reject anything that
+// is obviously NOT one, so a metadata value such as a numeric expiry timestamp
+// stored under a *token*-looking key cannot be mistaken for the credential.
+function looksLikeToken(value) {
+    const v = String(value || '').trim();
+    if (v.length < 20) return false;
+    // A pure number is a timestamp/counter (e.g. token_expire), never a token.
+    if (/^\d+$/.test(v)) return false;
+    return true;
+}
+
+// Keys that merely *contain* "token" but hold metadata, not the credential.
+const TOKEN_METADATA_KEY = /(expire|expiry|expires|time|ttl|timestamp|issued|refresh|version)/i;
+
 function normalizeToken(raw) {
-    if (!raw) return '';
+    if (raw == null) return '';
+    let value = raw;
     const parsed = parseMaybeJson(raw);
     if (parsed && typeof parsed === 'object') {
-        return parsed.value || parsed.token || parsed.access_token || parsed.accessToken || '';
+        value = parsed.value || parsed.token || parsed.access_token || parsed.accessToken || '';
     }
-    return String(raw).trim();
+    value = String(value || '').trim();
+    // Handle a double-encoded string (a JSON string wrapping the token).
+    if (/^".*"$/.test(value)) {
+        const unwrapped = parseMaybeJson(value);
+        if (typeof unwrapped === 'string') value = unwrapped.trim();
+    }
+    return looksLikeToken(value) ? value : '';
 }
 
 // Fill an <input> the React way: use the native value setter so React's
@@ -338,7 +380,12 @@ async function readPageAuth(cdp) {
     if (!token) {
         for (const store of stores) {
             for (const [k, v] of Object.entries(store)) {
-                if (/token/i.test(k)) { token = normalizeToken(v); if (token) break; }
+                if (!/token/i.test(k)) continue;
+                // Skip metadata keys like token_expire_time; only a key that
+                // plausibly holds the credential itself is considered.
+                if (TOKEN_METADATA_KEY.test(k)) continue;
+                token = normalizeToken(v);
+                if (token) break;
             }
             if (token) break;
         }
@@ -423,9 +470,19 @@ async function main() {
         '--disable-infobars',
         '--disable-dev-shm-usage',
     ];
-    if (headless) args.push('--headless=new', '--disable-gpu');
-    if (process.getuid && process.getuid() === 0) args.push('--no-sandbox');
-    args.push(signInUrl());
+    // --no-sandbox is required for headless in restricted environments
+    // (containers/CI without user namespaces), where the Chromium zygote
+    // aborts with sys_chroot()/Zygote errors and the DevTools endpoint never
+    // comes up. This is a one-shot local login helper, not a browsing session,
+    // so the sandbox trade-off is acceptable. Visible mode keeps the sandbox
+    // unless running as root.
+    if (headless) args.push('--headless=new', '--disable-gpu', '--no-sandbox');
+    else if (process.getuid && process.getuid() === 0) args.push('--no-sandbox');
+    // Start on a blank page and navigate via CDP (see below). Passing the
+    // sign-in URL as a browser argument would send its first request with the
+    // default HeadlessChrome User-Agent, which CloudFront answers with HTTP
+    // 403 before the page (and the WAF challenge) ever loads.
+    args.push('about:blank');
 
     const browser = spawn(browserPath, args, { stdio: 'ignore', detached: true });
     browser.unref();
@@ -450,6 +507,26 @@ async function main() {
         await cdp.send('Page.enable');
         await cdp.send('Runtime.enable');
         await cdp.send('Network.enable');
+
+        if (headless) {
+            // Mask the headless fingerprint: a desktop UA (else CloudFront
+            // 403s) and no navigator.webdriver. The WAF challenge is still
+            // solved by the real JS engine; this only stops the request being
+            // rejected on sight.
+            await cdp.send('Network.setUserAgentOverride', {
+                userAgent: DESKTOP_UA,
+                acceptLanguage: 'en-US,en;q=0.9',
+                platform: 'MacIntel',
+            });
+            await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+                source: 'Object.defineProperty(navigator, "webdriver", { get: () => undefined });',
+            });
+        }
+        // Navigate through CDP so the UA override above applies to the very
+        // first request. The AWS WAF JS-challenge then runs before the SPA
+        // renders, so allow a moment before polling for the form.
+        await cdp.send('Page.navigate', { url: signInUrl() });
+        await sleep(1500);
 
         if (autoFill) {
             console.log('[auth] waiting for the sign-in form...');
@@ -523,7 +600,7 @@ async function main() {
 
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
-        const fileName = accounts.accountIdFromCredentials(auth);
+        const fileName = authFileName(cfg, auth);
         const filePath = path.join(authDir, `${fileName}.json`);
         fs.writeFileSync(filePath, JSON.stringify(auth, null, 2), { mode: 0o600 });
         console.log(`[auth] Saved: ${filePath}`);
