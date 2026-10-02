@@ -63,12 +63,6 @@ test('index.js: every helper it calls is imported/declared', () => {
     }
 });
 
-test('index.js: module loads without DS_REMOTE_HOST? it exits by design', () => {
-    // index.js intentionally process.exit(1)s when DS_REMOTE_HOST is missing.
-    assert.match(INDEX_SRC, /DS_REMOTE_HOST/);
-    assert.match(INDEX_SRC, /process\.exit\(1\)/);
-});
-
 test('lib/server.js: has a single top-level error handler that is fatal only before listen', () => {
     // #14: runtime server errors must not kill the process. The handler must be
     // attached once, and must gate process.exit on the `listening` flag.

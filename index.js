@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Process launcher for the DeepSeek proxy. The HTTP server itself (router,
 // socket hardening, shutdown controller) is built by lib/server.js; this file
-// owns the process-level concerns: the required-env guard, the startup auth
-// audit, the idle-session sweep, signal handling and the uncaught-exception
+// owns the process-level concerns: config wiring, the startup auth audit,
+// the idle-session sweep, signal handling and the uncaught-exception
 // policy. Keeping those here and the server there means the router/lifecycle
 // wiring can be tested without spawning a process.
 const {
@@ -12,7 +12,7 @@ const {
 } = require('./lib/sessions');
 const {
     selectAccountForSession, markAccountFailure,
-    loadDSConfig, auditAuthDir, setRemoteHost, getAccountById,
+    loadDSConfig, auditAuthDir, getAccountById,
 } = require('./lib/accounts');
 const {
     dsChatCompletionWithPow, solvePowForPath,
@@ -29,17 +29,8 @@ const { debugLog } = require('./lib/debug');
 const config = configModule.get();
 const PORT = config.port;
 const HOST = config.host;
-const REMOTE_HOST = config.remoteHost;
-
-// The required-env guard runs at load time so a missing DS_REMOTE_HOST is a
-// hard, immediate failure rather than a 503 on the first request.
-const missingEnv = [];
-if (!REMOTE_HOST) missingEnv.push('DS_REMOTE_HOST (e.g. chat.deepseek.com)');
-if (missingEnv.length > 0) {
-    console.error(`[DS-API] FATAL: missing required env: ${missingEnv.join(', ')}`);
-    process.exit(1);
-}
-setRemoteHost(REMOTE_HOST);
+// The upstream host is read lazily from config (config.get().remoteHost), so
+// there is no startup wiring or required-env guard for it here.
 
 // In-flight best-effort deletes. Tracked so graceful shutdown can wait for the
 // last remote-session deletion to settle before exiting.

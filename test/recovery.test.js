@@ -819,16 +819,13 @@ const config = require('../lib/config');
 // restore config as soon as the promise is *created*, not when it settles,
 // which silently reverts the overrides mid-run.
 async function withConfig(overrides, fn) {
-    const saved = config.get();
-    config.reload({ ...process.env, ...overrides });
+    config.reload(overrides);
     try {
         return await fn();
     } finally {
-        config.reload({ ...process.env, DS_RECOVERY_RETRY_DELAY_MS: String(saved.recoveryRetryDelayMs),
-            DS_MAX_CONTINUATION: String(saved.maxContinuation),
-            DS_MAX_MARKUP_COMPLETION: String(saved.maxMarkupCompletion),
-            DS_MAX_REASONING_CONTINUATION: String(saved.maxReasoningContinuation),
-            DS_CONTINUATION_SIZE_THRESHOLD: String(saved.continuationSizeThreshold) });
+        // process.env is never mutated by tests, so reloading from it restores
+        // the pre-test config exactly (no per-field snapshot needed).
+        config.reload();
     }
 }
 
@@ -1037,7 +1034,7 @@ test('runWithRecovery: unclosed-markup log carries a markup diagnostic summary',
     // Cap the completion rounds at 1 so the loop logs the diagnostic once
     // and then exits; deadlineHit must stay false or the loop is skipped.
     const config = require('../lib/config');
-    config.reload({ ...process.env, DS_MAX_MARKUP_COMPLETION: '1' });
+    config.reload({ DS_MAX_MARKUP_COMPLETION: '1' });
     try {
     await withAccounts([makeAccount('a1')], async () => {
         const lines = [];
@@ -1066,7 +1063,7 @@ test('runWithRecovery: strict-retry log carries a markup diagnostic summary', as
     // completion rounds are disabled (maxMarkupCompletion=0), so control
     // reaches runStrictToolRetry and the invalid/truncated log line.
     const config = require('../lib/config');
-    config.reload({ ...process.env, DS_MAX_MARKUP_COMPLETION: '0' });
+    config.reload({ DS_MAX_MARKUP_COMPLETION: '0' });
     try {
         await withAccounts([makeAccount('a1')], async () => {
             const lines = [];

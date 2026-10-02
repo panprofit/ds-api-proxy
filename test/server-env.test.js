@@ -1,22 +1,15 @@
 'use strict';
-// index.js fails fast when a required env var is missing. Run it in a child
-// process so process.exit cannot take down the test runner.
+// Startup behaviour of index.js when the environment is misconfigured or
+// partially set. The server runs in a child process so process.exit cannot
+// take down the test runner.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const path = require('node:path');
 const net = require('node:net');
 
 const SERVER = path.join(__dirname, '..', 'index.js');
-
-function runServer(env) {
-    return spawnSync(process.execPath, [SERVER], {
-        env: { ...process.env, DS_AUTH_DIR: '/nonexistent', ...env },
-        encoding: 'utf8',
-        timeout: 10000,
-    });
-}
 
 // Pick a free TCP port by binding an ephemeral listener, then releasing it.
 function freePort() {
@@ -55,12 +48,6 @@ async function startServer(port, extraEnv = {}) {
     child.kill('SIGKILL');
     throw new Error(`server did not start: ${out}`);
 }
-
-test('server: exits with a clear error when DS_REMOTE_HOST is missing', () => {
-    const res = runServer({ DS_REMOTE_HOST: '' });
-    assert.notEqual(res.status, 0);
-    assert.match(res.stderr, /DS_REMOTE_HOST/);
-});
 
 test('server: reports a bad DS_AUTH_DIR at startup but still listens', async () => {
     // /nonexistent is not a valid auth dir. The startup audit must call that

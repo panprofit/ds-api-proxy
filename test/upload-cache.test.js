@@ -74,12 +74,10 @@ test('upload-cache: sweep() honors a config.reload() of DS_UPLOAD_CACHE_TTL_MS',
     reset();
     const now = Date.now();
     uploadCache.set('edge', { id: 'f1', cachedAt: now - 60_000 });
-    process.env.DS_UPLOAD_CACHE_TTL_MS = '1';
+    config.reload({ DS_UPLOAD_CACHE_TTL_MS: '1' });
     try {
-        config.reload();
         assert.equal(uploadCache.sweep(now), 1, 'a 1ms live TTL must expire a 60s-old entry');
     } finally {
-        delete process.env.DS_UPLOAD_CACHE_TTL_MS;
         config.reload();
     }
 });

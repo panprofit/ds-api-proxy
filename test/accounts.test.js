@@ -15,16 +15,21 @@ const config = require('../lib/config');
 const { getAccounts, buildBaseHeaders, discoverAuthPaths, loadDSConfig,
         hasAuthConfig, auditAuthDir, selectAccountForSession, markAccountFailure,
         markAccountBroken, hasAvailableAccount, waitForAvailableAccount,
-        resetAccountState, setRemoteHost, getRemoteHost,
+        resetAccountState,
         getAccountById, accountIdFromCredentials } = accounts;
 
 // --- helpers ----------------------------------------------------------------
 
-const savedHost = getRemoteHost();
+// Point the shared config at a test upstream host. config.reload() takes the
+// full env object, so the override is merged in WITHOUT mutating process.env
+// (a global that would leak into the next test if this one threw).
+function setRemoteHost(host) {
+    config.reload({ DS_REMOTE_HOST: host });
+}
 
 afterEach(() => {
     // Restore module state after every test (accounts array + round-robin cursor).
-    setRemoteHost(savedHost);
+    config.reload();
     const arr = getAccounts();
     arr.length = 0;
     resetAccountState();
@@ -54,16 +59,13 @@ function withTempAuthDir(configs, fn) {
     for (const [name, cfg] of Object.entries(configs)) {
         fs.writeFileSync(path.join(dir, name), JSON.stringify(cfg));
     }
-    const prev = process.env.DS_AUTH_DIR;
-    process.env.DS_AUTH_DIR = dir;
-    // accounts.js reads the auth dir through lib/config.js now, so the
-    // injected env has to be re-parsed for the change to take effect.
-    config.reload();
+    // accounts.js reads the auth dir through lib/config.js, so pass it as a
+    // reload override. No process.env mutation: a throw before the finally
+    // block can no longer leak the temp dir into the next test.
+    config.reload({ DS_AUTH_DIR: dir });
     try {
         return fn(dir);
     } finally {
-        if (prev === undefined) delete process.env.DS_AUTH_DIR;
-        else process.env.DS_AUTH_DIR = prev;
         config.reload();
         fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -92,11 +94,7 @@ test('buildBaseHeaders: tolerates an empty config', () => {
 });
 
 test('buildBaseHeaders: uses DS_CLIENT_LOCALE/_TIMEZONE defaults, overridable per account', () => {
-    const prevLocale = process.env.DS_CLIENT_LOCALE;
-    const prevTz = process.env.DS_CLIENT_TIMEZONE_OFFSET;
-    process.env.DS_CLIENT_LOCALE = 'en';
-    process.env.DS_CLIENT_TIMEZONE_OFFSET = '3600';
-    config.reload();
+    config.reload({ DS_CLIENT_LOCALE: 'en', DS_CLIENT_TIMEZONE_OFFSET: '3600' });
     try {
         const def = buildBaseHeaders({ token: 'T' });
         assert.equal(def['x-client-locale'], 'en');
@@ -110,10 +108,6 @@ test('buildBaseHeaders: uses DS_CLIENT_LOCALE/_TIMEZONE defaults, overridable pe
         assert.equal(utc['x-client-locale'], 'en');
         assert.equal(utc['x-client-timezone-offset'], '0');
     } finally {
-        if (prevLocale === undefined) delete process.env.DS_CLIENT_LOCALE;
-        else process.env.DS_CLIENT_LOCALE = prevLocale;
-        if (prevTz === undefined) delete process.env.DS_CLIENT_TIMEZONE_OFFSET;
-        else process.env.DS_CLIENT_TIMEZONE_OFFSET = prevTz;
         config.reload();
     }
 });
@@ -138,14 +132,10 @@ test('discoverAuthPaths: reads sorted .json files from DS_AUTH_DIR', () => {
 });
 
 test('discoverAuthPaths: returns [] when DS_AUTH_DIR is unreadable', () => {
-    const prev = process.env.DS_AUTH_DIR;
-    process.env.DS_AUTH_DIR = '/definitely/not/a/dir/' + Date.now();
-    config.reload();
+    config.reload({ DS_AUTH_DIR: '/definitely/not/a/dir/' + Date.now() });
     try {
         assert.deepEqual(discoverAuthPaths(), []);
     } finally {
-        if (prev === undefined) delete process.env.DS_AUTH_DIR;
-        else process.env.DS_AUTH_DIR = prev;
         config.reload();
     }
 });
@@ -236,15 +226,13 @@ test('hasAuthConfig: true only when token AND cookie are present', () => {
 // withEnvDir runs `fn` with DS_AUTH_DIR pointed at `dir` (or unset when dir is
 // null), reloading the central config so auditAuthDir() sees the change.
 function withEnvDir(dir, fn) {
-    const prev = process.env.DS_AUTH_DIR;
-    if (dir === null) delete process.env.DS_AUTH_DIR;
-    else process.env.DS_AUTH_DIR = dir;
-    config.reload();
+    const env = { ...process.env };
+    if (dir === null) delete env.DS_AUTH_DIR;
+    else env.DS_AUTH_DIR = dir;
+    config.reload(env);
     try {
         return fn();
     } finally {
-        if (prev === undefined) delete process.env.DS_AUTH_DIR;
-        else process.env.DS_AUTH_DIR = prev;
         config.reload();
     }
 }

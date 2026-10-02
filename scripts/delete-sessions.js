@@ -12,10 +12,9 @@
 //   npm run sessions:delete -- --account <id>
 //
 // Auth configs are read from DS_AUTH_DIR (see .env / .env.example). The script
-// runs against the upstream host in DS_REMOTE_HOST.
+// runs against the configured upstream host.
 const {
     loadDSConfig,
-    setRemoteHost,
     getAccounts,
     markAccountFailure,
 } = require('../lib/accounts');
@@ -95,13 +94,7 @@ async function main() {
     const opts = parseArgs(process.argv.slice(2));
     if (opts.help) { usage(); return; }
 
-    const { remoteHost } = config.get();
-    if (!remoteHost) {
-        console.error('[sessions:delete] FATAL: DS_REMOTE_HOST is not set (check your .env / environment).');
-        process.exitCode = 1;
-        return;
-    }
-    setRemoteHost(remoteHost);
+    const remoteHost = config.get().remoteHost;
 
     // Advisory audit: report a missing/empty DS_AUTH_DIR before doing anything.
     loadDSConfig({ fatal: false });

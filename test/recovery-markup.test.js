@@ -14,16 +14,13 @@ const { describeToolMarkup, debugDumpToolMarkup, runMarkupCompletion, runStrictT
 // --- helpers ---------------------------------------------------------------
 
 function withConfig(overrides, fn) {
-    const saved = config.get();
-    config.reload({ ...process.env, ...overrides });
+    config.reload(overrides);
     return Promise.resolve()
         .then(fn)
         .finally(() => {
-            config.reload({
-                ...process.env,
-                DS_RECOVERY_RETRY_DELAY_MS: String(saved.recoveryRetryDelayMs),
-                DS_MAX_MARKUP_COMPLETION: String(saved.maxMarkupCompletion),
-            });
+            // process.env is never mutated by tests, so reloading from it
+            // restores the pre-test config exactly.
+            config.reload();
         });
 }
 

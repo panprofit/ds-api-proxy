@@ -18,6 +18,7 @@
     "start:bg": "sh scripts/start.sh",
     "stop:bg": "sh scripts/stop.sh",
     "auth": "node --env-file-if-exists=.env ./scripts/auth.js",
+    "auth:headless": "node --env-file-if-exists=.env ./scripts/auth.js --headless",
     "sessions:delete": "node --env-file-if-exists=.env ./scripts/delete-sessions.js",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=95 --test-coverage-functions=90 --test-coverage-branches=90",

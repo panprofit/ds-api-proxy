@@ -6,12 +6,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const accounts = require('../lib/accounts');
 const uploadCache = require('../lib/upload-cache');
 
-// Load upstream only after we can control globals. `setRemoteHost` is used by
-// dsFetch to build the URL.
-accounts.setRemoteHost('ds.test');
+// Load upstream only after we can control globals. The remote host is read
+// lazily from config, so a reload points dsFetch at a test host.
+const config = require('../lib/config');
+config.reload({ DS_REMOTE_HOST: 'ds.test' });
 const upstream = require('../lib/upstream');
 
 const realFetch = globalThis.fetch;

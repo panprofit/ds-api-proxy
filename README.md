@@ -24,7 +24,6 @@ tool-call markup) into the OpenAI Chat Completions format.
 
    ```bash
    export DS_AUTH_DIR=.auth              # a directory of *.json files
-   export DS_REMOTE_HOST=chat.deepseek.com
    ```
 
    You can generate the auth file automatically with `npm run auth` (see
@@ -100,7 +99,7 @@ DeepSeek in that window, and writes the extracted `token`/`cookie` into
 
 - Chrome/Chromium available locally — set `CHROME_PATH` if it is not on a
   standard path (e.g. `CHROME_PATH=$(which chromium) npm run auth`).
-- `DS_REMOTE_HOST` and `DS_AUTH_DIR` set (in the environment or `.env`).
+- `DS_AUTH_DIR` set (in the environment or `.env`).
 
 Flow:
 
@@ -128,8 +127,8 @@ npm run sessions:delete -- --help
 ```
 
 Accounts are read from `DS_AUTH_DIR` (same loader as the server), requests go
-to `DS_REMOTE_HOST`, and a `401`/`403`/`429` puts that account into the usual
-cooldown. A failure on one account does not abort the others; the script exits
+to the configured upstream host, and a `401`/`403`/`429` puts that account into
+the usual cooldown. A failure on one account does not abort the others; the script exits
 non-zero if any account failed. `--dry-run` performs no network calls.
 
 ### Auth file format
@@ -290,47 +289,71 @@ Limitations that bite pi specifically:
 
 ## Environment variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `9876` | HTTP listen port (1–65535). |
-| `HOST` | `127.0.0.1` | HTTP listen host. **On a non-loopback bind with an empty `DS_ALLOWED_ORIGINS`, CORS denies all browser origins (anti-CSRF); set the allowlist to permit specific origins.** |
-| `DS_REMOTE_HOST` | — (**required**) | Upstream host, e.g. `chat.deepseek.com`. Server exits if unset. |
-| `DS_AUTH_DIR` | — (needed for any accounts) | Directory scanned for `*.json` auth configs (sorted). There is no default: when unset, no accounts load and every completion returns 503. Audited at startup (unset/missing dir, no `*.json` files, or none loading all produce a clear log line). |
-| `DS_ACCOUNT_COOLDOWN_MS` | `600000` (10 min) | Cooldown after an HTTP 401/403/429 account failure. |
-| `DS_CLIENT_LOCALE` | `en` | Default `x-client-locale` sent upstream; per-account `locale` overrides it. |
-| `DS_CLIENT_TIMEZONE_OFFSET` | `0` | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it. |
-| `DS_MAX_CONCURRENT` | `24` | Max simultaneous in-flight completions. |
-| `DS_REQUEST_DEADLINE_MS` | `120000` | Per-request deadline before recovery gives up. |
-| `DS_MAX_RETRIES` | `2` | Empty-response retries per account (0–10). |
-| `DS_MAX_UPSTREAM_RETRIES` | `3` | Same-account retries when DS itself reports a transient outage (`finish_reason=generation_err` / "Server temporarily unavailable."). Rotating accounts cannot help here (all share the same upstream), so the current account is retried instead of parked (0–10). |
-| `DS_MAX_CONTINUATION` | `2` | Max auto-continuation rounds for long/length-finished responses (0–10). |
-| `DS_MAX_REASONING_CONTINUATION` | `2` | Max rounds to turn a reasoning-only response (thinking but no final text) into a visible answer, avoiding a manual `continue` (0–10). |
-| `DS_MAX_MARKUP_COMPLETION` | `2` | Max completion rounds for truncated tool-call markup (0–10). |
-| `DS_CONTINUATION_SIZE_THRESHOLD` | `25000` | Response length (chars) above which auto-continuation kicks in. |
-| `DS_RECOVERY_RETRY_DELAY_MS` | `500` | Base delay between recovery retries (scaled, capped at 3×). |
-| `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000` | Cooldown after malformed tool-call markup (applied when the account is finally rotated). |
-| `DS_MAX_SESSION_RESETS_PER_ACCOUNT` | `3` | Consecutive remote-session recreations on the same account to recover from malformed tool-call markup before the account is rotated. |
-| `DS_SESSION_TTL_MS` | `7200000` (2 h) | Idle TTL: a remote session is rolled over only after this long without conversation activity. An actively-used session is never reset on age alone. |
-| `DS_MAX_SESSIONS` | `1000` | Max concurrent agent sessions. |
-| `DS_SESSION_SWEEP_INTERVAL_MS` | `600000` (10 min) | Interval between idle-session / stale-upload sweeps. |
-| `DS_UPLOAD_CACHE_TTL_MS` | `21600000` (6 h) | Upload cache TTL. |
-| `DS_MAX_UPLOAD_BYTES` | `26214400` (25 MB) | Max size of a single uploaded attachment. |
-| `DS_MAX_BODY_BYTES` | `10485760` (10 MB) | Max size of an incoming request body. |
-| `DS_BODY_READ_TIMEOUT_MS` | `30000` | Max time to receive a full body before `408`. |
-| `DS_HEADERS_TIMEOUT_MS` | `60000` | Socket cap on sending request headers. |
-| `DS_REQUEST_TIMEOUT_MS` | `300000` | Socket cap on the whole request. |
-| `DS_FETCH_TIMEOUT_MS` | `60000` | Timeout for DS fetch calls. |
-| `DS_FILE_POLL_INTERVAL_MS` | `1000` | Interval when polling uploaded file status. |
-| `DS_FILE_POLL_TIMEOUT_MS` | `60000` | Timeout waiting for an uploaded file to become `SUCCESS`. |
-| `DS_ALLOWED_ORIGINS` | — | Comma-separated CORS origin allowlist. When empty, the request Origin is reflected only on a loopback `HOST`; on a non-loopback bind no browser origin is allowed (deny-by-default). |
-| `DS_STREAM_KEEPALIVE_MS` | `15000` | SSE keep-alive interval in ms; `0` disables. |
-| `DS_SHUTDOWN_GRACE_MS` | `15000` | Grace period for draining in-flight requests on SIGTERM/SIGINT, and for the final best-effort deletion of every remote chat session. |
-| `DS_DEBUG` | — | Set to `1`/`true` for verbose SSE/parser debug logging (read lazily in `lib/debug.js`). |
-| `DS_DUMP_SSE` | — | Set to `1`/`true` to dump every raw upstream SSE `data:` line plus a path histogram (diagnostic; read lazily in `lib/sse.js`). |
+| Variable                             | Default                     | Description                                                                                                                                                                                                                                                        |
+| ------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`                               | `9876`                      | HTTP listen port (1–65535).                                                                                                                                                                                                                                        |
+| `HOST`                               | `127.0.0.1`                 | HTTP listen host. **On a non-loopback bind with an empty `DS_ALLOWED_ORIGINS`, CORS denies all browser origins (anti-CSRF); set the allowlist to permit specific origins.**                                                                                        |
+| `DS_AUTH_DIR`                        | — (needed for any accounts) | Directory scanned for `*.json` auth configs (sorted). There is no default: when unset, no accounts load and every completion returns 503. Audited at startup (unset/missing dir, no `*.json` files, or none loading all produce a clear log line).                 |
+| `DS_ACCOUNT_COOLDOWN_MS`             | `600000` (10 min)           | Cooldown after an HTTP 401/403/429 account failure.                                                                                                                                                                                                                |
+| `DS_CLIENT_LOCALE`                   | `en`                        | Default `x-client-locale` sent upstream; per-account `locale` overrides it.                                                                                                                                                                                        |
+| `DS_CLIENT_TIMEZONE_OFFSET`          | `0`                         | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it.                                                                                                                                                                      |
+| `DS_MAX_CONCURRENT`                  | `24`                        | Max simultaneous in-flight completions.                                                                                                                                                                                                                            |
+| `DS_REQUEST_DEADLINE_MS`             | `120000`                    | Per-request deadline before recovery gives up.                                                                                                                                                                                                                     |
+| `DS_ROTATION_BUDGET_MS`              | `60000`                     | Wall-clock budget for cycling through accounts after failures, so a request does not spend its whole deadline waiting out cooldowns on every account.                                                                                                               |
+| `DS_MAX_RETRIES`                     | `2`                         | Empty-response retries per account (0–10).                                                                                                                                                                                                                         |
+| `DS_MAX_UPSTREAM_RETRIES`            | `3`                         | Same-account retries when DS itself reports a transient outage (`finish_reason=generation_err` / "Server temporarily unavailable."). Rotating accounts cannot help here (all share the same upstream), so the current account is retried instead of parked (0–10). |
+| `DS_MAX_CONTINUATION`                | `2`                         | Max auto-continuation rounds for long/length-finished responses (0–10).                                                                                                                                                                                            |
+| `DS_MAX_REASONING_CONTINUATION`      | `2`                         | Max rounds to turn a reasoning-only response (thinking but no final text) into a visible answer, avoiding a manual `continue` (0–10).                                                                                                                              |
+| `DS_MAX_MARKUP_COMPLETION`           | `2`                         | Max completion rounds for truncated tool-call markup (0–10).                                                                                                                                                                                                       |
+| `DS_CONTINUATION_SIZE_THRESHOLD`     | `25000`                     | Response length (chars) above which auto-continuation kicks in.                                                                                                                                                                                                    |
+| `DS_RECOVERY_RETRY_DELAY_MS`         | `500`                       | Base delay between recovery retries (scaled, capped at 3×).                                                                                                                                                                                                        |
+| `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000`                      | Cooldown after malformed tool-call markup (applied when the account is finally rotated).                                                                                                                                                                           |
+| `DS_MAX_SESSION_RESETS_PER_ACCOUNT`  | `3`                         | Consecutive remote-session recreations on the same account to recover from malformed tool-call markup before the account is rotated.                                                                                                                               |
+| `DS_SESSION_TTL_MS`                  | `7200000` (2 h)             | Idle TTL: a remote session is rolled over only after this long without conversation activity. An actively-used session is never reset on age alone.                                                                                                                |
+| `DS_MAX_SESSIONS`                    | `1000`                      | Max concurrent agent sessions.                                                                                                                                                                                                                                     |
+| `DS_SESSION_SWEEP_INTERVAL_MS`       | `600000` (10 min)           | Interval between idle-session / stale-upload sweeps.                                                                                                                                                                                                               |
+| `DS_UPLOAD_CACHE_TTL_MS`             | `21600000` (6 h)            | Upload cache TTL.                                                                                                                                                                                                                                                  |
+| `DS_MAX_UPLOAD_BYTES`                | `26214400` (25 MB)          | Max size of a single uploaded attachment.                                                                                                                                                                                                                          |
+| `DS_MAX_BODY_BYTES`                  | `10485760` (10 MB)          | Max size of an incoming request body.                                                                                                                                                                                                                              |
+| `DS_BODY_READ_TIMEOUT_MS`            | `30000`                     | Max time to receive a full body before `408`.                                                                                                                                                                                                                      |
+| `DS_HEADERS_TIMEOUT_MS`              | `60000`                     | Socket cap on sending request headers.                                                                                                                                                                                                                             |
+| `DS_REQUEST_TIMEOUT_MS`              | `300000`                    | Socket cap on the whole request.                                                                                                                                                                                                                                   |
+| `DS_FETCH_TIMEOUT_MS`                | `60000`                     | Timeout for DS fetch calls.                                                                                                                                                                                                                                        |
+| `DS_FILE_POLL_INTERVAL_MS`           | `1000`                      | Interval when polling uploaded file status.                                                                                                                                                                                                                        |
+| `DS_FILE_POLL_TIMEOUT_MS`            | `60000`                     | Timeout waiting for an uploaded file to become `SUCCESS`.                                                                                                                                                                                                          |
+| `DS_ALLOWED_ORIGINS`                 | —                           | Comma-separated CORS origin allowlist. When empty, the request Origin is reflected only on a loopback `HOST`; on a non-loopback bind no browser origin is allowed (deny-by-default).                                                                               |
+| `DS_STREAM_KEEPALIVE_MS`             | `15000`                     | SSE keep-alive interval in ms; `0` disables.                                                                                                                                                                                                                       |
+| `DS_SHUTDOWN_GRACE_MS`               | `15000`                     | Grace period for draining in-flight requests on SIGTERM/SIGINT, and for the final best-effort deletion of every remote chat session.                                                                                                                               |
+| `DS_DEBUG`                           | —                           | Set to `1`/`true` for verbose SSE/parser debug logging (read lazily in `lib/debug.js`).                                                                                                                                                                            |
+| `DS_DUMP_SSE`                        | —                           | Set to `1`/`true` to dump every raw upstream SSE `data:` line plus a path histogram (diagnostic; read lazily in `lib/sse.js`).                                                                                                                                     |
 
 All values are parsed centrally in `lib/config.js`, with two deliberate
 exceptions: the diagnostic switches `DS_DEBUG` / `DS_DUMP_SSE` are read lazily
-per call (see Architecture).
+per call (see Architecture). The auth-helper and process-management scripts
+read their own variables (see below).
+
+### Auth helper (`npm run auth`)
+
+Read by `scripts/auth.js` (via `lib/config.js`). Only needed for the one-shot
+login helper.
+
+| Variable                        | Default  | Description                                                                                          |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `CHROME_PATH`                   | —        | Path to a local Chrome/Chromium binary when it is not on a standard path.                            |
+| `DS_AUTH_CDP_PORT`              | `9339`   | Chrome DevTools Protocol port used to drive the disposable profile (1–65535).                        |
+| `DS_LOGIN_EMAIL`                | —        | Email to auto-fill on the login form (optional; otherwise log in manually).                          |
+| `DS_LOGIN_PASSWORD`             | —        | Password to auto-fill on the login form (optional).                                                  |
+| `DS_HEADLESS`                   | `false`  | Set to `1` to run the login browser headless (no visible window).                                    |
+| `DS_LOGIN_FORM_TIMEOUT_MS`      | `30000`  | How long to wait for the login form to appear.                                                       |
+| `DS_LOGIN_TIMEOUT_MS`           | `120000` | Overall login timeout.                                                                               |
+| `DS_KEEP_PROFILE`               | `false`  | Set to `1` to keep the temporary Chrome profile after the run (debugging).                           |
+
+### Process management (`scripts/start.sh`, `scripts/stop.sh`)
+
+| Variable       | Default                   | Description                                                    |
+| -------------- | ------------------------- | -------------------------------------------------------------- |
+| `DS_PID_FILE`  | `./.run/ds-api-proxy.pid` | PID file written by `start.sh` / read by `stop.sh`.            |
+| `DS_LOG_FILE`  | `./.run/ds-api-proxy.log` | Log file the background server writes to (`npm run start:bg`). |
 
 ## Architecture
 

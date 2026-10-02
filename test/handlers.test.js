@@ -358,8 +358,7 @@ test('applyCors: reflects the request Origin when no allowlist is configured', (
 });
 
 test('applyCors: only allows origins on the allowlist', () => {
-    process.env.DS_ALLOWED_ORIGINS = 'https://ok.example';
-    config.reload();
+    config.reload({ DS_ALLOWED_ORIGINS: 'https://ok.example' });
     try {
         const ok = fakeRes();
         handlers.applyCors({ headers: { origin: 'https://ok.example' } }, ok);
@@ -369,7 +368,6 @@ test('applyCors: only allows origins on the allowlist', () => {
         handlers.applyCors({ headers: { origin: 'https://evil.example' } }, blocked);
         assert.equal(blocked.headers['Access-Control-Allow-Origin'], undefined);
     } finally {
-        delete process.env.DS_ALLOWED_ORIGINS;
         config.reload();
     }
 });
