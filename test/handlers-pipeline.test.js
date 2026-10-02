@@ -288,8 +288,9 @@ test('handleChatCompletions: a prompt rollover resets the session before the pro
         const session = sessions.getOrCreateAgentSession('dev-agent');
         session.id = 'remote-1';
         session.messageCount = 100;
-        // Older than DS_SESSION_TTL_MS (default 2h) => rolled over.
+        // Idle longer than DS_SESSION_TTL_MS (default 2h) => rolled over.
         session.createdAt = Date.now() - 3 * 60 * 60 * 1000;
+        session.lastActivityAt = Date.now() - 3 * 60 * 60 * 1000;
         const req = fakeReq();
         const res = fakeRes();
         await handlers.handleChatCompletions(req, res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());

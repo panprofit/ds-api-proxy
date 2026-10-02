@@ -310,7 +310,7 @@ Limitations that bite pi specifically:
 | `DS_RECOVERY_RETRY_DELAY_MS` | `500` | Base delay between recovery retries (scaled, capped at 3×). |
 | `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000` | Cooldown after malformed tool-call markup (applied when the account is finally rotated). |
 | `DS_MAX_SESSION_RESETS_PER_ACCOUNT` | `3` | Consecutive remote-session recreations on the same account to recover from malformed tool-call markup before the account is rotated. |
-| `DS_SESSION_TTL_MS` | `7200000` (2 h) | Remote session TTL before rollover. |
+| `DS_SESSION_TTL_MS` | `7200000` (2 h) | Idle TTL: a remote session is rolled over only after this long without conversation activity. An actively-used session is never reset on age alone. |
 | `DS_MAX_SESSIONS` | `1000` | Max concurrent agent sessions. |
 | `DS_SESSION_SWEEP_INTERVAL_MS` | `600000` (10 min) | Interval between idle-session / stale-upload sweeps. |
 | `DS_UPLOAD_CACHE_TTL_MS` | `21600000` (6 h) | Upload cache TTL. |

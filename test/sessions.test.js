@@ -85,12 +85,14 @@ test('getOrCreateAgentSession: returns the same session on subsequent calls', ()
     assert.equal(getSessionCount(), 1);
 });
 
-test('getOrCreateAgentSession: refreshes lastActivityAt on access', () => {
+test('getOrCreateAgentSession: does NOT touch lastActivityAt on access', () => {
+    // A bare lookup is not conversation activity; the idle TTL must not be
+    // masked by resolving the session for a request.
     const s = getOrCreateAgentSession('agent-1');
     s.lastActivityAt = 1;
     const again = getOrCreateAgentSession('agent-1');
     assert.equal(again, s);
-    assert.ok(again.lastActivityAt > 1);
+    assert.equal(again.lastActivityAt, 1);
 });
 
 test('getOrCreateAgentSession: coerces non-string agent ids', () => {
@@ -228,15 +230,28 @@ test('prepareSessionForPrompt: returns null when the session has no remote id', 
 test('prepareSessionForPrompt: returns null for a healthy active session', () => {
     const s = createSession();
     s.id = 'remote-1';
-    s.createdAt = Date.now();
+    s.lastActivityAt = Date.now();
     s.messageCount = 1;
     assert.equal(prepareSessionForPrompt(s), null);
 });
 
-test('prepareSessionForPrompt: resets on session_ttl', () => {
+test('prepareSessionForPrompt: does NOT reset a session that keeps talking past the TTL', () => {
+    // Regression: the TTL used to be measured from createdAt, so a conversation
+    // active for longer than DS_SESSION_TTL_MS was reset mid-conversation. It is
+    // now an idle TTL anchored on lastActivityAt.
     const s = createSession();
     s.id = 'remote-1';
-    s.createdAt = 1000;
+    s.createdAt = 1000; // created long ago...
+    s.lastActivityAt = 1000 + SESSION_TTL_MS * 5; // ...but active just now
+    s.messageCount = 42;
+    assert.equal(prepareSessionForPrompt(s, s.lastActivityAt + SESSION_TTL_MS), null);
+    assert.equal(s.id, 'remote-1');
+});
+
+test('prepareSessionForPrompt: resets on session_ttl after the idle window', () => {
+    const s = createSession();
+    s.id = 'remote-1';
+    s.lastActivityAt = 1000;
     s.messageCount = 1;
 
     const out = prepareSessionForPrompt(s, 1000 + SESSION_TTL_MS + 1);
@@ -244,10 +259,10 @@ test('prepareSessionForPrompt: resets on session_ttl', () => {
     assert.equal(s.id, null);
 });
 
-test('prepareSessionForPrompt: TTL boundary is exclusive (not expired at exactly TTL)', () => {
+test('prepareSessionForPrompt: idle TTL boundary is exclusive (not expired at exactly TTL)', () => {
     const s = createSession();
     s.id = 'remote-1';
-    s.createdAt = 1000;
+    s.lastActivityAt = 1000;
     s.messageCount = 1;
     assert.equal(prepareSessionForPrompt(s, 1000 + SESSION_TTL_MS), null);
     assert.equal(s.id, 'remote-1');
@@ -259,7 +274,7 @@ test('prepareSessionForPrompt: clears the malformed-reset counter on rollover', 
     // account would be rotated prematurely.
     const s = createSession();
     s.id = 'remote-1';
-    s.createdAt = 1000;
+    s.lastActivityAt = 1000;
     s.messageCount = 1;
     s.malformedResets = 2;
 
@@ -267,10 +282,22 @@ test('prepareSessionForPrompt: clears the malformed-reset counter on rollover', 
     assert.equal(s.malformedResets, 0);
 });
 
-test('prepareSessionForPrompt: ignores missing createdAt for TTL check', () => {
+test('prepareSessionForPrompt: falls back to createdAt when lastActivityAt is missing', () => {
+    const s = createSession();
+    s.id = 'remote-1';
+    s.createdAt = 1000;
+    s.lastActivityAt = undefined;
+    s.messageCount = 1;
+    const out = prepareSessionForPrompt(s, 1000 + SESSION_TTL_MS + 1);
+    assert.equal(out.reason, 'session_ttl');
+    assert.equal(s.id, null);
+});
+
+test('prepareSessionForPrompt: ignores missing createdAt/lastActivityAt for TTL check', () => {
     const s = createSession();
     s.id = 'remote-1';
     s.createdAt = null;
+    s.lastActivityAt = null;
     s.messageCount = 1;
     assert.equal(prepareSessionForPrompt(s, Date.now() + SESSION_TTL_MS * 10), null);
 });
