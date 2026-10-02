@@ -355,3 +355,47 @@ test('handleChatCompletions: attachment failures are logged but do not fail the 
         assert.equal(res.statusCode, 200);
     });
 });
+
+// --- responses: post-commit error frame ------------------------------------
+
+test('handleResponses: a post-commit context overflow emits response.failed for compaction', async () => {
+    // Pi's agent only recognises an overflow when it arrives as a
+    // `response.failed` event with response.error.code set. The DS upstream
+    // reports "context too long" as an in-band model error; recovery maps it to
+    // a terminal 400. Because SSE headers are already committed, that failure
+    // must be serialized in-band in the Responses shape.
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const deps = withDeps({
+            readDSResponse: async () => ({
+                content: '', reasoningContent: '', messageId: null, finishReason: null,
+                modelError: { type: 'error', content: 'context too long', finish_reason: null },
+            }),
+        });
+        await handlers.handleResponses(req, res, JSON.stringify({
+            input: 'hi',
+            stream: true,
+        }), deps);
+        assert.equal(res.statusCode, 200);
+        const body = res.body();
+        assert.match(body, /event: response.failed/);
+        assert.match(body, /context_length_exceeded/);
+        assert.match(body, /[DONE]/);
+    });
+});
+
+test('handleResponses: a post-commit overflow is NOT the legacy event: error frame', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const deps = withDeps({
+            readDSResponse: async () => ({
+                content: '', reasoningContent: '', messageId: null, finishReason: null,
+                modelError: { type: 'error', content: 'prompt is too long', finish_reason: null },
+            }),
+        });
+        await handlers.handleResponses(req, res, JSON.stringify({ input: 'hi', stream: true }), deps);
+        assert.doesNotMatch(res.body(), /event: error/);
+    });
+});

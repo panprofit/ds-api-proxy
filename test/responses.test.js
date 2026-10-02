@@ -488,6 +488,48 @@ test('normalizeInput: skips non-object entries', () => {
     assert.deepEqual(responses.normalizeInput([null, 5, 'x']), []);
 });
 
+
+// --- sendResponseFailed -----------------------------------------------------
+
+test('sendResponseFailed: emits a response.failed event carrying code + message', () => {
+    const res = makeFakeRes();
+    responses.sendResponseFailed(res, { message: 'DS context length exceeded', type: 'context_length_exceeded', code: 'context_length_exceeded' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['Content-Type'], 'text/event-stream');
+    assert.equal(res.ended, true);
+    assert.equal(res.hasDone(), true);
+
+    const events = res.events();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].event, 'response.failed');
+    assert.equal(events[0].data.type, 'response.failed');
+    assert.equal(events[0].data.response.status, 'failed');
+    assert.equal(events[0].data.response.error.code, 'context_length_exceeded');
+    assert.equal(events[0].data.response.error.message, 'DS context length exceeded');
+});
+
+test('sendResponseFailed: falls back to type for code and defaults a message', () => {
+    const res = makeFakeRes();
+    responses.sendResponseFailed(res, { type: 'server_error' });
+    const ev = res.events()[0];
+    assert.equal(ev.data.response.error.code, 'server_error');
+    assert.equal(ev.data.response.error.message, 'Upstream request failed');
+});
+
+test('sendResponseFailed: no opts yields a server_error with the generic message', () => {
+    const res = makeFakeRes();
+    responses.sendResponseFailed(res);
+    const ev = res.events()[0];
+    assert.equal(ev.data.response.error.code, 'server_error');
+    assert.equal(ev.data.response.error.message, 'Upstream request failed');
+});
+
+test('sendResponseFailed: writes SSE headers itself when none were sent', () => {
+    const res = makeFakeRes();
+    responses.sendResponseFailed(res, { code: 'x', message: 'y' });
+    assert.equal(res.headersSent, true);
+});
+
 // --- normalizeTools ---------------------------------------------------------
 
 test('normalizeTools: flattens a flat function tool into nested shape', () => {
