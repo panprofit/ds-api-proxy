@@ -49,12 +49,33 @@ function signInUrl() { return `${baseUrl()}/sign_in`; }
 // Falls back to the token+cookie hash for interactive logins where no email is
 // available. The loader keys accounts by that content hash (not the file name),
 // so this naming is purely cosmetic and safe to change.
-function authFileName(cfg, auth) {
-    const email = String(cfg.loginEmail || '').trim();
-    if (email) {
-        const slug = email.replace(/[^a-zA-Z0-9._@-]/g, '_').slice(0, 64);
-        if (slug) return slug;
+function emailSlug(email) {
+    return String(email || '').trim().replace(/[^a-zA-Z0-9._@-]/g, '_').slice(0, 64);
+}
+
+// Recover the login identifier from the captured POST /api/v0/users/login
+// request. Interactive (visible) logins have no DS_LOGIN_EMAIL, and the form
+// value is destroyed once the SPA navigates away, so the request body is the
+// only place the email survives. Returns '' when the endpoint or payload
+// shape differs (e.g. a form-urlencoded body), leaving callers to fall back
+// to the content hash.
+function emailFromLoginPost(events) {
+    for (const ev of events) {
+        if (ev.method !== 'Network.requestWillBeSent') continue;
+        const req = ev.params && ev.params.request;
+        if (!req || req.method !== 'POST' || !/\/api\/v0\/users\/login/.test(req.url)) continue;
+        const body = parseMaybeJson(req.postData);
+        if (body && typeof body === 'object') {
+            const id = body.email || body.mobile || body.phone || '';
+            if (id) return String(id).trim();
+        }
     }
+    return '';
+}
+
+function authFileName(cfg, auth, capturedEmail) {
+    const slug = emailSlug(cfg.loginEmail || capturedEmail || '');
+    if (slug) return slug;
     return accounts.accountIdFromCredentials(auth);
 }
 
@@ -600,7 +621,11 @@ async function main() {
 
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
-        const fileName = authFileName(cfg, auth);
+        const capturedEmail = emailFromLoginPost(cdp.events);
+        const fileName = authFileName(cfg, auth, capturedEmail);
+        if (!cfg.loginEmail && capturedEmail) {
+            console.log(`[auth] account email (from login request): ${capturedEmail}`);
+        }
         const filePath = path.join(authDir, `${fileName}.json`);
         fs.writeFileSync(filePath, JSON.stringify(auth, null, 2), { mode: 0o600 });
         console.log(`[auth] Saved: ${filePath}`);
