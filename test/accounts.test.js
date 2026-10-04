@@ -28,14 +28,14 @@ function setRemoteHost(host) {
 }
 
 afterEach(() => {
-    // Restore module state after every test (accounts array + round-robin cursor).
+    // Restore module state after every test (accounts array + LRU timestamps).
     config.reload();
     const arr = getAccounts();
     arr.length = 0;
     resetAccountState();
 });
 
-function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0 } = {}) {
+function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0 } = {}) {
     return {
         id,
         file: `/tmp/${id}.json`,
@@ -43,7 +43,7 @@ function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failure
         headers: buildBaseHeaders({ token, cookie }),
         cooldownUntil,
         failures,
-        lastUsedAt: 0,
+        lastUsedAt,
     };
 }
 
@@ -319,14 +319,27 @@ test('selectAccountForSession: drops a sticky account that is cooling down and r
     assert.equal(session.accountId, 'a1');
 });
 
-test('selectAccountForSession: round-robins across ready accounts', () => {
+test('selectAccountForSession: picks the least-recently-used ready account', () => {
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     setAccounts([a1, a2]);
     const first = selectAccountForSession({ accountId: null });
     const second = selectAccountForSession({ accountId: null });
     const third = selectAccountForSession({ accountId: null });
+    // No shared cursor: the oldest lastUsedAt always wins, so a fresh pair
+    // still alternates a1 -> a2 -> a1 as each pick refreshes lastUsedAt.
     assert.deepEqual([first.id, second.id, third.id], ['a1', 'a2', 'a1']);
+});
+
+test('selectAccountForSession: prefers an idle account over a recently used one', () => {
+    const now = Date.now();
+    // a1 was used long ago, a2 a moment ago. LRU must pick a1 even though a2
+    // comes first in load order.
+    setAccounts([
+        makeAccount('a1', { lastUsedAt: now - 60000 }),
+        makeAccount('a2', { lastUsedAt: now - 1000 }),
+    ]);
+    assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
 });
 
 test('selectAccountForSession: skips accounts that are cooling down', () => {
@@ -461,11 +474,11 @@ test('waitForAvailableAccount: gives up after maxWaitMs if nothing becomes avail
 
 // --- resetAccountState ------------------------------------------------------
 
-test('resetAccountState: clears cooldowns, failures and the round-robin cursor', () => {
+test('resetAccountState: clears cooldowns, failures and lastUsedAt', () => {
     const a1 = makeAccount('a1', { failures: 3 });
     const a2 = makeAccount('a2', { failures: 1 });
     setAccounts([a1, a2]);
-    // Advance the round-robin cursor so we can observe it resetting.
+    // Use both accounts so each gets a non-zero lastUsedAt to observe resetting.
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a2');
     // Now cool both down and reset: everything should come back to a clean slate.

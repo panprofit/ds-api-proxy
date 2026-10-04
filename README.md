@@ -372,7 +372,7 @@ lib/
   upstream.js             DS network layer (uploads, chat, session delete)
   upstream-fetch.js       SSRF guard + size-capped remote file download
   upstream-pow.js         PoW WASM loader + solver (per-URL module cache)
-  accounts.js             account pool, round-robin, sticky selection, cooldown
+  accounts.js             account pool, LRU selection, sticky selection, cooldown
   sessions.js             agent session registry + TTL rollover; deletes the remote session on reset and on shutdown
   sse.js                  DS SSE stream reader
   parser.js               tool-call parser entry point (fenced/inline orchestration)
