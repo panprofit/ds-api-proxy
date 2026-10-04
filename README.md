@@ -194,6 +194,18 @@ Both endpoints share the same upstream session, account rotation and recovery
 machinery, so an `x-agent-session` pinned conversation can move between them
 without losing context.
 
+### Structured output and stop sequences
+
+DS has no native equivalents, so two OpenAI request features are downgraded:
+
+- **`response_format`** (Chat Completions) and **`text.format`** (Responses API)
+are turned into a system-prompt instruction. `json_object` asks for a bare JSON
+object; `json_schema` embeds the schema in a fenced json block. `text` is a
+no-op. This is a prompt-level nudge, not enforced grammar.
+- **`stop`** (a string or array of strings) is applied locally to the assembled
+answer: the response is truncated at the earliest matching sequence. A parsed
+tool call is never truncated.
+
 ### Tool-call parsing
 
 DS does not have native function calling; the proxy prompts for a text format

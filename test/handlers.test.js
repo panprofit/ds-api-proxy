@@ -527,3 +527,19 @@ test('resolveSearchEnabled: absent options follow the config default', () => {
 test('resolveSearchEnabled: null web_search_options does not force on', () => {
     assert.equal(handlers.resolveSearchEnabled({ web_search_options: null }, { defaultSearchEnabled: false }), false);
 });
+
+// --- normalizeStop ----------------------------------------------------------
+
+test('normalizeStop: string -> single-element array', () => {
+    assert.deepEqual(handlers.normalizeStop('STOP'), ['STOP']);
+});
+
+test('normalizeStop: array is kept, empties/dupes dropped', () => {
+    assert.deepEqual(handlers.normalizeStop(['a', '', 'a', 'b', null, 3]), ['a', 'b']);
+});
+
+test('normalizeStop: absent / invalid -> []', () => {
+    assert.deepEqual(handlers.normalizeStop(undefined), []);
+    assert.deepEqual(handlers.normalizeStop(null), []);
+    assert.deepEqual(handlers.normalizeStop(42), []);
+});

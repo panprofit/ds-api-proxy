@@ -1120,3 +1120,57 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
         assert.equal(ctx.session.sentKeys.size, 2);
     });
 });
+
+// --- stop sequences ---------------------------------------------------------
+
+test('runWithRecovery: stop sequence truncates the visible content', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const ctx = baseCtx({
+            stop: ['STOP'],
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: sseOnce([{ content: 'Hello STOP world', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.fullContent, 'Hello ');
+    });
+});
+
+test('runWithRecovery: earliest of multiple stop sequences wins', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const ctx = baseCtx({
+            stop: ['END', 'STOP'],
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: sseOnce([{ content: 'a END b STOP c', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.fullContent, 'a ');
+    });
+});
+
+test('runWithRecovery: no stop match leaves the content intact', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const ctx = baseCtx({
+            stop: ['NOPE'],
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: sseOnce([{ content: 'Hello world', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.fullContent, 'Hello world');
+    });
+});
+
+test('runWithRecovery: stop does not truncate a tool call', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const toolJson = '{"tool_call":{"name":"bash","arguments":{"command":"ls"}}}';
+        const ctx = baseCtx({
+            stop: ['bash'],
+            tools: [{ type: 'function', function: { name: 'bash' } }],
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: sseOnce([{ content: toolJson, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.ok(out.toolCall, 'tool call should still parse');
+        assert.equal(out.toolCall.name, 'bash');
+    });
+});
