@@ -135,3 +135,9 @@ test('config.load: authCdpPort is clamped to [1,65535]', () => {
     assert.equal(config.load({ DS_AUTH_CDP_PORT: '99999' }).authCdpPort, 65535);
     assert.equal(config.load({ DS_AUTH_CDP_PORT: 'abc' }).authCdpPort, 9339);
 });
+
+test('config.load: defaultSearchEnabled defaults on, DS_DEFAULT_SEARCH_ENABLED=0 turns it off', () => {
+    assert.equal(config.load({}).defaultSearchEnabled, true);
+    assert.equal(config.load({ DS_DEFAULT_SEARCH_ENABLED: '0' }).defaultSearchEnabled, false);
+    assert.equal(config.load({ DS_DEFAULT_SEARCH_ENABLED: '1' }).defaultSearchEnabled, true);
+});

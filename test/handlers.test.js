@@ -466,3 +466,64 @@ test('writeError: a timeout resets the active session and reports it', () => {
     assert.equal(json.error.account, 'acct-1');
     assert.equal(session.id, null, 'the failed session must be reset');
 });
+
+// --- sendOpenAIStream: obfuscation padding --------------------------------
+
+test('sendOpenAIStream: no obfuscation field by default', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-o1', created: 1,
+        choices: [{ message: { role: 'assistant', content: 'hi' } }],
+    });
+    const joined = res.chunks.join('');
+    assert.ok(!joined.includes('obfuscation'));
+});
+
+test('sendOpenAIStream: obfuscation pads every choice-bearing chunk', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-o2', created: 2,
+        choices: [{ message: { role: 'assistant', content: 'hello world' } }],
+    }, { includeObfuscation: true });
+    const chunks = res.chunks
+        .map(c => c.replace(/^data: /, '').trim())
+        .filter(c => c && c !== '[DONE]')
+        .map(c => JSON.parse(c));
+    const withChoices = chunks.filter(c => c.choices && c.choices.length > 0);
+    assert.ok(withChoices.length > 0);
+    assert.ok(withChoices.every(c => typeof c.obfuscation === 'string' && c.obfuscation.length > 0));
+    // The padding is top-level, never inside delta.
+    assert.ok(withChoices.every(c => c.choices[0].delta.obfuscation === undefined));
+});
+
+test('sendOpenAIStream: obfuscation padding is random per chunk', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-o3', created: 3,
+        choices: [{ message: { role: 'assistant', content: 'x'.repeat(200) } }],
+    }, { includeObfuscation: true });
+    const pads = res.chunks
+        .map(c => c.replace(/^data: /, '').trim())
+        .filter(c => c && c !== '[DONE]')
+        .map(c => JSON.parse(c))
+        .filter(c => c.choices && c.choices.length > 0)
+        .map(c => c.obfuscation);
+    assert.ok(pads.length >= 2);
+    assert.ok(new Set(pads).size > 1, 'padding must differ between chunks');
+});
+
+// --- resolveSearchEnabled --------------------------------------------------
+
+test('resolveSearchEnabled: web_search_options forces search on', () => {
+    assert.equal(handlers.resolveSearchEnabled({ web_search_options: {} }, { defaultSearchEnabled: false }), true);
+    assert.equal(handlers.resolveSearchEnabled({ web_search_options: {} }, { defaultSearchEnabled: true }), true);
+});
+
+test('resolveSearchEnabled: absent options follow the config default', () => {
+    assert.equal(handlers.resolveSearchEnabled({}, { defaultSearchEnabled: true }), true);
+    assert.equal(handlers.resolveSearchEnabled({}, { defaultSearchEnabled: false }), false);
+});
+
+test('resolveSearchEnabled: null web_search_options does not force on', () => {
+    assert.equal(handlers.resolveSearchEnabled({ web_search_options: null }, { defaultSearchEnabled: false }), false);
+});

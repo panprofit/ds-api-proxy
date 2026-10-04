@@ -194,6 +194,33 @@ Both endpoints share the same upstream session, account rotation and recovery
 machinery, so an `x-agent-session` pinned conversation can move between them
 without losing context.
 
+### Tool-call parsing
+
+DS does not have native function calling; the proxy prompts for a text format
+and parses it back into OpenAI `tool_calls`. The parser accepts, in order:
+
+1. **Strict / fenced JSON** — `{"tool_call":{"name","arguments"}}` inline or in
+a ```json fence (with the usual JSON repair heuristics for truncated or
+mis-escaped output).
+2. **DSML/XML markup** — `<|DSML| tool_calls> … <|DSML| invoke> …` and the
+`<invoke>`/`<parameter>` grammar.
+3. **Native markers** — DS's own `<|tool▁calls▁begin|> … <|tool▁calls▁end|>`
+grammar wrapping a bare `[{"name","arguments"}]` array. Marker matching is
+*fuzzy*: the fullwidth pipe `｜` (U+FF5C) is treated as `|` and the separator
+`▁` (U+2581) as `_`, so a hallucinated `</|tool_calls▁end｜>` still closes the
+block.
+
+A tool call inside a markdown code fence is ignored (it is an illustration,
+not a request), except for a lone ```sh/```bash fence, which is treated as a
+`bash` call.
+
+### Streaming `obfuscation`
+
+When the client sends `stream_options.include_obfuscation: true`, every
+choice-bearing SSE chunk carries a random base64 `obfuscation` field (top-level,
+not inside `delta`) so the serialized chunk is ~512 characters — OpenAI's
+side-channel mitigation. Usage-only and terminal chunks carry no padding.
+
 ### `/v1/responses` notes
 
 - **Request.** The conversation is passed via `input` (a string, or an array of
@@ -348,6 +375,7 @@ Limitations that bite pi specifically:
 | `DS_FILE_POLL_TIMEOUT_MS`            | `60000`                     | Timeout waiting for an uploaded file to become `SUCCESS`.                                                                                                                                                                                                          |
 | `DS_ALLOWED_ORIGINS`                 | —                           | Comma-separated CORS origin allowlist. When empty, the request Origin is reflected only on a loopback `HOST`; on a non-loopback bind no browser origin is allowed (deny-by-default).                                                                               |
 | `DS_STREAM_KEEPALIVE_MS`             | `15000`                     | SSE keep-alive interval in ms; `0` disables.                                                                                                                                                                                                                       |
+| `DS_DEFAULT_SEARCH_ENABLED`          | `1`                         | Upstream `search_enabled` default when the client does not send `web_search_options`. `0` gives strict OpenAI semantics (absent == off); an explicit `web_search_options` always forces search on.                                                                  |
 | `DS_SHUTDOWN_GRACE_MS`               | `15000`                     | Grace period for draining in-flight requests on SIGTERM/SIGINT, and for the final best-effort deletion of every remote chat session.                                                                                                                               |
 | `DS_DEBUG`                           | —                           | Set to `1`/`true` for verbose SSE/parser debug logging (read lazily in `lib/debug.js`).                                                                                                                                                                            |
 | `DS_DUMP_SSE`                        | —                           | Set to `1`/`true` to dump every raw upstream SSE `data:` line plus a path histogram (diagnostic; read lazily in `lib/sse.js`).                                                                                                                                     |
@@ -403,6 +431,7 @@ lib/
   parser.js               tool-call parser entry point (fenced/inline orchestration)
   json-repair.js          balanced-JSON extraction + repair heuristics
   parser-dsml.js          DSML/XML tag scanning + <invoke> grammar
+  parser-native.js        native <|tool▁calls▁begin|>…<|tool▁calls▁end|> marker grammar (fuzzy |/｜ and _/▁ matching)
   parser-limits.js        shared parser size limits
   prompt.js               prompt building + structured screenshot extraction
   openai.js               OpenAI response builders + token estimation

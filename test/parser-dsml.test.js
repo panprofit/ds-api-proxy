@@ -24,6 +24,23 @@ test('canonicalizeToolMarkupTag: smart quotes / fullwidth are folded to ASCII', 
     assert.match(d.canonicalizeToolMarkupTag('invoke name=“f”'), /^<invoke name="f">$/);
 });
 
+// The native DeepSeek separator U+2581 (▁) is folded to '_' so a tag that
+// mixes the native spelling (`tool▁calls`) into DSML markup is still read.
+test('canonicalizeToolMarkupTag: folds the native U+2581 separator to _', () => {
+    assert.equal(d.canonicalizeToolMarkupTag('|DSML| tool\u2581calls'), '<tool_calls>');
+    assert.equal(d.canonicalizeToolMarkupTag('/|DSML| tool\u2581calls'), '</tool_calls>');
+});
+
+test('readDsmlTagAt: reads a tool▁calls tag with the native separator', () => {
+    const tag = d.readDsmlTagAt('<tool\u2581calls>', 0);
+    assert.equal(tag.name, 'tool_calls');
+});
+
+test('scanDsmlStructuralTags: balances a native-separator tool▁calls wrapper', () => {
+    const tags = d.scanDsmlStructuralTags('<tool\u2581calls><invoke name="f"></invoke></tool\u2581calls>');
+    assert.deepEqual(tags.map(t => t.name), ['tool_calls', 'invoke', 'invoke', 'tool_calls']);
+});
+
 test('canonicalizeToolMarkupTag: `name=` becomes a <direct> tag', () => {
     assert.equal(d.canonicalizeToolMarkupTag('name="read"'), '<direct name="read">');
 });

@@ -702,3 +702,14 @@ test('loadModule: throws on invalid WASM bytes and does not cache the failure', 
         await assert.rejects(() => upstream.loadModule(wasmUrl));
     });
 });
+
+test('buildCompletionPayload: searchEnabled overrides the default', () => {
+    assert.equal(
+        upstream.buildCompletionPayload({ prompt: 'x', searchEnabled: false }).search_enabled,
+        false
+    );
+    assert.equal(
+        upstream.buildCompletionPayload({ prompt: 'x', searchEnabled: true }).search_enabled,
+        true
+    );
+});

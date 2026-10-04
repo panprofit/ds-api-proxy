@@ -14,6 +14,10 @@ const {
     buildTextResponseFromTokens,
     splitIntoChunks,
     STREAM_CHUNK_CODE_POINTS,
+    OBFUSCATION_TARGET_LEN,
+    OBFUSCATION_MIN_PAD,
+    randomObfuscationPadding,
+    obfuscationPadLength,
 } = require('../lib/openai');
 
 test('estimateTokens: empty input -> 0', () => {
@@ -151,4 +155,37 @@ test('splitIntoChunks: honours a custom size', () => {
 
 test('STREAM_CHUNK_CODE_POINTS is a positive integer', () => {
     assert.ok(Number.isInteger(STREAM_CHUNK_CODE_POINTS) && STREAM_CHUNK_CODE_POINTS > 0);
+});
+
+// --- obfuscation padding ----------------------------------------------------
+
+test('randomObfuscationPadding: returns a string of exactly the requested length', () => {
+    for (const len of [1, 16, 100, 512]) {
+        const pad = randomObfuscationPadding(len);
+        assert.equal(pad.length, len, `len=${len}`);
+        assert.match(pad, /^[A-Za-z0-9+/]*=*$/);
+    }
+});
+
+test('randomObfuscationPadding: zero/negative -> empty string', () => {
+    assert.equal(randomObfuscationPadding(0), '');
+    assert.equal(randomObfuscationPadding(-5), '');
+});
+
+test('randomObfuscationPadding: two calls differ (random, not constant)', () => {
+    const a = randomObfuscationPadding(64);
+    const b = randomObfuscationPadding(64);
+    assert.notEqual(a, b);
+});
+
+test('obfuscationPadLength: pads a short chunk up to the target', () => {
+    const serializedLen = 50;
+    const pad = obfuscationPadLength(serializedLen);
+    const overhead = ',"obfuscation":""'.length;
+    assert.equal(serializedLen + overhead + pad, OBFUSCATION_TARGET_LEN);
+});
+
+test('obfuscationPadLength: an already-large chunk gets the minimum pad', () => {
+    assert.equal(obfuscationPadLength(OBFUSCATION_TARGET_LEN + 100), OBFUSCATION_MIN_PAD);
+    assert.equal(obfuscationPadLength(OBFUSCATION_TARGET_LEN), OBFUSCATION_MIN_PAD);
 });
