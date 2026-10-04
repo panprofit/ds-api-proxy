@@ -568,3 +568,25 @@ test('parseResponsesRequest: accepts an empty body as an empty object', () => {
     const parsed = responses.parseResponsesRequest('');
     assert.equal(parsed.ok, true);
 });
+
+// --- text.format -> response_format -----------------------------------------
+
+test('toInternalParams: text.format json_object maps to response_format', () => {
+    const internal = responses.toInternalParams({ input: 'hi', text: { format: { type: 'json_object' } } });
+    assert.deepEqual(internal.response_format, { type: 'json_object' });
+});
+
+test('toInternalParams: text.format json_schema maps to a json_schema block', () => {
+    const internal = responses.toInternalParams({
+        input: 'hi',
+        text: { format: { type: 'json_schema', name: 'person', schema: { type: 'object' }, strict: true } },
+    });
+    assert.deepEqual(internal.response_format, {
+        type: 'json_schema',
+        json_schema: { name: 'person', schema: { type: 'object' }, strict: true },
+    });
+});
+
+test('toInternalParams: no text.format -> response_format undefined', () => {
+    assert.equal(responses.toInternalParams({ input: 'hi' }).response_format, undefined);
+});

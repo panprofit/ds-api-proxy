@@ -227,3 +227,42 @@ test('collectPendingTurns: after marking a fresh session, nothing is pending', (
     prompt.markTurnsSent(session, messages);
     assert.deepEqual(prompt.collectPendingTurns(messages, session), []);
 });
+
+// --- response_format --------------------------------------------------------
+
+test('formatResponseFormat: json_object -> bare-JSON instruction', () => {
+    const out = prompt.formatResponseFormat({ type: 'json_object' });
+    assert.ok(out.includes('JSON'));
+});
+
+test('formatResponseFormat: json_schema -> schema in a fenced block', () => {
+    const out = prompt.formatResponseFormat({
+        type: 'json_schema',
+        json_schema: { name: 'person', schema: { type: 'object' } },
+    });
+    assert.ok(out.includes('~~~json'));
+    assert.ok(out.includes('"type":"object"'));
+});
+
+test('formatResponseFormat: json_schema without a schema still asks for JSON', () => {
+    const out = prompt.formatResponseFormat({ type: 'json_schema' });
+    assert.ok(out.includes('JSON'));
+});
+
+test('formatResponseFormat: text / unknown / nullish -> empty', () => {
+    assert.equal(prompt.formatResponseFormat({ type: 'text' }), '');
+    assert.equal(prompt.formatResponseFormat(null), '');
+    assert.equal(prompt.formatResponseFormat(undefined), '');
+    assert.equal(prompt.formatResponseFormat({}), '');
+});
+
+test('formatMessages: folds response_format into the system prompt', () => {
+    const { systemPrompt } = prompt.formatMessages(
+        [{ role: 'user', content: 'hi' }], [], { type: 'json_object' });
+    assert.ok(systemPrompt.includes('JSON'));
+});
+
+test('formatMessages: no response_format leaves the system prompt free-form', () => {
+    const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], []);
+    assert.ok(!systemPrompt.includes('~~~json'));
+});
