@@ -105,6 +105,28 @@ test('dsFetch: attaches an AbortSignal timeout by default', async () => {
     assert.equal(seenSignal.constructor.name, 'AbortSignal');
 });
 
+test('dsFetch: charges the hourly budget only when quotaAccount is passed', async () => {
+    const account = { id: 'acct1', config: { token: 't', cookie: 'c' }, cooldownUntil: 0, requestCount: 0, requestWindowStart: 0 };
+    let seenOpts = null;
+    await withFetch(async (url, opts) => { seenOpts = opts; return jsonResponse({}); }, async () => {
+        await upstream.dsFetch('/chat/x', { method: 'POST', quotaAccount: account });
+    });
+    assert.equal(account.requestCount, 1, 'the request is counted against the account');
+    assert.equal(seenOpts.quotaAccount, undefined, 'the quotaAccount key must not reach fetch()');
+    assert.equal(seenOpts.method, 'POST');
+});
+
+test('dsFetch: does NOT charge the budget for ancillary requests', async () => {
+    const account = { id: 'acct1', config: { token: 't', cookie: 'c' }, cooldownUntil: 0, requestCount: 0, requestWindowStart: 0 };
+    await withFetch(async () => jsonResponse({}), async () => {
+        // PoW / session / upload calls do not pass quotaAccount.
+        await upstream.dsFetch('/chat/create_pow_challenge', { method: 'POST' });
+        await upstream.dsFetch('/chat_session/create', { method: 'POST' });
+        await upstream.dsFetch('/file/fetch_files?file_ids=x', { method: 'GET' });
+    });
+    assert.equal(account.requestCount, 0, 'ancillary requests must not consume the completion quota');
+});
+
 // --- dsChatCompletionWithPow ------------------------------------------------
 
 test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {

@@ -14,7 +14,7 @@ const config = require('../lib/config');
 
 const { getAccounts, buildBaseHeaders, discoverAuthPaths, loadDSConfig,
         hasAuthConfig, auditAuthDir, selectAccountForSession, markAccountFailure,
-        markAccountBroken, hasAvailableAccount, waitForAvailableAccount,
+        markAccountBroken, recordAccountRequest, hasAvailableAccount, waitForAvailableAccount,
         resetAccountState,
         getAccountById, accountIdFromCredentials } = accounts;
 
@@ -35,7 +35,7 @@ afterEach(() => {
     resetAccountState();
 });
 
-function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0 } = {}) {
+function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0, requestCount = 0, requestWindowStart = 0 } = {}) {
     return {
         id,
         file: `/tmp/${id}.json`,
@@ -44,6 +44,8 @@ function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failure
         cooldownUntil,
         failures,
         lastUsedAt,
+        requestCount,
+        requestWindowStart,
     };
 }
 
@@ -376,6 +378,78 @@ test('selectAccountForSession: throws 503 when no account has usable credentials
         assert.equal(err.type, 'no_auth');
         return true;
     });
+});
+
+// --- recordAccountRequest ------------------------------------------------
+
+const HOUR_MS = 60 * 60 * 1000;
+
+test('recordAccountRequest: counts requests and does not park below the cap', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '5' });
+    const a = makeAccount('a1');
+    setAccounts([a]);
+    const now = Date.now();
+    for (let i = 0; i < 4; i++) recordAccountRequest(a, now + i);
+    assert.equal(a.requestCount, 4);
+    assert.equal(a.cooldownUntil, 0, 'under the cap the account stays available');
+    assert.equal(hasAvailableAccount(), true);
+});
+
+test('recordAccountRequest: parks the account for the rest of the window at the cap', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '3' });
+    const a = makeAccount('a1');
+    setAccounts([a]);
+    const now = 1_000_000;
+    recordAccountRequest(a, now);
+    recordAccountRequest(a, now + 1);
+    assert.equal(a.cooldownUntil, 0, 'still available below the cap');
+    recordAccountRequest(a, now + 2); // hits the cap
+    assert.equal(a.requestCount, 3);
+    assert.equal(a.cooldownUntil, now + HOUR_MS, 'parked until the window resets');
+});
+
+test('recordAccountRequest: resets the window once an hour has elapsed', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '2' });
+    const a = makeAccount('a1', { requestCount: 2, requestWindowStart: 1000, cooldownUntil: 1000 + HOUR_MS });
+    setAccounts([a]);
+    recordAccountRequest(a, 1000 + HOUR_MS + 1);
+    assert.equal(a.requestCount, 1);
+    assert.equal(a.requestWindowStart, 1000 + HOUR_MS + 1);
+});
+
+test('recordAccountRequest: a limit of 0 disables the cap', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '0' });
+    const a = makeAccount('a1');
+    setAccounts([a]);
+    for (let i = 0; i < 1000; i++) recordAccountRequest(a, Date.now());
+    assert.equal(a.requestCount, 0, 'nothing is counted when the cap is disabled');
+    assert.equal(a.cooldownUntil, 0);
+});
+
+test('recordAccountRequest: the hourly park makes selectAccountForSession rotate', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '1' });
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    setAccounts([a1, a2]);
+    recordAccountRequest(a1); // a1 now parked for an hour
+    assert.equal(selectAccountForSession({ accountId: null }).id, 'a2');
+});
+
+test('recordAccountRequest: ignores a missing account', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '1' });
+    assert.doesNotThrow(() => recordAccountRequest(null));
+    assert.doesNotThrow(() => recordAccountRequest(undefined));
+});
+
+test('recordAccountRequest: a later short cooldown does not shorten the hourly park', () => {
+    config.reload({ DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: '1' });
+    const a = makeAccount('a1');
+    setAccounts([a]);
+    const now = Date.now();
+    recordAccountRequest(a, now);
+    const parkUntil = a.cooldownUntil;
+    markAccountFailure(a, 429, 'rate limited', '1');
+    assert.equal(a.cooldownUntil, parkUntil);
 });
 
 // --- markAccountFailure -----------------------------------------------------

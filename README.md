@@ -227,6 +227,30 @@ is present: `x-agent-session`, `x-session-affinity`, `x-session-id`,
 remote address (localhost -> `dev-agent`). Use `x-agent-session` to pin a
 conversation to a specific upstream session; change it to start a fresh one.
 
+### Account selection and rotation
+
+Accounts are loaded from `DS_AUTH_DIR` and selected per session:
+
+1. **Sticky** — a session keeps the account it is already bound to while that
+   account stays healthy (credentials present, not cooling down).
+2. **Least-recently-used** — otherwise the ready account with the oldest
+   `lastUsedAt` is picked, spreading load evenly without a shared cursor.
+
+An account becomes unavailable (parked) when it hits any of these, after which
+requests rotate to another account:
+
+- an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
+  upstream `Retry-After`, whichever is longer);
+- a **recoverable failure** (malformed tool markup, empty response) — parked for
+  `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` / the recovery window;
+- its **hourly completion cap** — each `chat/completion` call is counted (PoW
+  challenges, session create/delete, uploads and `fetch_files` are free); at
+  `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR` the account is parked until the window
+  resets. Set the cap to `0` to disable it.
+
+When every account is parked the request returns HTTP 429 with a
+`retry_in`-style hint until the earliest window opens.
+
 ## Client integration (pi agent)
 
 The primary consumer is the **pi** coding agent, which talks to the proxy as an
@@ -295,6 +319,7 @@ Limitations that bite pi specifically:
 | `HOST`                               | `127.0.0.1`                 | HTTP listen host. **On a non-loopback bind with an empty `DS_ALLOWED_ORIGINS`, CORS denies all browser origins (anti-CSRF); set the allowlist to permit specific origins.**                                                                                        |
 | `DS_AUTH_DIR`                        | — (needed for any accounts) | Directory scanned for `*.json` auth configs (sorted). There is no default: when unset, no accounts load and every completion returns 503. Audited at startup (unset/missing dir, no `*.json` files, or none loading all produce a clear log line).                 |
 | `DS_ACCOUNT_COOLDOWN_MS`             | `600000` (10 min)           | Cooldown after an HTTP 401/403/429 account failure.                                                                                                                                                                                                                |
+| `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`   | `200`                       | Max upstream requests (PoW, session create/delete, completion, uploads) per account per rolling hour. At the cap the account is parked until the window resets, so the next request rotates to another account. `0` disables the cap.                              |
 | `DS_CLIENT_LOCALE`                   | `en`                        | Default `x-client-locale` sent upstream; per-account `locale` overrides it.                                                                                                                                                                                        |
 | `DS_CLIENT_TIMEZONE_OFFSET`          | `0`                         | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it.                                                                                                                                                                      |
 | `DS_MAX_CONCURRENT`                  | `24`                        | Max simultaneous in-flight completions.                                                                                                                                                                                                                            |
@@ -437,7 +462,7 @@ vulnerability privately. The hardening below is what the proxy already does.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `All auth accounts are cooling down. Retry in ~Ns` (HTTP 429) | Every account hit a 401/403/429 or a recoverable failure and is parked for `DS_ACCOUNT_COOLDOWN_MS`. | Wait, add another `*.json` account in `DS_AUTH_DIR`, or lower `DS_ACCOUNT_COOLDOWN_MS`. |
+| `All auth accounts are cooling down. Retry in ~Ns` (HTTP 429) | Every account hit a 401/403/429, a recoverable failure (`DS_ACCOUNT_COOLDOWN_MS`), or its hourly request cap (`DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`), so none is available. | Wait, add another `*.json` account in `DS_AUTH_DIR`, lower `DS_ACCOUNT_COOLDOWN_MS`, or raise/disable `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`. |
 | `No valid auth accounts.` (HTTP 503) | `DS_AUTH_DIR` is empty/unreadable, or every config is missing `token`/`cookie`. | Check the startup log — the `DS_AUTH_DIR` audit line plus per-file messages report the cause. Re-run `npm run auth`. |
 | `Server busy (N/N requests in flight)` (HTTP 503) | Hit `DS_MAX_CONCURRENT`. | Retry shortly, raise `DS_MAX_CONCURRENT`, or add accounts. |
 | HTTP 408 `Request body read timed out` | Body took longer than `DS_BODY_READ_TIMEOUT_MS` to arrive. | Raise the timeout or send a smaller body. |
