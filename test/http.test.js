@@ -186,3 +186,41 @@ test('redactError: accepts a plain string and handles nullish', () => {
     assert.equal(http.redactError(null), '');
     assert.equal(http.redactError(undefined), '');
 });
+
+// --- truncateForLog ---------------------------------------------------------
+
+test('truncateForLog: returns the string unchanged when within max', () => {
+    assert.equal(http.truncateForLog('hello', 10), 'hello');
+    assert.equal(http.truncateForLog('hello', 5), 'hello');
+});
+
+test('truncateForLog: appends the ellipsis when it cuts', () => {
+    assert.equal(http.truncateForLog('hello world', 5), 'hello\u2026');
+});
+
+test('truncateForLog: custom ellipsis, including empty', () => {
+    assert.equal(http.truncateForLog('hello world', 5, ''), 'hello');
+    assert.equal(http.truncateForLog('hello world', 5, '...'), 'hello...');
+});
+
+test('truncateForLog: never splits a surrogate pair (astral char)', () => {
+    // \u{1F600} is a surrogate pair; a naive slice(0, 1) would leave a lone high surrogate.
+    const text = 'a\u{1F600}b';
+    // max=2 would land between the high and low surrogate of the emoji.
+    const out = http.truncateForLog(text, 2, '');
+    assert.equal(out, 'a');
+    // The result must be well-formed (no lone surrogate): a re-encode round-trip
+    // and code-point count both hold only when the pair was not split.
+    assert.equal([...out].length, 1);
+    assert.equal(Buffer.from(out, 'utf8').toString('utf8'), out);
+});
+
+test('truncateForLog: a boundary exactly after a BMP char is kept', () => {
+    assert.equal(http.truncateForLog('abcd', 2, ''), 'ab');
+});
+
+test('truncateForLog: handles null/undefined and non-strings', () => {
+    assert.equal(http.truncateForLog(null, 10), '');
+    assert.equal(http.truncateForLog(undefined, 10), '');
+    assert.equal(http.truncateForLog(12345, 3, ''), '123');
+});
