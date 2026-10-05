@@ -40,46 +40,47 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 
 ## Architecture
 
-```
-index.js                  process launcher (env guard, auth audit, sweep, signals, concurrency semaphore)
-lib/
-  server.js               HTTP router, socket hardening, listen/error policy, shutdown wiring
-  shutdown.js             graceful-shutdown controller (drain in-flight, close listener)
-  config.js               central env parsing (single source of truth)
-  handlers.js             per-request handling (CORS, body, session, response)
-  health.js               GET /health liveness/readiness report
-  metrics.js              in-flight / lifetime counters, surfaced via /health
-  recovery.js             recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases)
-  recovery-markup.js      tool-markup diagnostics + completion/strict-retry passes
-  recovery-util.js        shared retry-delay / config helpers for the recovery passes
-  recovery-classify.js    response classification (refusal, context-too-long, ...)
-  upstream-session.js     one completion attempt + expired-session recreation
-  upstream.js             DS network layer (uploads, chat, session delete)
-  upstream-fetch.js       SSRF guard + size-capped remote file download
-  upstream-pow.js         PoW WASM loader + solver (per-URL module cache)
-  accounts.js             account pool, LRU selection, sticky selection, cooldown, per-account completion throttle
-  sessions.js             agent session registry + TTL rollover; deletes the remote session on reset and on shutdown
-  sse.js                  DS SSE stream reader
-  parser.js               tool-call parser entry point (fenced/inline orchestration)
-  json-repair.js          balanced-JSON extraction + repair heuristics
-  parser-dsml.js          DSML/XML tag scanning + <invoke> grammar
-  parser-native.js        native <|tool▁calls▁begin|>...<|tool▁calls▁end|> marker grammar (fuzzy |/| and _/▁ matching)
-  parser-limits.js        shared parser size limits
-  prompt.js               prompt building + structured screenshot extraction
-  openai.js               OpenAI response builders + token estimation
-  responses.js            Responses API translation (input/tools <-> internal, output/SSE)
-  semaphore.js            idempotent in-flight counter
-  uploads.js              MIME guessing, file-id / fetch-files extraction, data URIs
-  upload-cache.js         TTL cache for uploaded attachments
-  account-status.js       Retry-After parsing (cooldown math)
-  http.js                 HTTP error helpers, CORS/redaction
-  debug.js                DS_DEBUG-gated debug logging
-  pow.js                  X-DS-PoW-Response header construction
-```
+`index.js` sits at the root; every other module lives in `lib/`.
+
+| Module | Role |
+| --- | --- |
+| `index.js` | process launcher (env guard, auth audit, sweep, signals, concurrency semaphore) |
+| `lib/server.js` | HTTP router, socket hardening, listen/error policy, shutdown wiring |
+| `lib/shutdown.js` | graceful-shutdown controller (drain in-flight, close listener) |
+| `lib/config.js` | central env parsing (single source of truth) |
+| `lib/handlers.js` | per-request handling (CORS, body, session, response) |
+| `lib/health.js` | `GET /health` liveness/readiness report |
+| `lib/metrics.js` | in-flight / lifetime counters, surfaced via `/health` |
+| `lib/recovery.js` | recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases) |
+| `lib/recovery-markup.js` | tool-markup diagnostics + completion/strict-retry passes |
+| `lib/recovery-util.js` | shared retry-delay / config helpers for the recovery passes |
+| `lib/recovery-classify.js` | response classification (refusal, context-too-long, ...) |
+| `lib/upstream-session.js` | one completion attempt + expired-session recreation |
+| `lib/upstream.js` | DS network layer (uploads, chat, session delete) |
+| `lib/upstream-fetch.js` | SSRF guard + size-capped remote file download |
+| `lib/upstream-pow.js` | PoW WASM loader + solver (per-URL module cache) |
+| `lib/accounts.js` | account pool, LRU selection, sticky selection, cooldown, per-account completion throttle |
+| `lib/sessions.js` | agent session registry + TTL rollover; deletes the remote session on reset and on shutdown |
+| `lib/sse.js` | DS SSE stream reader |
+| `lib/parser.js` | tool-call parser entry point (fenced/inline orchestration) |
+| `lib/json-repair.js` | balanced-JSON extraction + repair heuristics |
+| `lib/parser-dsml.js` | DSML/XML tag scanning + `<invoke>` grammar |
+| `lib/parser-native.js` | native `<|tool▁calls▁begin|>`...`<|tool▁calls▁end|>` marker grammar (fuzzy `|`/`｜` and `_`/`▁` matching) |
+| `lib/parser-limits.js` | shared parser size limits |
+| `lib/prompt.js` | prompt building + structured screenshot extraction |
+| `lib/openai.js` | OpenAI response builders + token estimation |
+| `lib/responses.js` | Responses API translation (input/tools <-> internal, output/SSE) |
+| `lib/semaphore.js` | idempotent in-flight counter |
+| `lib/uploads.js` | MIME guessing, file-id / fetch-files extraction, data URIs |
+| `lib/upload-cache.js` | TTL cache for uploaded attachments |
+| `lib/account-status.js` | Retry-After parsing (cooldown math) |
+| `lib/http.js` | HTTP error helpers, CORS/redaction |
+| `lib/debug.js` | `DS_DEBUG`-gated debug logging |
+| `lib/pow.js` | `X-DS-PoW-Response` header construction |
 
 This list is the **complete** module map and the single source of truth for
-"what lives where". [README.md](README.md#architecture) links here. Keep it in
-sync when adding, renaming or removing a module.
+"what lives where". [README.md](README.md) links here. Keep it in sync when
+adding, renaming or removing a module.
 
 `lib/config.js` is the single source of truth for env parsing. Modules read it
 lazily via `config.get()`; the exported constants in `sessions.js`/`upstream.js`
