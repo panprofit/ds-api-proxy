@@ -394,7 +394,8 @@ Limitations that bite pi specifically:
 
 All values are parsed centrally in `lib/config.js`, with two deliberate
 exceptions: the diagnostic switches `DS_DEBUG` / `DS_DUMP_SSE` are read lazily
-per call (see Architecture). The auth-helper and process-management scripts
+per call (see [AGENTS.md -> Architecture](AGENTS.md#architecture)). The
+auth-helper and process-management scripts
 read their own variables (see below).
 
 ### Auth helper (`npm run auth`)
@@ -419,52 +420,6 @@ login helper.
 | -------------- | ------------------------- | -------------------------------------------------------------- |
 | `DS_PID_FILE`  | `./.run/ds-api-proxy.pid` | PID file written by `start.sh` / read by `stop.sh`.            |
 | `DS_LOG_FILE`  | `./.run/ds-api-proxy.log` | Log file the background server writes to (`npm run start:bg`). |
-
-## Architecture
-
-```
-index.js                  process launcher (env guard, auth audit, sweep, signals, concurrency semaphore)
-lib/
-  server.js               HTTP router, socket hardening, listen/error policy, shutdown wiring
-  shutdown.js             graceful-shutdown controller (drain in-flight, close listener)
-  config.js               central env parsing (single source of truth)
-  handlers.js             per-request handling (CORS, body, session, response)
-  health.js               GET /health liveness/readiness report
-  recovery.js             recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases)
-  recovery-markup.js      tool-markup diagnostics + completion/strict-retry passes
-  recovery-util.js        shared retry-delay / config helpers for the recovery passes
-  upstream-session.js     one completion attempt + expired-session recreation
-  upstream.js             DS network layer (uploads, chat, session delete)
-  upstream-fetch.js       SSRF guard + size-capped remote file download
-  upstream-pow.js         PoW WASM loader + solver (per-URL module cache)
-  accounts.js             account pool, LRU selection, sticky selection, cooldown
-  sessions.js             agent session registry + TTL rollover; deletes the remote session on reset and on shutdown
-  sse.js                  DS SSE stream reader
-  parser.js               tool-call parser entry point (fenced/inline orchestration)
-  json-repair.js          balanced-JSON extraction + repair heuristics
-  parser-dsml.js          DSML/XML tag scanning + <invoke> grammar
-  parser-native.js        native <|tool▁calls▁begin|>…<|tool▁calls▁end|> marker grammar (fuzzy |/｜ and _/▁ matching)
-  parser-limits.js        shared parser size limits
-  prompt.js               prompt building + structured screenshot extraction
-  openai.js               OpenAI response builders + token estimation
-  responses.js            Responses API translation (input/tools <-> internal, output/SSE)
-  semaphore.js            idempotent in-flight counter
-  uploads.js              MIME guessing, file-id / fetch-files extraction, data URIs
-  upload-cache.js         TTL cache for uploaded attachments
-  account-status.js       Retry-After parsing (cooldown math)
-  recovery-classify.js    response classification (refusal, context-too-long, ...)
-  http.js                 HTTP error helpers, CORS/redaction
-  debug.js                DS_DEBUG-gated debug logging
-  pow.js                  X-DS-PoW-Response header construction
-```
-
-`lib/config.js` is the single source of truth for env parsing. Modules read it
-lazily via `config.get()`; the exported constants in `sessions.js`/`upstream.js`
-are load-time snapshots kept for tests.
-
-The one deliberate exception is the diagnostic switches `DS_DEBUG`
-(`lib/debug.js`) and `DS_DUMP_SSE` (`lib/sse.js`), which are read lazily per
-call from `process.env` so tests can toggle them via an injected env object.
 
 ## Security notes
 

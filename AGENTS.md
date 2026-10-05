@@ -40,28 +40,53 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 
 ## Architecture
 
-- `index.js` — process concerns: config wiring, startup auth audit, idle-session
-  sweep, signal handling, uncaught-exception policy. Builds the runtime via
-  `buildRuntime()`; requiring it must not open a listener or read accounts.
-- `lib/config.js` — **the only place that reads `process.env`**. Returns a plain
-  object; `config.get()` in request paths, `config.reload()` in tests.
-- `lib/server.js` — HTTP router, socket hardening, shutdown controller.
-- `lib/handlers.js` — shared request pipeline for both API protocols.
-- `lib/openai.js` / `lib/responses.js` — protocol parsing & serialization.
-- `lib/recovery.js` — the recovery state machine (empty-retry, continuation,
-  markup completion, account rotation). `lib/recovery-markup.js`,
-  `lib/recovery-classify.js`, `lib/recovery-util.js` are its helpers.
-- `lib/upstream-session.js` — `askDSStream`: one completion attempt with
-  session recreation. Injected with all its deps.
-- `lib/upstream.js` — DS network layer (`dsFetch`, `dsChatCompletionWithPow`,
-  uploads, session create/delete). `lib/upstream-pow.js` solves WASM PoW;
-  `lib/pow.js` builds the PoW header; `lib/upstream-fetch.js` is the SSRF guard.
-- `lib/accounts.js` — account pool (singleton): LRU selection, sticky per-session
-  accounts, cooldowns, hourly cap, **per-account completion throttle**.
-- `lib/sessions.js` — session state (singleton). `lib/semaphore.js` — global
-  concurrency limiter. `lib/sse.js` — upstream stream reader.
-- `lib/parser*.js` — tool-call parsing (DSML, native markers, repair).
-- `lib/http.js` — typed errors, status->type mapping, log redaction.
+```
+index.js                  process launcher (env guard, auth audit, sweep, signals, concurrency semaphore)
+lib/
+  server.js               HTTP router, socket hardening, listen/error policy, shutdown wiring
+  shutdown.js             graceful-shutdown controller (drain in-flight, close listener)
+  config.js               central env parsing (single source of truth)
+  handlers.js             per-request handling (CORS, body, session, response)
+  health.js               GET /health liveness/readiness report
+  metrics.js              in-flight / lifetime counters, surfaced via /health
+  recovery.js             recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases)
+  recovery-markup.js      tool-markup diagnostics + completion/strict-retry passes
+  recovery-util.js        shared retry-delay / config helpers for the recovery passes
+  recovery-classify.js    response classification (refusal, context-too-long, ...)
+  upstream-session.js     one completion attempt + expired-session recreation
+  upstream.js             DS network layer (uploads, chat, session delete)
+  upstream-fetch.js       SSRF guard + size-capped remote file download
+  upstream-pow.js         PoW WASM loader + solver (per-URL module cache)
+  accounts.js             account pool, LRU selection, sticky selection, cooldown, per-account completion throttle
+  sessions.js             agent session registry + TTL rollover; deletes the remote session on reset and on shutdown
+  sse.js                  DS SSE stream reader
+  parser.js               tool-call parser entry point (fenced/inline orchestration)
+  json-repair.js          balanced-JSON extraction + repair heuristics
+  parser-dsml.js          DSML/XML tag scanning + <invoke> grammar
+  parser-native.js        native <|tool▁calls▁begin|>...<|tool▁calls▁end|> marker grammar (fuzzy |/| and _/▁ matching)
+  parser-limits.js        shared parser size limits
+  prompt.js               prompt building + structured screenshot extraction
+  openai.js               OpenAI response builders + token estimation
+  responses.js            Responses API translation (input/tools <-> internal, output/SSE)
+  semaphore.js            idempotent in-flight counter
+  uploads.js              MIME guessing, file-id / fetch-files extraction, data URIs
+  upload-cache.js         TTL cache for uploaded attachments
+  account-status.js       Retry-After parsing (cooldown math)
+  http.js                 HTTP error helpers, CORS/redaction
+  debug.js                DS_DEBUG-gated debug logging
+  pow.js                  X-DS-PoW-Response header construction
+```
+
+This list is the **complete** module map and the single source of truth for
+"what lives where". [README.md](README.md#architecture) links here. Keep it in
+sync when adding, renaming or removing a module.
+
+`lib/config.js` is the single source of truth for env parsing. Modules read it
+lazily via `config.get()`; the exported constants in `sessions.js`/`upstream.js`
+are load-time snapshots kept for tests. The one deliberate exception is the
+diagnostic switches `DS_DEBUG` (`lib/debug.js`) and `DS_DUMP_SSE` (`lib/sse.js`),
+which are read lazily per call from `process.env` so tests can toggle them via an
+injected env object.
 
 Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
 `askDSStream` -> `dsChatCompletionWithPow` -> DS -> `readDSResponse` -> result.
