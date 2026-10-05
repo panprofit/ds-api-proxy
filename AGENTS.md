@@ -21,7 +21,7 @@ npm install                 # dev deps only
 npm run auth                # writes *.json auth configs into DS_AUTH_DIR
 ```
 
-Auth configs live in `DS_AUTH_DIR` (default `./.auth`), one `*.json` per account:
+Auth configs live in `DS_AUTH_DIR` (no default; when unset, no accounts load and every request returns 503), one `*.json` per account:
 `{ "token": "...", "cookie": "...", "wasmUrl": "..." }`. Never commit them.
 
 ## Commands
