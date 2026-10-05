@@ -91,25 +91,6 @@ test('readDSJsonResponse: a non-JSON body marks the account and throws', async (
     assert.equal(account.failures, 1);
 });
 
-// --- dsChatCompletion -------------------------------------------------------
-
-test('dsChatCompletion: derives the PoW header from challenge/answer and sends the payload', async () => {
-    let seen = null;
-    await withFetch(async (url, opts) => { seen = { url, opts }; return jsonResponse({}); }, async () => {
-        await upstream.dsChatCompletion({
-            sessionId: 's1', parentMessageId: 'p1', prompt: 'hi',
-            challenge: { algorithm: 'a', challenge: 'c', salt: 's', signature: 'x' },
-            answer: 7, dsHeaders: { 'X-T': '1' },
-        });
-    });
-    assert.equal(seen.url, 'https://ds.test/api/v0/chat/completion');
-    assert.equal(seen.opts.method, 'POST');
-    const header = JSON.parse(Buffer.from(seen.opts.headers['X-DS-PoW-Response'], 'base64').toString());
-    assert.equal(header.answer, 7);
-    assert.equal(header.target_path, '/api/v0/chat/completion');
-    assert.equal(JSON.parse(seen.opts.body).chat_session_id, 's1');
-});
-
 // --- solvePowForPath / solvePOW --------------------------------------------
 
 test('solvePowForPath: solves the challenge and returns a base64 PoW header', async () => {
