@@ -35,7 +35,7 @@ afterEach(() => {
     resetAccountState();
 });
 
-function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0, requestCount = 0, requestWindowStart = 0 } = {}) {
+function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0, requestCount = 0, requestWindowStart = 0, nextCompletionAt = 0 } = {}) {
     return {
         id,
         file: `/tmp/${id}.json`,
@@ -46,6 +46,7 @@ function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failure
         lastUsedAt,
         requestCount,
         requestWindowStart,
+        nextCompletionAt,
     };
 }
 
@@ -576,3 +577,95 @@ test('getAccountById: finds by id and returns undefined for unknown ids', () => 
     assert.equal(getAccountById('nope'), undefined);
 });
 
+
+// --- waitForCompletionSlot --------------------------------------------------
+
+// Deterministic clock + sleep recorder: no real time passes, so the throttle
+// tests are fast and assert exact wait durations.
+function fakeClock(t0 = 1_000_000) {
+    let t = t0;
+    const slept = [];
+    return {
+        now: () => t,
+        sleep: async (ms) => { slept.push(ms); t += ms; },
+        slept,
+        advance: (ms) => { t += ms; },
+    };
+}
+
+test('waitForCompletionSlot: no interval means no wait and no reservation', async () => {
+    const a = makeAccount('a1');
+    const clock = fakeClock();
+    const ok = await accounts.waitForCompletionSlot(a, { intervalMs: 0, now: clock.now, sleep: clock.sleep });
+    assert.equal(ok, true);
+    assert.deepEqual(clock.slept, []);
+    assert.equal(a.nextCompletionAt, 0);
+});
+
+test('waitForCompletionSlot: first call on a fresh account does not wait', async () => {
+    const a = makeAccount('a1');
+    const clock = fakeClock();
+    const ok = await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    assert.equal(ok, true);
+    assert.deepEqual(clock.slept, []);
+    assert.equal(a.nextCompletionAt, clock.now() + 5000);
+});
+
+test('waitForCompletionSlot: second call waits out the interval since the first', async () => {
+    const a = makeAccount('a1');
+    const clock = fakeClock();
+    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    clock.advance(2000); // 2s of the 5s interval already elapsed
+    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    assert.deepEqual(clock.slept, [3000]);
+    assert.equal(a.nextCompletionAt, clock.now() + 5000);
+});
+
+test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls queue)', async () => {
+    const a = makeAccount('a1');
+    // A frozen clock so all three callers observe the same instant before
+    // sleeping (mirrors three requests arriving together). Sleep only records,
+    // it does not advance time, otherwise a later caller would measure its
+    // start after an earlier caller's sleep.
+    const t = 1_000_000;
+    const slept = [];
+    const opts = { intervalMs: 5000, now: () => t, sleep: async (ms) => { slept.push(ms); } };
+    await Promise.all([
+        accounts.waitForCompletionSlot(a, opts),
+        accounts.waitForCompletionSlot(a, opts),
+        accounts.waitForCompletionSlot(a, opts),
+    ]);
+    // Reserved up front, so the three callers wait 0, 5000 and 10000ms.
+    assert.deepEqual(slept, [5000, 10000]);
+});
+
+test('waitForCompletionSlot: a long wait does not spend the whole deadline budget', async () => {
+    const a = makeAccount('a1');
+    a.nextCompletionAt = 0;
+    const clock = fakeClock();
+    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    // Next slot is 5s out; a caller that only has 1s left must bail out.
+    const ok = await accounts.waitForCompletionSlot(a, { intervalMs: 5000, maxWaitMs: 1000, now: clock.now, sleep: clock.sleep });
+    assert.equal(ok, false);
+    assert.deepEqual(clock.slept, []);
+});
+
+test('waitForCompletionSlot: deadlineHit and clientGone abort the wait', async () => {
+    const a1 = makeAccount('a1');
+    const clock1 = fakeClock();
+    await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep });
+    assert.equal(await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep, deadlineHit: () => true }), false);
+
+    const a2 = makeAccount('a2');
+    const clock2 = fakeClock();
+    await accounts.waitForCompletionSlot(a2, { intervalMs: 5000, now: clock2.now, sleep: clock2.sleep });
+    assert.equal(await accounts.waitForCompletionSlot(a2, { intervalMs: 5000, now: clock2.now, sleep: clock2.sleep, clientGone: () => true }), false);
+});
+
+test('resetAccountState clears nextCompletionAt too', () => {
+    const a1 = makeAccount('a1');
+    setAccounts([a1]);
+    a1.nextCompletionAt = Date.now() + 60000;
+    resetAccountState();
+    assert.equal(a1.nextCompletionAt, 0);
+});

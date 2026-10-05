@@ -257,3 +257,74 @@ test('askDSStream: a failed completion does not accumulate context', async () =>
     await assert.rejects(() => ask({ prompt: 'delta', agentId: 'agent1' }));
     assert.equal(session.contextTokens, 42);
 });
+
+// --- per-account completion throttle ----------------------------------------
+
+// Records the order of the throttle call vs. the PoW solve, so the test can
+// assert the wait happens BEFORE the time-bound PoW header is created.
+function throttleRecorder(granted = true) {
+    const order = [];
+    const calls = [];
+    return {
+        order,
+        calls,
+        slot: async (account, opts) => { order.push('slot'); calls.push({ account, opts }); return granted; },
+    };
+}
+
+test('askDSStream: throttles before solving PoW', async () => {
+    const rec = throttleRecorder();
+    const { deps, calls } = makeDeps({ waitForCompletionSlot: rec.slot });
+    deps.solvePowForPath = async () => { rec.order.push('pow'); return 'pow'; };
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    // The throttle must run before the PoW challenge: a solved header is
+    // time-bound and would expire during a multi-second wait.
+    assert.deepEqual(rec.order, ['slot', 'pow']);
+    assert.equal(calls.completions.length, 1);
+});
+
+test('askDSStream: forwards deadlineHit and clientGone into the throttle', async () => {
+    const rec = throttleRecorder();
+    const { deps } = makeDeps({ waitForCompletionSlot: rec.slot });
+    const ask = createUpstreamSession(deps);
+    const deadlineHit = () => true;
+    const clientGone = () => false;
+    await ask({ prompt: 'hi', agentId: 'agent1', deadlineHit, clientGone });
+    assert.equal(rec.calls.length, 1);
+    assert.equal(rec.calls[0].opts.deadlineHit, deadlineHit);
+    assert.equal(rec.calls[0].opts.clientGone, clientGone);
+});
+
+test('askDSStream: aborts with 429 when no completion slot is granted', async () => {
+    const rec = throttleRecorder(false);
+    const { deps, calls } = makeDeps({ waitForCompletionSlot: rec.slot });
+    let powSolved = false;
+    deps.solvePowForPath = async () => { powSolved = true; return 'pow'; };
+    const ask = createUpstreamSession(deps);
+    await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1' }), /DS upstream HTTP 429/);
+    // No slot -> no PoW challenge, no completion sent.
+    assert.equal(powSolved, false);
+    assert.equal(calls.completions.length, 0);
+});
+
+test('askDSStream: works without a throttle dependency (backwards compatible)', async () => {
+    const { deps, calls } = makeDeps();
+    delete deps.waitForCompletionSlot;
+    const ask = createUpstreamSession(deps);
+    const out = await ask({ prompt: 'hi', agentId: 'agent1' });
+    assert.equal(out.promptUsed, 'hi');
+    assert.equal(calls.completions.length, 1);
+});
+
+test('askDSStream: throttles a reused session too (not only the first call)', async () => {
+    const rec = throttleRecorder();
+    const { deps, calls } = makeDeps({
+        session: makeSession({ id: 'existing', accountId: 'a1' }),
+        waitForCompletionSlot: rec.slot,
+    });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    assert.equal(rec.calls.length, 1);
+    assert.equal(calls.completions.length, 1);
+});

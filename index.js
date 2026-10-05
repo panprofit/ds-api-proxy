@@ -13,6 +13,7 @@ const {
 const {
     selectAccountForSession, markAccountFailure,
     loadDSConfig, auditAuthDir, getAccountById,
+    waitForCompletionSlot,
 } = require('./lib/accounts');
 const {
     dsChatCompletionWithPow, solvePowForPath,
@@ -73,6 +74,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         createRemoteSession,
         dsChatCompletionWithPow,
         createUpstreamHttpError,
+        waitForCompletionSlot,
     });
 
     // In-flight concurrency limiter. The release function is idempotent, so the
