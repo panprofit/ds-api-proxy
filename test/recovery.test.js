@@ -9,6 +9,7 @@ const assert = require('node:assert');
 
 const accounts = require('../lib/accounts');
 const sessions = require('../lib/sessions');
+const metrics = require('../lib/metrics');
 const { runWithRecovery } = require('../lib/recovery');
 
 // --- test helpers -----------------------------------------------------------
@@ -548,6 +549,31 @@ test('runWithRecovery: unknown tool stays unknown after the retry -> terminal, n
     } finally {
         accountsArr.length = 0;
         accountsArr.push(...saved);
+    }
+});
+
+test('runWithRecovery: terminal unknown tool increments the unknownTool metric', async () => {
+    // The metric is the operational signal for a deterministic failure that
+    // does NOT rotate an account, so it must be counted exactly once.
+    const real = metrics.instance;
+    const counted = [];
+    metrics.instance = { inc: (name) => counted.push(name) };
+    try {
+        await withAccounts([makeAccount('a1')], async () => {
+            const content = '{"tool_call":{"name":"nope","arguments":{}}}';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                deadlineHit: () => true,
+                askDSStream: askStub([makeAccount('a1')]),
+                readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'unknown_tool');
+            assert.equal(counted.filter(n => n === 'unknownTool').length, 1);
+        });
+    } finally {
+        metrics.instance = real;
     }
 });
 
