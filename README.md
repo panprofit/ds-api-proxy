@@ -100,8 +100,9 @@ DeepSeek in that window, and writes the extracted `token`/`cookie` into
 The login email is passed on the command line (`--email` / `-e`) and the
 password is prompted for interactively — neither is read from the environment.
 Headless mode is opt-in per run with `--headless` / `-H` (or the
-`npm run auth:headless` script). Headless
-auto-fill requires `--email`. It requires:
+`npm run auth:headless` script). Headless auto-fill requires `--email`. To check
+existing accounts and re-login any that have expired, use `npm run auth:repair`
+(see [Repairing expired accounts](#repairing-expired-accounts)). It requires:
 
 - Chrome/Chromium available locally — set `CHROME_PATH` if it is not on a
   standard path (e.g. `CHROME_PATH=$(which chromium) npm run auth`).
@@ -140,6 +141,33 @@ Accounts are read from `DS_AUTH_DIR` (same loader as the server), requests go
 to the configured upstream host, and a `401`/`403`/`429` puts that account into
 the usual cooldown. A failure on one account does not abort the others; the script exits
 non-zero if any account failed. `--dry-run` performs no network calls.
+
+### Repairing expired accounts
+
+`npm run auth:repair` probes every account in `DS_AUTH_DIR` with a side-effect
+free authenticated request (`POST /chat/create_pow_challenge`) and reports which
+ones are still valid. An account whose credentials are rejected (HTTP `401`/`403`,
+or an HTTP `200` without a PoW challenge — the same signal the proxy's recovery
+loop treats as *auth expired / captcha*) is offered a **headless re-login**:
+
+```bash
+npm run auth:repair                    # check all accounts, prompt to repair each
+npm run auth:repair -- --account <id>  # only one account (16-char content hash)
+npm run auth:repair -- --email me@example.com  # reuse this email for the re-login
+npm run auth:repair -- --yes           # no per-account confirmation prompt
+npm run auth:repair -- --help
+```
+
+The probe is read-only: it never creates or deletes a remote session. Re-login
+always runs headless (repair is unattended) and asks for the account password on
+the terminal. Since the helper names auth files after the login email, the
+re-login prompt offers that address as the default (just press ENTER to accept);
+`--email` overrides it. Interactive logins that fell back to the content-hash
+file name have no email to recover, so the address is prompted for in full. After a successful re-login the fresh credentials are probed again,
+and only then is the old auth file removed if the new one landed under a different
+name. Accounts that merely failed to respond (network/upstream error) are
+reported but never re-logged in. The script exits non-zero if any account could
+not be *checked*; declined repairs are not failures.
 
 ### Auth file format
 

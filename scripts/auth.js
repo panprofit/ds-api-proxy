@@ -25,11 +25,15 @@
     npm run auth:headless
     npm run auth -- --email me@example.com
     npm run auth:headless -- --email me@example.com
+    npm run auth:repair                     check all accounts, re-login broken ones
     CHROME_PATH="$(which chromium)" npm run auth
 
   Flags:
     --email, -e <email>   auto-fill the login form; password is prompted
     --headless, -H        run the browser headless
+    --repair              validate every account and offer a headless re-login
+    --account <id>        with --repair: only this account
+    --yes, -y             with --repair: skip the per-account confirmation
     --help, -h            show this help
 */
 const { spawn, execFileSync } = require('child_process');
@@ -38,6 +42,7 @@ const path = require('path');
 const readline = require('readline');
 const accounts = require('../lib/accounts');
 const config = require('../lib/config');
+const { dsFetch } = require('../lib/upstream');
 
 const runDir = path.resolve(__dirname, '../.run');
 const profileDir = path.join(runDir, '.chrome-auth-profile');
@@ -81,6 +86,17 @@ function authFileName(email, auth, capturedEmail) {
     return accounts.accountIdFromCredentials(auth);
 }
 
+// Best-effort recovery of the login email from an auth file name. The helper
+// names files after the email slug (see authFileName), so for a normal address
+// (letters/digits/._@-) the basename IS the email and needs no re-typing. The
+// slug is lossy (other chars -> '_', truncated to 64) and interactive logins
+// fall back to the content hash, so this is only a suggestion the operator can
+// override at the prompt; anything not email-shaped yields ''.
+function emailFromFileName(file) {
+    const base = path.basename(String(file || ''), '.json');
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(base) ? base : '';
+}
+
 // CloudFront rejects any request whose User-Agent contains "HeadlessChrome"
 // with HTTP 403, so a plain --headless run never reaches the login form. In
 // headless mode we present this ordinary desktop Chrome UA instead (see the
@@ -90,16 +106,24 @@ const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 // --- args -------------------------------------------------------------------
 
 function parseArgs(argv) {
-    const opts = { headless: false, email: '', help: false };
+    const opts = { headless: false, email: '', repair: false, accountId: null, yes: false, help: false };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === '--headless' || arg === '-H') opts.headless = true;
+        else if (arg === '--repair') opts.repair = true;
+        else if (arg === '--yes' || arg === '-y') opts.yes = true;
         else if (arg === '--email' || arg === '-e') {
             const value = argv[++i];
             if (value === undefined) throw new Error('--email requires a value');
             opts.email = value;
         } else if (arg.startsWith('--email=')) {
             opts.email = arg.slice('--email='.length);
+        } else if (arg === '--account') {
+            const value = argv[++i];
+            if (!value) throw new Error('--account requires an id');
+            opts.accountId = value;
+        } else if (arg.startsWith('--account=')) {
+            opts.accountId = arg.slice('--account='.length);
         } else if (arg === '--help' || arg === '-h') opts.help = true;
         else throw new Error(`unknown argument: ${arg}`);
     }
@@ -107,14 +131,18 @@ function parseArgs(argv) {
 }
 
 function usage() {
-    console.log(`Usage: npm run auth [-- --headless] [-- --email <email>]
+    console.log(`Usage: npm run auth [-- --headless] [-- --email <email>] [-- --repair]
 
   npm run auth                       visible browser, interactive login
   npm run auth:headless              headless browser (--headless)
   npm run auth -- --email me@x.com   auto-fill; password is prompted
+  npm run auth:repair                check every account; re-login broken ones
 
   --headless, -H    run the browser headless
   --email, -e       account email to auto-fill (password prompted)
+  --repair          probe all accounts and offer a headless re-login
+  --account <id>    with --repair: only this account (16-char content hash)
+  --yes, -y         with --repair: skip the per-account confirmation
   --help, -h        show this help
 
 Config (lib/config.js / .env): DS_AUTH_DIR, CHROME_PATH,
@@ -221,6 +249,14 @@ function ask(q) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     activeRl = rl;
     return new Promise((resolve) => rl.question(q, (ans) => { rl.close(); activeRl = null; resolve(ans); }));
+}
+
+// Like ask(), but returns `def` when the operator just presses ENTER. Used so
+// an already-known value (e.g. the email recovered from the auth file name)
+// can be accepted without re-typing it.
+async function askDefault(q, def) {
+    const ans = (await ask(q)).trim();
+    return ans || def;
 }
 // Close the pending readline prompt. Without this, losing the Promise.race in
 // the ENTER prompt leaves readline attached to stdin and keeps the Node event
@@ -503,39 +539,18 @@ async function readPageAuth(cdp) {
 
 // --- main -------------------------------------------------------------------
 
-async function main() {
-    let opts;
-    try {
-        opts = parseArgs(process.argv.slice(2));
-    } catch (e) {
-        console.error(`[auth] ${e.message}`);
-        usage();
-        process.exitCode = 1;
-        return;
-    }
-    if (opts.help) { usage(); return; }
-
+// Open the disposable browser and capture credentials. Returns
+// { ok: true, filePath } on success, or { ok: false, reason } when nothing was
+// saved (browser closed, credentials not found). Throws on setup errors
+// (missing DS_AUTH_DIR / browser). Shared by the normal login and --repair.
+async function runLoginFlow({ headless = false, email = '', password = '' } = {}) {
     const cfg = config.get();
     if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
-
-    const headless = opts.headless;
-    const email = opts.email.trim();
-    if (headless && !email) {
-        throw new Error('--headless requires --email (there is no visible window to log in by hand).');
-    }
 
     const browserPath = resolveBrowserPath(cfg);
     if (!browserPath) throw new Error(browserInstallHelp());
     if (!fs.existsSync(browserPath)) throw new Error(browserInstallHelp());
 
-    // Password is always prompted, never read from the environment. Read it
-    // before opening the browser so the terminal is free and the profile is
-    // only created once credentials are in hand.
-    let password = '';
-    if (email) {
-        password = await askHidden(`[auth] Password for ${email}: `);
-        if (!password) throw new Error('Empty password; aborting.');
-    }
     const autoFill = Boolean(email && password);
 
     cleanup();
@@ -647,8 +662,7 @@ async function main() {
             ]);
             if (browserClosed) {
                 console.error('[auth] Browser was closed before auth could be read. Nothing was saved.');
-                process.exitCode = 2;
-                return;
+                return { ok: false, reason: 'browser-closed' };
             }
         }
 
@@ -673,15 +687,13 @@ async function main() {
 
         if (browserClosed) {
             console.error('[auth] Browser was closed before auth could be read. Nothing was saved.');
-            process.exitCode = 2;
-            return;
+            return { ok: false, reason: 'browser-closed' };
         }
 
         if (!auth || !auth.token || !auth.cookie) {
             console.error(`[auth] Could not extract both token and cookie (last URL: ${lastHref}).`);
             console.error('[auth] Check that the login succeeded (wrong password? captcha? 2FA?).');
-            process.exitCode = 2;
-            return;
+            return { ok: false, reason: 'no-credentials' };
         }
 
         const authDir = path.resolve(cfg.authDir);
@@ -694,11 +706,198 @@ async function main() {
         const filePath = path.join(authDir, `${fileName}.json`);
         fs.writeFileSync(filePath, JSON.stringify(auth, null, 2), { mode: 0o600 });
         console.log(`[auth] Saved: ${filePath}`);
+        return { ok: true, filePath, auth };
     } finally {
         try { if (cdp) cdp.close(); } catch {}
         closeAsk();
         if (!cfg.keepProfile) cleanup();
     }
+}
+
+// --- repair: validate all accounts, offer headless re-login -----------------
+
+// Probe one account against the cheapest authenticated endpoint. Returns:
+//   { status: 'ok' }                       credentials work
+//   { status: 'expired', detail }          auth expired / captcha / WAF block
+//   { status: 'error', detail }            network or unexpected upstream error
+// We use /chat/create_pow_challenge: it requires a valid session (so it detects
+// expired auth / captcha) but has no side effects (unlike /chat_session/create,
+// which would leak a remote session we do not clean up).
+async function probeAccount(account) {
+    let resp;
+    try {
+        resp = await dsFetch('/chat/create_pow_challenge', {
+            method: 'POST',
+            headers: account.headers,
+            body: JSON.stringify({ target_path: '/api/v0/chat/completion' }),
+        });
+    } catch (e) {
+        return { status: 'error', detail: e.message };
+    }
+    const text = await resp.text();
+    if (resp.status === 401 || resp.status === 403) {
+        return { status: 'expired', detail: `HTTP ${resp.status}` };
+    }
+    if (!resp.ok) {
+        return { status: 'error', detail: `HTTP ${resp.status}` };
+    }
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; }
+    catch { return { status: 'error', detail: 'non-JSON response (WAF/captcha page?)' }; }
+    // HTTP 200 without a challenge means the credentials are unusable. This
+    // mirrors lib/upstream.solvePowForPath, which throws auth_expired for the
+    // same condition, so repair and the proxy agree on what "expired" means.
+    if (!json?.data?.biz_data?.challenge) {
+        const bizCode = json?.data?.biz_code;
+        const msg = json?.data?.biz_msg || json?.msg || 'no PoW challenge in response';
+        return { status: 'expired', detail: `${msg}${bizCode ? ` (biz_code=${bizCode})` : ''}` };
+    }
+    return { status: 'ok' };
+}
+
+// Validate every loaded account and, for each broken one, offer to re-login in
+// headless mode (requires a browser + --email for that account, or falls back
+// to asking the operator).
+async function runRepair(opts) {
+    const cfg = config.get();
+    if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
+
+    accounts.loadDSConfig({ fatal: false });
+    let list = accounts.getAccounts();
+    if (opts.accountId) {
+        list = list.filter(a => a.id === opts.accountId);
+        if (list.length === 0) throw new Error(`no loaded account with id=${opts.accountId}`);
+    }
+    if (list.length === 0) throw new Error(`no auth accounts loaded from DS_AUTH_DIR=${cfg.authDir || '(unset)'}`);
+
+    console.log(`[auth:repair] host=${cfg.remoteHost}, accounts=${list.length}`);
+    const results = [];
+    for (const account of list) {
+        const label = `${path.basename(account.file)} (id=${account.id})`;
+        process.stdout.write(`[auth:repair] ${label}: checking... `);
+        const probe = await probeAccount(account);
+        if (probe.status === 'ok') {
+            console.log('ok');
+            results.push({ account, status: 'ok' });
+        } else {
+            console.log(probe.status === 'expired' ? `EXPIRED (${probe.detail})` : `error (${probe.detail})`);
+            results.push({ account, status: probe.status, detail: probe.detail });
+        }
+    }
+
+    const broken = results.filter(r => r.status !== 'ok');
+    const expired = broken.filter(r => r.status === 'expired');
+    if (broken.length === 0) {
+        console.log(`[auth:repair] all ${results.length} account(s) are valid.`);
+        return;
+    }
+    if (expired.length === 0) {
+        console.error(`[auth:repair] ${broken.length} account(s) could not be checked (network/upstream error); not re-logging in.`);
+        process.exitCode = 1;
+        return;
+    }
+
+    // A browser is required for re-login, but only check for one lazily (after
+    // the operator confirms) so a missing browser does not abort the whole run.
+    const browserPath = resolveBrowserPath(cfg);
+    const email = opts.email.trim();
+
+    for (const r of expired) {
+        const label = `${path.basename(r.account.file)} (id=${r.account.id})`;
+        // The email is usually recoverable from the file name, so offer it as
+        // the default (ENTER accepts) instead of asking the operator to retype
+        // what the script already knows. --email overrides it entirely.
+        const suggested = email || emailFromFileName(r.account.file);
+        if (!opts.yes) {
+            const ans = (await ask(`[auth:repair] Re-login ${label} now? [y/N] `)).trim().toLowerCase();
+            if (ans !== 'y' && ans !== 'yes') { console.log(`[auth:repair] skipping ${label}.`); continue; }
+        }
+        if (!browserPath) {
+            console.error(`[auth:repair] ${label}: ${browserInstallHelp()}`);
+            continue;
+        }
+        let acctEmail;
+        if (email) {
+            acctEmail = email;
+        } else if (suggested) {
+            acctEmail = await askDefault(`[auth:repair] Email for account ${r.account.id} [${suggested}]: `, suggested);
+        } else {
+            acctEmail = (await ask(`[auth:repair] Email for account ${r.account.id}: `)).trim();
+        }
+        if (!acctEmail) { console.error(`[auth:repair] no email for ${label}; skipping.`); continue; }
+        console.log(`[auth:repair] ${label}: using email ${acctEmail}`);
+        const password = await askHidden(`[auth:repair] Password for ${acctEmail}: `);
+        if (!password) { console.error(`[auth:repair] empty password for ${label}; skipping.`); continue; }
+
+        let login;
+        try {
+            // Always headless: repair is unattended and the operator is at the
+            // terminal for the password, not sitting at a browser window.
+            login = await runLoginFlow({ headless: true, email: acctEmail, password });
+        } catch (e) {
+            console.error(`[auth:repair] ${label}: re-login failed: ${e.message}`);
+            continue;
+        }
+        if (!login.ok) {
+            console.error(`[auth:repair] ${label}: re-login did not produce credentials (${login.reason}).`);
+            continue;
+        }
+        // The new file may be written under a different name than the broken
+        // one (e.g. the email slug changed). Verify the freshly saved file
+        // itself, then remove the stale file if it is now a different path.
+        const fresh = { id: accounts.accountIdFromCredentials(login.auth), file: login.filePath, config: login.auth, headers: accounts.buildBaseHeaders(login.auth) };
+        process.stdout.write(`[auth:repair] ${label}: verifying new credentials... `);
+        const verify = await probeAccount(fresh);
+        if (verify.status !== 'ok') {
+            console.log(verify.status === 'expired' ? `STILL EXPIRED (${verify.detail})` : `error (${verify.detail})`);
+            console.error(`[auth:repair] ${label}: new credentials did not validate; leaving files untouched.`);
+            continue;
+        }
+        console.log('ok');
+        const oldPath = path.resolve(r.account.file);
+        const newPath = path.resolve(login.filePath);
+        if (oldPath !== newPath && fs.existsSync(oldPath)) {
+            try { fs.rmSync(oldPath); console.log(`[auth:repair] ${label}: removed stale file ${oldPath}`); }
+            catch (e) { console.error(`[auth:repair] ${label}: could not remove stale file ${oldPath}: ${e.message}`); }
+        }
+        console.log(`[auth:repair] ${label}: repaired -> ${login.filePath}`);
+    }
+}
+
+async function main() {
+    let opts;
+    try {
+        opts = parseArgs(process.argv.slice(2));
+    } catch (e) {
+        console.error(`[auth] ${e.message}`);
+        usage();
+        process.exitCode = 1;
+        return;
+    }
+    if (opts.help) { usage(); return; }
+
+    if (opts.repair) {
+        await runRepair(opts);
+        return;
+    }
+
+    const headless = opts.headless;
+    const email = opts.email.trim();
+    if (headless && !email) {
+        throw new Error('--headless requires --email (there is no visible window to log in by hand).');
+    }
+
+    // Password is always prompted, never read from the environment. Read it
+    // before opening the browser so the terminal is free and the profile is
+    // only created once credentials are in hand.
+    let password = '';
+    if (email) {
+        password = await askHidden(`[auth] Password for ${email}: `);
+        if (!password) throw new Error('Empty password; aborting.');
+    }
+
+    const result = await runLoginFlow({ headless, email, password });
+    if (!result.ok) process.exitCode = 2;
 }
 
 // On Ctrl+C / termination, clean up the disposable browser profile and process.

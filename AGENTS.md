@@ -33,7 +33,16 @@ npm run lint                # eslint .
 npm run typecheck           # tsc -p jsconfig.json
 npm run check               # node --check + eslint + tsc (what pre-commit runs)
 npm start                   # run the proxy
+npm run auth                # interactive login -> DS_AUTH_DIR/<email>.json
+npm run auth:headless -- --email me@example.com   # headless login (password prompt)
+npm run auth:repair         # probe all accounts; offer headless re-login for expired ones
+npm run sessions:delete     # wipe remote chat sessions (see scripts/delete-sessions.js)
 ```
+
+`scripts/auth.js` drives one disposable Chrome profile over CDP; the login email
+comes from `--email`/`-e`, the password is always prompted, and headless mode is
+`--headless`/`-H` only (no env). `--repair` probes every account read-only and
+offers a headless re-login for any that are auth-expired / captcha-blocked.
 
 `node --test` discovers `test/*.test.js`. There is no watch/coverage requirement
 in normal work; `npm run test:coverage` exists but is strict (95% lines).
@@ -152,6 +161,6 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
 ## Environment notes
 
 - Node 22+ is required (`--env-file-if-exists` is used by the start scripts).
-- `npm run auth` needs a real browser (AWS WAF JS challenge); set `CHROME_PATH`
-  if Chrome/Chromium is not in a standard location.
+- `npm run auth` (and `auth:repair`) needs a real browser (AWS WAF JS challenge);
+  set `CHROME_PATH` if Chrome/Chromium is not in a standard location.
 - See `.env.example` for every tunable and its default.
