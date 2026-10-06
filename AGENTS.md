@@ -51,7 +51,7 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 | `lib/handlers.js` | per-request handling (CORS, body, session, response) |
 | `lib/health.js` | `GET /health` liveness/readiness report |
 | `lib/metrics.js` | in-flight / lifetime counters, surfaced via `/health` |
-| `lib/recovery.js` | recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / markup / rotation phases) |
+| `lib/recovery.js` | recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / tool-extraction / unknown-tool / markup / rotation phases) |
 | `lib/recovery-markup.js` | tool-markup diagnostics + completion/strict-retry passes |
 | `lib/recovery-util.js` | shared retry-delay / config helpers for the recovery passes |
 | `lib/recovery-classify.js` | response classification (refusal, context-too-long, ...) |

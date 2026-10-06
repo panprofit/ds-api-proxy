@@ -226,6 +226,16 @@ A tool call inside a markdown code fence is ignored (it is an illustration,
 not a request), except for a lone ```sh/```bash fence, which is treated as a
 `bash` call.
 
+If the parsed call names a tool that is **not** in the request's `tools` list,
+the proxy does **not** treat it as broken markup (the JSON was valid — the model
+just hallucinated a name). It re-prompts once in the *same* remote session with
+the list of available names (`DS_MAX_UNKNOWN_TOOL_RETRIES`, default 1). A
+hallucinated name is deterministic, so this path never resets the session or
+rotates accounts. If the retry still picks an invalid name, the request ends
+with a terminal `502 unknown_tool` error rather than returning the raw
+`{"tool_call":…}` markup as assistant text (which would strand the consuming
+agent).
+
 ### Streaming `obfuscation`
 
 When the client sends `stream_options.include_obfuscation: true`, every
@@ -281,7 +291,11 @@ requests rotate to another account:
 - an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
   upstream `Retry-After`, whichever is longer);
 - a **recoverable failure** (malformed tool markup, empty response) — parked for
-  `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` / the recovery window;
+  `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` / the recovery window. A parsed-but-
+  **unknown tool name** is *not* one of these: it is deterministic, so the
+  account is never parked and the session is never reset for it — the request
+  just does one corrective retry (see Tool-call parsing) and then fails with
+  `unknown_tool`;
 - its **hourly completion cap** — each `chat/completion` call is counted (PoW
   challenges, session create/delete, uploads and `fetch_files` are free); at
   `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR` the account is parked until the window
@@ -369,6 +383,7 @@ Limitations that bite pi specifically:
 | `DS_MAX_CONTINUATION`                | `2`                         | Max auto-continuation rounds for long/length-finished responses (0–10).                                                                                                                                                                                            |
 | `DS_MAX_REASONING_CONTINUATION`      | `2`                         | Max rounds to turn a reasoning-only response (thinking but no final text) into a visible answer, avoiding a manual `continue` (0–10).                                                                                                                              |
 | `DS_MAX_MARKUP_COMPLETION`           | `2`                         | Max completion rounds for truncated tool-call markup (0–10).                                                                                                                                                                                                       |
+| `DS_MAX_UNKNOWN_TOOL_RETRIES`        | `1`                         | Corrective retries when the model asks for a tool not in the request's `tools`. Deterministic, so it never resets the session or rotates the account; on failure the request ends with a terminal `unknown_tool` error instead of leaking the raw markup as text (0–10). |
 | `DS_CONTINUATION_SIZE_THRESHOLD`     | `25000`                     | Response length (chars) above which auto-continuation kicks in.                                                                                                                                                                                                    |
 | `DS_RECOVERY_RETRY_DELAY_MS`         | `500`                       | Base delay between recovery retries (scaled, capped at 3×).                                                                                                                                                                                                        |
 | `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000`                      | Cooldown after malformed tool-call markup (applied when the account is finally rotated).                                                                                                                                                                           |

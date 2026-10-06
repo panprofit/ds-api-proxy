@@ -462,7 +462,10 @@ test('runWithRecovery: parses a strict JSON tool call', async () => {
     });
 });
 
-test('runWithRecovery: unknown tool name is dropped but content is returned', async () => {
+test('runWithRecovery: unknown tool name is not leaked as text (no retries left)', async () => {
+    // With the corrective retry disabled by the deadline, the request must end
+    // in a terminal `unknown_tool` error — NOT as ok:true with the raw markup
+    // returned as text, and NOT via account rotation.
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"nope","arguments":{}}}';
         const ctx = baseCtx({
@@ -472,10 +475,104 @@ test('runWithRecovery: unknown tool name is dropped but content is returned', as
             readDSResponse: sseOnce([{ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
         });
         const out = await runWithRecovery(ctx);
-        // Unknown tool: not exposed as toolCall, and NOT treated as malformed markup.
-        assert.equal(out.ok, true);
-        assert.equal(out.toolCall, null);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.status, 502);
+        assert.equal(out.error.body.type, 'unknown_tool');
+        assert.equal(out.error.body.requested_tool, 'nope');
+        assert.deepEqual(out.error.body.available_tools, ['read']);
     });
+});
+
+test('runWithRecovery: unknown tool name is corrected by one retry in the same session', async () => {
+    // First response asks for an unavailable tool; the corrective retry picks a
+    // valid one. No session reset, no account rotation.
+    await withAccounts([makeAccount('a1')], async () => {
+        const bad = '{"tool_call":{"name":"nope","arguments":{}}}';
+        const good = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1'), makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: bad, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: good, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.ok(out.toolCall);
+        assert.equal(out.toolCall.name, 'read');
+        // The corrective retry re-prompts in the same session (no reset).
+        assert.equal(calls.length, 2);
+        assert.match(calls[1].prompt, /not available/);
+        assert.match(calls[1].prompt, /read/);
+    });
+});
+
+test('runWithRecovery: unknown tool stays unknown after the retry -> terminal, no rotation', async () => {
+    const accountsArr = accounts.getAccounts();
+    const saved = accountsArr.slice();
+    accountsArr.length = 0;
+    accountsArr.push(makeAccount('a1'), makeAccount('a2'));
+    try {
+        const content = '{"tool_call":{"name":"nope","arguments":{}}}';
+        const calls = [];
+        let rr = 0;
+        // Sticky like selectAccountForSession: reuse session.accountId when set.
+        const accountStub = async (args) => {
+            const session = sessions.getOrCreateAgentSession(args.agentId);
+            let account;
+            if (session.accountId) {
+                account = accountsArr.find(a => a.id === session.accountId) || accountsArr[0];
+            } else {
+                account = accountsArr[rr % accountsArr.length];
+                rr++;
+                session.accountId = account.id;
+            }
+            calls.push({ accountId: account.id, prompt: args.prompt });
+            return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
+        };
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: accountStub,
+            // Always the same unknown tool, so the corrective retry fails too.
+            readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.body.type, 'unknown_tool');
+        // maxUnknownToolRetries defaults to 1: initial call + 1 corrective retry.
+        assert.equal(calls.length, 2);
+        // Both calls went to the SAME account (no rotation on a deterministic failure).
+        assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a1']);
+    } finally {
+        accountsArr.length = 0;
+        accountsArr.push(...saved);
+    }
+});
+
+test('runWithRecovery: unknown tool with retries disabled goes straight to terminal', async () => {
+    const config = require('../lib/config');
+    const before = config.get();
+    config.reload({ DS_MAX_UNKNOWN_TOOL_RETRIES: '0' });
+    try {
+        await withAccounts([makeAccount('a1')], async () => {
+            const content = '{"tool_call":{"name":"nope","arguments":{}}}';
+            const calls = [];
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([makeAccount('a1')], calls),
+                readDSResponse: sseOnce([{ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'unknown_tool');
+            assert.equal(out.error.body.retry_attempts, 0);
+            assert.equal(calls.length, 1);
+        });
+    } finally {
+        config.reload({ DS_MAX_UNKNOWN_TOOL_RETRIES: String(before.maxUnknownToolRetries) });
+    }
 });
 
 test('runWithRecovery: malformed markup on the only account reports all-cooling (429)', async () => {
