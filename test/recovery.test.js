@@ -901,7 +901,13 @@ test('runWithRecovery: reasoning-only response is auto-continued into a final an
             assert.equal(out.finishReason, 'stop');
             // Initial call + one reasoning-continuation round.
             assert.equal(calls.length, 2);
-            assert.equal(calls[1].prompt, 'continue');
+            // The reasoning-continuation prompt must carry the final-answer
+            // instruction (and the reasoning), not the bare word "continue":
+            // on a reused session askDSStream sends `prompt` upstream and
+            // ignores `freshSessionPrompt`, so "continue" left the model with
+            // no instruction and it kept emitting reasoning.
+            assert.match(calls[1].prompt, /output ONLY the final answer/);
+            assert.match(calls[1].prompt, /thinking hard/);
         });
     });
 });
