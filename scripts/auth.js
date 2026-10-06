@@ -23,11 +23,13 @@
   Usage:
     npm run auth
     npm run auth:headless
-    DS_LOGIN_EMAIL=me@example.com DS_LOGIN_PASSWORD=secret npm run auth:headless
+    npm run auth -- --email me@example.com
+    npm run auth:headless -- --email me@example.com
     CHROME_PATH="$(which chromium)" npm run auth
 
   Flags:
-    --headless, -H        run the browser headless (also DS_HEADLESS=1)
+    --email, -e <email>   auto-fill the login form; password is prompted
+    --headless, -H        run the browser headless
     --help, -h            show this help
 */
 const { spawn, execFileSync } = require('child_process');
@@ -54,9 +56,9 @@ function emailSlug(email) {
 }
 
 // Recover the login identifier from the captured POST /api/v0/users/login
-// request. Interactive (visible) logins have no DS_LOGIN_EMAIL, and the form
-// value is destroyed once the SPA navigates away, so the request body is the
-// only place the email survives. Returns '' when the endpoint or payload
+// request. Interactive (visible) logins have no --email, and the form value is
+// destroyed once the SPA navigates away, so the request body is the only place
+// the email survives. Returns '' when the endpoint or payload
 // shape differs (e.g. a form-urlencoded body), leaving callers to fall back
 // to the content hash.
 function emailFromLoginPost(events) {
@@ -73,8 +75,8 @@ function emailFromLoginPost(events) {
     return '';
 }
 
-function authFileName(cfg, auth, capturedEmail) {
-    const slug = emailSlug(cfg.loginEmail || capturedEmail || '');
+function authFileName(email, auth, capturedEmail) {
+    const slug = emailSlug(email || capturedEmail || '');
     if (slug) return slug;
     return accounts.accountIdFromCredentials(auth);
 }
@@ -88,23 +90,34 @@ const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 // --- args -------------------------------------------------------------------
 
 function parseArgs(argv) {
-    const opts = { headless: config.get().headless, help: false };
-    for (const arg of argv) {
+    const opts = { headless: false, email: '', help: false };
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
         if (arg === '--headless' || arg === '-H') opts.headless = true;
-        else if (arg === '--help' || arg === '-h') opts.help = true;
+        else if (arg === '--email' || arg === '-e') {
+            const value = argv[++i];
+            if (value === undefined) throw new Error('--email requires a value');
+            opts.email = value;
+        } else if (arg.startsWith('--email=')) {
+            opts.email = arg.slice('--email='.length);
+        } else if (arg === '--help' || arg === '-h') opts.help = true;
         else throw new Error(`unknown argument: ${arg}`);
     }
     return opts;
 }
 
 function usage() {
-    console.log(`Usage: npm run auth [-- --headless]
+    console.log(`Usage: npm run auth [-- --headless] [-- --email <email>]
 
-  npm run auth              visible browser, interactive login
-  npm run auth:headless     headless browser (--headless)
+  npm run auth                       visible browser, interactive login
+  npm run auth:headless              headless browser (--headless)
+  npm run auth -- --email me@x.com   auto-fill; password is prompted
+
+  --headless, -H    run the browser headless
+  --email, -e       account email to auto-fill (password prompted)
+  --help, -h        show this help
 
 Config (lib/config.js / .env): DS_AUTH_DIR, CHROME_PATH,
-  DS_LOGIN_EMAIL, DS_LOGIN_PASSWORD, DS_HEADLESS=1,
   DS_AUTH_CDP_PORT, DS_LOGIN_FORM_TIMEOUT_MS, DS_LOGIN_TIMEOUT_MS,
   DS_KEEP_PROFILE=1`);
 }
@@ -217,6 +230,49 @@ function closeAsk() {
         try { activeRl.close(); } catch {}
         activeRl = null;
     }
+}
+
+// Prompt for the password without echoing it. Uses raw mode on a TTY; when
+// stdin is not a TTY (piped input) it falls back to a normal line read.
+function askHidden(q) {
+    return new Promise((resolve) => {
+        const stdin = process.stdin;
+        const stdout = process.stdout;
+        stdout.write(q);
+        if (!stdin.isTTY) {
+            const rl = readline.createInterface({ input: stdin, output: stdout, terminal: false });
+            rl.once('line', (line) => { rl.close(); stdout.write('\n'); resolve(line); });
+            return;
+        }
+        const wasRaw = stdin.isRaw;
+        stdin.setRawMode(true);
+        stdin.resume();
+        stdin.setEncoding('utf8');
+        let input = '';
+        const onData = (ch) => {
+            for (const c of String(ch)) {
+                if (c === '\n' || c === '\r' || c === '\u0004') {
+                    stdin.removeListener('data', onData);
+                    stdin.setRawMode(wasRaw || false);
+                    stdin.pause();
+                    stdout.write('\n');
+                    resolve(input);
+                    return;
+                } else if (c === '\u0003') {
+                    stdin.removeListener('data', onData);
+                    stdin.setRawMode(wasRaw || false);
+                    stdin.pause();
+                    stdout.write('\n');
+                    process.exit(130);
+                } else if (c === '\u007f' || c === '\b') {
+                    input = input.slice(0, -1);
+                } else {
+                    input += c;
+                }
+            }
+        };
+        stdin.on('data', onData);
+    });
 }
 
 // --- CDP client -------------------------------------------------------------
@@ -462,12 +518,25 @@ async function main() {
     const cfg = config.get();
     if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
 
+    const headless = opts.headless;
+    const email = opts.email.trim();
+    if (headless && !email) {
+        throw new Error('--headless requires --email (there is no visible window to log in by hand).');
+    }
+
     const browserPath = resolveBrowserPath(cfg);
     if (!browserPath) throw new Error(browserInstallHelp());
     if (!fs.existsSync(browserPath)) throw new Error(browserInstallHelp());
 
-    const headless = opts.headless;
-    const autoFill = Boolean(cfg.loginEmail && cfg.loginPassword);
+    // Password is always prompted, never read from the environment. Read it
+    // before opening the browser so the terminal is free and the profile is
+    // only created once credentials are in hand.
+    let password = '';
+    if (email) {
+        password = await askHidden(`[auth] Password for ${email}: `);
+        if (!password) throw new Error('Empty password; aborting.');
+    }
+    const autoFill = Boolean(email && password);
 
     cleanup();
     fs.mkdirSync(profileDir, { recursive: true });
@@ -559,8 +628,8 @@ async function main() {
             // The email/phone field has no name attribute; target by placeholder.
             const emailSelector = `document.querySelector('input[placeholder*="Phone"], input[placeholder*="email" i], input[type=text]')`;
             const passwordSelector = `document.querySelector('input[type=password]')`;
-            const r1 = await setInputValue(cdp, emailSelector, cfg.loginEmail);
-            const r2 = await setInputValue(cdp, passwordSelector, cfg.loginPassword);
+            const r1 = await setInputValue(cdp, emailSelector, email);
+            const r2 = await setInputValue(cdp, passwordSelector, password);
             if (r1 === 'not-found' || r2 === 'not-found') {
                 throw new Error('Login form fields not found; the sign-in page layout may have changed.');
             }
@@ -568,10 +637,6 @@ async function main() {
             const how = await submitLogin(cdp);
             console.log(`[auth] submitted login (${how})`);
         } else {
-            if (headless) {
-                console.warn('[auth] No DS_LOGIN_EMAIL/DS_LOGIN_PASSWORD set, but running headless.');
-                console.warn('[auth] Run `npm run auth` (visible) to log in manually, or provide credentials.');
-            }
             console.log('\n[auth] Browser is open. Log in to DeepSeek in THIS separate window.');
             console.log('[auth] After logging in, send a short message to DeepSeek, for example: hi');
             // Race the ENTER prompt against the browser being closed manually,
@@ -622,8 +687,8 @@ async function main() {
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
         const capturedEmail = emailFromLoginPost(cdp.events);
-        const fileName = authFileName(cfg, auth, capturedEmail);
-        if (!cfg.loginEmail && capturedEmail) {
+        const fileName = authFileName(email, auth, capturedEmail);
+        if (!email && capturedEmail) {
             console.log(`[auth] account email (from login request): ${capturedEmail}`);
         }
         const filePath = path.join(authDir, `${fileName}.json`);

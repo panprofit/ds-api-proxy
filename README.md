@@ -95,7 +95,13 @@ tool-call markup) into the OpenAI Chat Completions format.
 
 `npm run auth` opens a disposable Chrome for Testing profile, lets you log in to
 DeepSeek in that window, and writes the extracted `token`/`cookie` into
-`$DS_AUTH_DIR/<id>.json` (mode `0600`). It requires:
+`$DS_AUTH_DIR/<id>.json` (mode `0600`).
+
+The login email is passed on the command line (`--email` / `-e`) and the
+password is prompted for interactively — neither is read from the environment.
+Headless mode is opt-in per run with `--headless` / `-H` (or the
+`npm run auth:headless` script). Headless
+auto-fill requires `--email`. It requires:
 
 - Chrome/Chromium available locally — set `CHROME_PATH` if it is not on a
   standard path (e.g. `CHROME_PATH=$(which chromium) npm run auth`).
@@ -104,7 +110,11 @@ DeepSeek in that window, and writes the extracted `token`/`cookie` into
 Flow:
 
 1. Run `npm run auth`; a separate Chrome window opens at the DS host.
-2. Log in and send one short message (e.g. `hi`) so the frontend initializes.
+   - To auto-fill instead, run `npm run auth -- --email me@example.com` and
+     enter the password at the prompt.
+   - For a headless run use `npm run auth:headless -- --email me@example.com`.
+2. Log in and send one short message (e.g. `hi`) so the frontend initializes
+   (skip this step when auto-filling).
 3. Press ENTER in the terminal. The script extracts the credentials, saves the
    auth file, and cleans up the temporary Chrome profile.
 
@@ -422,9 +432,6 @@ login helper.
 | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
 | `CHROME_PATH`                   | —        | Path to a local Chrome/Chromium binary when it is not on a standard path.                            |
 | `DS_AUTH_CDP_PORT`              | `9339`   | Chrome DevTools Protocol port used to drive the disposable profile (1–65535).                        |
-| `DS_LOGIN_EMAIL`                | —        | Email to auto-fill on the login form (optional; otherwise log in manually).                          |
-| `DS_LOGIN_PASSWORD`             | —        | Password to auto-fill on the login form (optional).                                                  |
-| `DS_HEADLESS`                   | `false`  | Set to `1` to run the login browser headless (no visible window).                                    |
 | `DS_LOGIN_FORM_TIMEOUT_MS`      | `30000`  | How long to wait for the login form to appear.                                                       |
 | `DS_LOGIN_TIMEOUT_MS`           | `120000` | Overall login timeout.                                                                               |
 | `DS_KEEP_PROFILE`               | `false`  | Set to `1` to keep the temporary Chrome profile after the run (debugging).                           |

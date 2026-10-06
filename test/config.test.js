@@ -113,9 +113,6 @@ test('config.load: auth-helper defaults', () => {
     const c = config.load({});
     assert.equal(c.chromePath, '');
     assert.equal(c.authCdpPort, 9339);
-    assert.equal(c.loginEmail, '');
-    assert.equal(c.loginPassword, '');
-    assert.equal(c.headless, false);
     assert.equal(c.loginFormTimeoutMs, 30000);
     assert.equal(c.loginTimeoutMs, 120000);
     assert.equal(c.keepProfile, false);
@@ -125,26 +122,18 @@ test('config.load: auth-helper overrides from env', () => {
     const c = config.load({
         CHROME_PATH: '/usr/bin/chromium',
         DS_AUTH_CDP_PORT: '9444',
-        DS_LOGIN_EMAIL: 'a@b.c',
-        DS_LOGIN_PASSWORD: 'hunter2',
-        DS_HEADLESS: '1',
         DS_LOGIN_FORM_TIMEOUT_MS: '5000',
         DS_LOGIN_TIMEOUT_MS: '60000',
         DS_KEEP_PROFILE: '1',
     });
     assert.equal(c.chromePath, '/usr/bin/chromium');
     assert.equal(c.authCdpPort, 9444);
-    assert.equal(c.loginEmail, 'a@b.c');
-    assert.equal(c.loginPassword, 'hunter2');
-    assert.equal(c.headless, true);
     assert.equal(c.loginFormTimeoutMs, 5000);
     assert.equal(c.loginTimeoutMs, 60000);
     assert.equal(c.keepProfile, true);
 });
 
-test('config.load: DS_HEADLESS / DS_KEEP_PROFILE require exact "1"', () => {
-    assert.equal(config.load({ DS_HEADLESS: 'true' }).headless, false);
-    assert.equal(config.load({ DS_HEADLESS: 'yes' }).headless, false);
+test('config.load: DS_KEEP_PROFILE requires exact "1"', () => {
     assert.equal(config.load({ DS_KEEP_PROFILE: '0' }).keepProfile, false);
 });
 
