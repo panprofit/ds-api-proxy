@@ -224,3 +224,36 @@ test('truncateForLog: handles null/undefined and non-strings', () => {
     assert.equal(http.truncateForLog(undefined, 10), '');
     assert.equal(http.truncateForLog(12345, 3, ''), '123');
 });
+
+// --- shortAgentId -----------------------------------------------------------
+
+test('shortAgentId: keeps only the last UUID segment', () => {
+    assert.equal(
+        http.shortAgentId('01a11685-4b04-7590-aeca-08bb529c143f'),
+        '08bb529c143f',
+    );
+    assert.equal(
+        http.shortAgentId('9de86ce5-2ebc-4a08-a6a0-a24015826f53'),
+        'a24015826f53',
+    );
+});
+
+test('shortAgentId: accepts uppercase UUIDs', () => {
+    assert.equal(
+        http.shortAgentId('01A11685-4B04-7590-AECA-08BB529C143F'),
+        '08BB529C143F',
+    );
+});
+
+test('shortAgentId: leaves non-UUID ids unchanged', () => {
+    assert.equal(http.shortAgentId('dev-agent'), 'dev-agent');
+    assert.equal(http.shortAgentId('127.0.0.1'), '127.0.0.1');
+    // Not a full UUID (too short) -> kept verbatim so the tag stays meaningful.
+    assert.equal(http.shortAgentId('4b04-7590-aeca'), '4b04-7590-aeca');
+});
+
+test('shortAgentId: handles nullish and non-string input', () => {
+    assert.equal(http.shortAgentId(null), '');
+    assert.equal(http.shortAgentId(undefined), '');
+    assert.equal(http.shortAgentId(123), '123');
+});
