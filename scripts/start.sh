@@ -31,10 +31,11 @@ mkdir -p "$(dirname "$pid_file")"
 # Detach from the controlling terminal: `setsid` starts a new session so the
 # shell's SIGHUP on exit/close never reaches the server. `nohup` is the
 # fallback where setsid is unavailable (e.g. some minimal images).
+# `>>` (append), not `>`: restarts must not truncate the log history.
 if command -v setsid >/dev/null 2>&1; then
-    setsid node --env-file-if-exists=.env index.js >"$log_file" 2>&1 </dev/null &
+    setsid node --env-file-if-exists=.env index.js >>"$log_file" 2>&1 </dev/null &
 else
-    nohup node --env-file-if-exists=.env index.js >"$log_file" 2>&1 </dev/null &
+    nohup node --env-file-if-exists=.env index.js >>"$log_file" 2>&1 </dev/null &
 fi
 pid=$!
 echo "$pid" > "$pid_file"
