@@ -1303,3 +1303,88 @@ test('runWithRecovery: stop does not truncate a tool call', async () => {
         assert.equal(out.toolCall.name, 'bash');
     });
 });
+
+// --- action-promise continuation -------------------------------------------
+// A reasoning block followed by a SHORT final line ("Let me check the tests")
+// with finish=stop and no tool call used to strand the client: phaseReasoningOnly
+// needs an EMPTY body and runAutoContinuation needs finish=length or >25k chars.
+// phaseActionPromise asks once for the actual action.
+
+test('runWithRecovery: short action-promise triggers one continuation -> tool call', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const calls = [];
+        const promise = 'Let me check the tests.';
+        const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1'), makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.ok(out.toolCall, 'the promised action must become a real tool call');
+        assert.equal(out.toolCall.name, 'read');
+        assert.equal(calls.length, 2, 'one continuation round');
+        assert.match(calls[1].prompt, /did not actually do it/);
+    });
+});
+
+test('runWithRecovery: short real answer (no promise marker) does NOT continue', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: 'Done.', reasoningContent: 'Everything is in order.', messageId: 'm1', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.fullContent, 'Done.');
+        assert.equal(calls.length, 1, 'a real short answer must not be re-prompted');
+    });
+});
+
+test('runWithRecovery: promise marker on a LONG body does not continue', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const calls = [];
+        const long = 'Let me walk through the whole approach. '.repeat(30);
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: long, reasoningContent: 'reasoning here', messageId: 'm1', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(calls.length, 1, 'a body over actionPromiseMaxChars is not a promise');
+    });
+});
+
+test('runWithRecovery: truncated tool markup is left to markup completion, not action-promise', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const calls = [];
+        // Looks like markup but never closes -> markup completion path.
+        const MK_START = '<|tool\u2581calls\u2581begin|>';
+        const MK_END = '<|tool\u2581calls\u2581end|>';
+        const truncated = MK_START + '[{"name":"read","arguments":{"path":"';
+        const toolJson = MK_START + '[{"name":"read","arguments":{"path":"/x"}}]' + MK_END;
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1'), makeAccount('a1'), makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: truncated, reasoningContent: 'now I will call the tool', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.ok(out.toolCall, 'markup completion must still recover the truncated call');
+        assert.equal(out.toolCall.name, 'read');
+    });
+});
