@@ -1031,3 +1031,108 @@ test('parseToolCall: stray-quote shape with surrounding prose (log dump len=248)
   assert.equal(parser.hasUnclosedToolMarkup(input), false,
     'a recoverable stray quote must not trigger a completion round');
 });
+// ---------------------------------------------------------------------------
+// Fence guard: a tool marker inside a ``` block surrounded by prose is an
+// illustrative example, not a real call. A fence that is the whole message is
+// still a genuine request. Mirrors Rust's is_inside_code_fence.
+// ---------------------------------------------------------------------------
+
+test('parseToolCall: JSON tool_call inside a fence surrounded by prose is ignored', () => {
+  const input = 'Пример:\n```json\n{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n```\nГотово.';
+  assert.equal(parser.parseToolCall(input, silentLog), null);
+});
+
+test('parseToolCall: XML <tool_call> wrapper inside a fence surrounded by prose is ignored', () => {
+  const input = 'Example:\n```xml\n<tool_call>{"name":"read","arguments":{"path":"/f"}}</tool_call>\n```\ndone';
+  assert.equal(parser.parseToolCall(input, silentLog), null);
+});
+
+test('parseToolCall: DSML markup inside a fence surrounded by prose is ignored', () => {
+  const input = 'Example:\n```xml\n<tool_calls><invoke name="read"><parameter name="path">/f</parameter></invoke></tool_calls>\n```\ndone';
+  assert.equal(parser.parseToolCall(input, silentLog), null);
+});
+
+test('parseToolCall: whole-message fenced JSON still parses', () => {
+  const input = '```json\n{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n```';
+  const tc = parser.parseToolCall(input, silentLog);
+  assert.ok(tc, 'a fence that is the whole message is a real request');
+  assert.equal(tc.name, 'read');
+});
+
+test('parseToolCall: bare JSON tool_call next to (but outside) a fence still parses', () => {
+  const input = 'See this example:\n```bash\nls\n```\nNow: {"tool_call":{"name":"read","arguments":{"path":"/f"}}}';
+  const tc = parser.parseToolCall(input, silentLog);
+  assert.ok(tc, 'markup outside the fence is authoritative');
+  assert.equal(tc.name, 'read');
+});
+
+test('hasUnclosedToolMarkup: fenced markup with prose is not "unclosed"', () => {
+  const input = 'Example:\n```json\n{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n```\ndone';
+  assert.equal(parser.hasUnclosedToolMarkup(input), false,
+    'an illustrative fenced example must not trigger a completion round');
+});
+
+test('blankFencedBlocks: replaces a fence with equal-length spaces', () => {
+  const input = 'a\n```json\nx\n```\nb';
+  const out = parser.blankFencedBlocks(input);
+  assert.equal(out.length, input.length);
+  assert.ok(!out.includes('```'), 'the fence markers must be gone');
+  assert.equal(out.trimStart().startsWith('a'), true);
+  assert.equal(out.trimEnd().endsWith('b'), true);
+});
+
+test('hasProseOutsideFences: false for a whole-message fence, true otherwise', () => {
+  assert.equal(parser.hasProseOutsideFences('```json\n{}\n```'), false);
+  assert.equal(parser.hasProseOutsideFences('intro\n```json\n{}\n```\noutro'), true);
+  assert.equal(parser.hasProseOutsideFences('no fence at all'), false);
+});
+
+// ---------------------------------------------------------------------------
+// parseRepairContent: the completion/strict-retry model returns bare JSON
+// (an array or object), not wrapped markup. It must be understood, an empty
+// repair ([] / {}) must be reported as "no call", and text that already looks
+// like markup but does not parse must NOT be wrapped-and-retried (that would
+// mask a genuinely broken call).
+// ---------------------------------------------------------------------------
+
+test('parseRepairContent: bare JSON array is parsed', () => {
+  const tc = parser.parseRepairContent('[{"name":"f","arguments":{"a":1}}]', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+  assert.deepEqual(JSON.parse(tc.arguments), { a: 1 });
+});
+
+test('parseRepairContent: bare JSON object is parsed', () => {
+  const tc = parser.parseRepairContent('{"name":"f","arguments":{"a":1}}', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+});
+
+test('parseRepairContent: already-wrapped markup is parsed directly', () => {
+  const M = '<|tool\u2581calls\u2581begin|>';
+  const E = '<|tool\u2581calls\u2581end|>';
+  const tc = parser.parseRepairContent(M + '[{"name":"f","arguments":{}}]' + E, silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+});
+
+test('parseRepairContent: empty array/object -> null (useless repair)', () => {
+  assert.equal(parser.parseRepairContent('[]', silentLog), null);
+  assert.equal(parser.parseRepairContent('{}', silentLog), null);
+  assert.equal(parser.parseRepairContent('  []  ', silentLog), null);
+});
+
+test('parseRepairContent: blank / prose-only -> null', () => {
+  assert.equal(parser.parseRepairContent('', silentLog), null);
+  assert.equal(parser.parseRepairContent('   ', silentLog), null);
+  assert.equal(parser.parseRepairContent('no call here', silentLog), null);
+});
+
+test('parseRepairContent: broken markup is NOT wrapped and retried', () => {
+  // Looks like markup and the JSON body never balances: must stay null rather
+  // than being wrapped and accidentally parsed. (A balanced body with a
+  // missing end marker is deliberately tolerated by parseToolCall, so it is
+  // NOT used here.)
+  const broken = '<|tool\u2581calls\u2581begin|>[{"name":"f","argu';
+  assert.equal(parser.parseRepairContent(broken, silentLog), null);
+});
