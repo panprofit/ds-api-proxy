@@ -616,9 +616,11 @@ test('runWithRecovery: unknown tool stays unknown after the retry -> terminal, n
 test('runWithRecovery: terminal unknown tool increments the unknownTool metric', async () => {
     // The metric is the operational signal for a deterministic failure that
     // does NOT rotate an account, so it must be counted exactly once.
-    const real = metrics.instance;
+    // request-path code calls the re-exported metrics.inc, so that is what
+    // has to be swapped here (swapping metrics.instance would not be seen).
+    const real = metrics.inc;
     const counted = [];
-    metrics.instance = { inc: (name) => counted.push(name) };
+    metrics.inc = (name) => counted.push(name);
     try {
         await withAccounts([makeAccount('a1')], async () => {
             const content = '{"tool_call":{"name":"nope","arguments":{}}}';
@@ -634,7 +636,7 @@ test('runWithRecovery: terminal unknown tool increments the unknownTool metric',
             assert.equal(counted.filter(n => n === 'unknownTool').length, 1);
         });
     } finally {
-        metrics.instance = real;
+        metrics.inc = real;
     }
 });
 
