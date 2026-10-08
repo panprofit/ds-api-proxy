@@ -45,10 +45,21 @@ if mkfifo "$fifo_file" 2>/dev/null; then
     # forks `date` per line but works on awk implementations without strftime.
     # The filter must be detached too, otherwise the closing terminal's SIGHUP
     # would kill it and break the server's stdout pipe.
+    #
+    # Both branches stamp UTC, matching the header contract and the zone-free
+    # epoch ms in .account-state.json. `awk`'s strftime honours the ambient TZ,
+    # so a host with a local zone printed local time with a hard-coded `Z`
+    # suffix -- which then read as already-expired next to the `toISOString()`
+    # deadlines in the body (e.g. a 14:06Z header over an 11:09Z deadline). Pin
+    # TZ=UTC0 for BOTH the probe and the live filter; the fallback pins it too
+    # so the two paths cannot drift.
+    #
+    # The stamp is wrapped in [] so it reads as a field (`[2026-10-08T11:12:21Z]
+    # ...`) and cannot be mistaken for part of the message.
     if TZ=UTC0 awk 'BEGIN { exit !(strftime("%Y-%m-%dT%H:%M:%SZ", systime()) ~ /^[0-9][0-9][0-9][0-9]-/) }' </dev/null 2>/dev/null; then
-        setsid awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ", systime()), $0; fflush() }' <"$fifo_file" >>"$log_file" &
+        setsid env TZ=UTC0 awk '{ print "[" strftime("%Y-%m-%dT%H:%M:%SZ", systime()) "]", $0; fflush() }' <"$fifo_file" >>"$log_file" &
     else
-        setsid sh -c 'while IFS= read -r line; do printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line"; done' <"$fifo_file" >>"$log_file" &
+        setsid sh -c 'while IFS= read -r line; do printf "%s %s\n" "[$(TZ=UTC0 date -u +%Y-%m-%dT%H:%M:%SZ)]" "$line"; done' <"$fifo_file" >>"$log_file" &
     fi
     log_target="$fifo_file"
 else
