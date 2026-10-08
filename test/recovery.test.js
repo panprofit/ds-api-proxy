@@ -1025,6 +1025,36 @@ test('runWithRecovery: a tool-result echo with an unissued id is not merged by a
     });
 });
 
+test('runWithRecovery: a tool-result echo with an ISSUED id is still not merged', async () => {
+    // Regression guard for the contract change: `[Tool Result …]` is the
+    // harness/client format that prompt.formatMessages renders on the way IN,
+    // so the model must never emit it back -- even with a tool_call_id that
+    // really is present in this request's messages. The envelope is an echo and
+    // must be dropped, exactly like one with a fabricated id.
+    await withAccounts([makeAccount('a1')], async () => {
+        await withConfig({ DS_MAX_REASONING_CONTINUATION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const echo = '[Tool Result id=call_real01]\nECHOED OUTPUT\n[/Tool Result]';
+            const ctx = baseCtx({
+                messages: [
+                    { role: 'user', content: 'hi' },
+                    { role: 'tool', tool_call_id: 'call_real01', content: 'real output' },
+                ],
+                askDSStream: askStub([makeAccount('a1')]),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: echo, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            // The envelope matches a real tool_call_id, but it is still the
+            // model echoing the harness format, so it is dropped.
+            assert.equal(out.fullContent, '');
+            assert.doesNotMatch(out.fullContent, /ECHOED OUTPUT/);
+        });
+    });
+});
+
 
 // --- auto-continuation / markup-completion / strict retry -------------------
 //
