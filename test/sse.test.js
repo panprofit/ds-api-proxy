@@ -100,6 +100,20 @@ test('readDSResponse: response/fragments/-1/content appends to last fragment', a
     assert.equal(out.content, 'abc');
 });
 
+test('readDSResponse: response/fragments/-1/content appends reasoning to the last fragment', async () => {
+    // The append path has two branches (assistant output vs reasoning); the
+    // RESPONSE branch is covered above, this locks in the THINK/REASONING one.
+    const session = SESSION();
+    const body = sse(
+        { p: 'response/fragments', v: { type: 'THINK', content: 'th' } },
+        { p: 'response/fragments/-1/content', v: 'ink' },
+        { response_message_id: 'm' },
+    );
+    const out = await readDSResponse(streamOf(body), session, '[t]', { log: () => {} });
+    assert.equal(out.reasoningContent, 'think');
+    assert.equal(out.content, '');
+});
+
 test('readDSResponse: response/fragments/-1/content with no fragments is ignored', async () => {
     const session = SESSION();
     const body = sse(
@@ -405,6 +419,23 @@ test('readDSResponse: no raw dump by default', async () => {
     await readDSResponse(streamOf(body), session, '[agent]', { log });
     assert.equal(lines.some(l => l.includes('[SSE raw]')), false);
     assert.equal(lines.some(l => l.includes('[SSE dump]')), false);
+});
+
+test('readDSResponse: dumpRawStream with zero parsed events logs a body preview', async () => {
+    // events=0 cannot distinguish an empty stream from a non-SSE (WAF/HTML)
+    // body, so the dump includes the first bytes of the raw response. A muted
+    // JSON body is a realistic zero-event case that still yields `muted`.
+    const session = SESSION();
+    const { log, lines } = collectLog();
+    const out = await readDSResponse(streamOf(MUTED_BODY), session, '[agent]', { log, dumpRawStream: true });
+    assert.ok(out.muted, 'expected the muted payload to be detected');
+    assert.equal(lines.some(l => l.includes('[SSE raw]')), false);
+    const summary = lines.find(l => l.includes('[SSE dump]'));
+    assert.ok(summary, `missing dump summary in: ${lines.join(' | ')}`);
+    assert.ok(summary.includes('events=0'), `expected events=0 in: ${summary}`);
+    const preview = lines.find(l => l.includes('no events received; raw body preview'));
+    assert.ok(preview, `missing raw-body preview in: ${lines.join(' | ')}`);
+    assert.ok(preview.includes('biz_code'), `expected the preview to carry the body: ${preview}`);
 });
 
 // ---------------------------------------------------------------------------
