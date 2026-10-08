@@ -25,6 +25,7 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.malformedToolCallCooldownMs, 5000);
     assert.equal(c.accountCooldownMs, 10 * 60 * 1000);
     assert.equal(c.accountMinCompletionIntervalMs, 5000);
+    assert.equal(c.accountStateFlushMs, 60 * 1000);
     assert.equal(c.sessionTtlMs, 2 * 60 * 60 * 1000);
     assert.equal(c.maxSessions, 1000);
     assert.equal(c.fetchTimeoutMs, 60000);
@@ -63,6 +64,14 @@ test('config.load: DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS default, override and c
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }).accountMinCompletionIntervalMs, 0);
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '-5' }).accountMinCompletionIntervalMs, 0);
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: 'nope' }).accountMinCompletionIntervalMs, 5000);
+});
+
+test('config.load: DS_ACCOUNT_STATE_FLUSH_MS default, override and clamp', () => {
+    assert.equal(config.load({}).accountStateFlushMs, 60000);
+    assert.equal(config.load({ DS_ACCOUNT_STATE_FLUSH_MS: '1500' }).accountStateFlushMs, 1500);
+    assert.equal(config.load({ DS_ACCOUNT_STATE_FLUSH_MS: '0' }).accountStateFlushMs, 0);
+    assert.equal(config.load({ DS_ACCOUNT_STATE_FLUSH_MS: '-5' }).accountStateFlushMs, 0);
+    assert.equal(config.load({ DS_ACCOUNT_STATE_FLUSH_MS: 'nope' }).accountStateFlushMs, 60000);
 });
 
 test('config.load: clamps maxUnknownToolRetries to [0,10]', () => {

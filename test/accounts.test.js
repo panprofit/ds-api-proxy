@@ -15,7 +15,8 @@ const config = require('../lib/config');
 const { getAccounts, buildBaseHeaders, discoverAuthPaths, loadDSConfig,
         hasAuthConfig, auditAuthDir, selectAccountForSession, markAccountFailure,
         markAccountBroken, recordAccountRequest, hasAvailableAccount, waitForAvailableAccount,
-        resetAccountState,
+        resetAccountState, accountStatePath, loadAccountState, serializeAccountState,
+        persistAccountState, flushAccountState,
         getAccountById, accountIdFromCredentials } = accounts;
 
 // --- helpers ----------------------------------------------------------------
@@ -208,6 +209,132 @@ test('loadDSConfig: returns false with fatal=false when nothing loads', () => {
         assert.equal(loadDSConfig({ fatal: false }), false);
         assert.equal(getAccounts().length, 0);
     });
+});
+
+// --- account state persistence ----------------------------------------------
+
+test('loadDSConfig: restores a persisted future cooldown from .account-state.json', () => {
+    const until = Date.now() + 3 * 60 * 60 * 1000;
+    const id = accountIdFromCredentials({ token: 'T1', cookie: 'C1' });
+    withTempAuthDir({
+        'one.json': { token: 'T1', cookie: 'C1' },
+        '.account-state.json': { version: 1, cooldowns: { [id]: until } },
+    }, () => {
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        const arr = getAccounts();
+        assert.equal(arr.length, 1, 'the state file must not be loaded as an account');
+        assert.equal(arr[0].cooldownUntil, until);
+    });
+});
+
+test('loadDSConfig: restores lastUsedAt so LRU survives a restart', () => {
+    const id = accountIdFromCredentials({ token: 'T1', cookie: 'C1' });
+    const at = Date.now() - 5 * 60 * 1000;
+    withTempAuthDir({
+        'one.json': { token: 'T1', cookie: 'C1' },
+        '.account-state.json': { version: 1, lastUsedAt: { [id]: at } },
+    }, () => {
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        assert.equal(getAccounts()[0].lastUsedAt, at);
+    });
+});
+
+test('loadDSConfig: ignores an expired persisted cooldown', () => {
+    const past = Date.now() - 1000;
+    const id = accountIdFromCredentials({ token: 'T1', cookie: 'C1' });
+    withTempAuthDir({
+        'one.json': { token: 'T1', cookie: 'C1' },
+        '.account-state.json': { version: 1, cooldowns: { [id]: past } },
+    }, () => {
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        assert.equal(getAccounts()[0].cooldownUntil, 0);
+    });
+});
+
+test('loadDSConfig: a corrupt .account-state.json degrades to no state instead of failing', () => {
+    withTempAuthDir({ 'one.json': { token: 'T1', cookie: 'C1' } }, (dir) => {
+        fs.writeFileSync(path.join(dir, '.account-state.json'), '{ not json');
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        assert.equal(getAccounts().length, 1);
+        assert.equal(getAccounts()[0].cooldownUntil, 0);
+    });
+});
+
+test('discoverAuthPaths: excludes the .account-state.json state file', () => {
+    withTempAuthDir({
+        'one.json': { token: 'T1', cookie: 'C1' },
+        '.account-state.json': { version: 1, cooldowns: {} },
+    }, () => {
+        const names = discoverAuthPaths().map(p => path.basename(p));
+        assert.deepEqual(names, ['one.json']);
+    });
+});
+
+test('persistAccountState: writes future cooldowns, drops expired ones, keeps lastUsedAt', () => {
+    const future = Date.now() + 60 * 60 * 1000;
+    const past = Date.now() - 1000;
+    const used = Date.now() - 30 * 1000;
+    withTempAuthDir({ 'one.json': { token: 'T1', cookie: 'C1' } }, (dir) => {
+        setAccounts([
+            makeAccount('keep', { cooldownUntil: future, lastUsedAt: used }),
+            makeAccount('drop', { cooldownUntil: past }),
+        ]);
+        persistAccountState();
+        const written = JSON.parse(fs.readFileSync(path.join(dir, '.account-state.json'), 'utf8'));
+        assert.deepEqual(written, { version: 1, cooldowns: { keep: future }, lastUsedAt: { keep: used } });
+    });
+});
+
+test('persistAccountState: is a no-op when DS_AUTH_DIR is unset', () => {
+    config.reload({ DS_AUTH_DIR: '' });
+    try {
+        assert.equal(accountStatePath(), null);
+        // Must not throw even with no directory to write to.
+        persistAccountState();
+    } finally {
+        config.reload();
+    }
+});
+
+test('account state survives a write/load round-trip', () => {
+    const until = Date.now() + 2 * 60 * 60 * 1000;
+    const used = Date.now() - 45 * 1000;
+    withTempAuthDir({ 'one.json': { token: 'T1', cookie: 'C1' } }, () => {
+        setAccounts([makeAccount('a1', { cooldownUntil: until, lastUsedAt: used })]);
+        persistAccountState();
+        assert.deepEqual(loadAccountState(), { cooldowns: { a1: until }, lastUsedAt: { a1: used } });
+    });
+});
+
+test('loadAccountState: returns empty maps when the state file does not exist', () => {
+    withTempAuthDir({ 'one.json': { token: 'T1', cookie: 'C1' } }, () => {
+        assert.deepEqual(loadAccountState(), { cooldowns: {}, lastUsedAt: {} });
+    });
+});
+
+test('serializeAccountState: omits never-used accounts from lastUsedAt', () => {
+    setAccounts([makeAccount('a1', { lastUsedAt: 0 })]);
+    const parsed = JSON.parse(serializeAccountState());
+    assert.deepEqual(parsed.lastUsedAt, {});
+});
+
+test('selectAccountForSession: a pick marks the account state dirty and a flush writes it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-auth-'));
+    fs.writeFileSync(path.join(dir, 'one.json'), JSON.stringify({ token: 'T1', cookie: 'C1' }));
+    config.reload({ DS_AUTH_DIR: dir });
+    try {
+        setAccounts([makeAccount('a1')]);
+        const session = { accountId: null };
+        const picked = selectAccountForSession(session);
+        assert.equal(picked.id, 'a1');
+        // A synchronous flush must persist the freshly touched lastUsedAt.
+        flushAccountState();
+        const written = JSON.parse(fs.readFileSync(path.join(dir, '.account-state.json'), 'utf8'));
+        assert.ok(written.lastUsedAt.a1 > 0);
+    } finally {
+        config.reload();
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 // --- hasAuthConfig ----------------------------------------------------------

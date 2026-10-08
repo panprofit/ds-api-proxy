@@ -3,6 +3,9 @@ node_modules/
 .env
 .auth/*.json
 !.auth/.gitkeep
+# Persisted per-account runtime state written next to the auth configs.
+.account-state.json
+.auth/.account-state.json
 *.tmp
 .DS_Store
 .run/*

@@ -97,6 +97,14 @@ tool-call markup) into the OpenAI Chat Completions format.
 DeepSeek in that window, and writes the extracted `token`/`cookie` into
 `$DS_AUTH_DIR/<id>.json` (mode `0600`).
 
+The server also writes a small `$DS_AUTH_DIR/.account-state.json` (mode `0600`)
+to persist per-account runtime state across restarts: cooldown deadlines (so a
+long DS mute is not forgotten) and the LRU `lastUsedAt` (so account rotation
+does not restart from the first file on every boot). Both are marked dirty on
+change and flushed together on the `DS_ACCOUNT_STATE_FLUSH_MS` interval (default
+60s), so the request path never does disk I/O. It is not an auth config and is
+skipped by the loader; delete it to force a clean slate.
+
 The login email is passed on the command line (`--email` / `-e`) and the
 password is prompted for interactively — neither is read from the environment.
 Headless mode is opt-in per run with `--headless` / `-H` (or the
@@ -341,6 +349,14 @@ requests rotate to another account:
 
 When every account is parked the request returns HTTP 429 with a
 `retry_in`-style hint until the earliest window opens.
+
+Cooldown deadlines and the LRU `lastUsedAt` are persisted to
+`$DS_AUTH_DIR/.account-state.json` and restored on startup, so restarting the
+proxy neither re-hits an account that is still parked (e.g. a DS mute that lasts
+hours or days) nor resets rotation back to the first loaded account. Expired
+cooldowns are dropped on load and on write; `lastUsedAt` keeps its relative
+ordering. Because writes are periodic, an abrupt crash can lose up to
+`DS_ACCOUNT_STATE_FLUSH_MS` of state.
 
 ## Client integration (pi agent)
 
