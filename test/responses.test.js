@@ -262,8 +262,8 @@ test('sendResponseStream: finishReason length -> incomplete terminal event', () 
     assert.equal(terminal.data.response.incomplete_details.reason, 'max_output_tokens');
 });
 
-test('buildResponse: echoes the requested model (default deepseek-chat)', () => {
-    assert.equal(responses.buildResponse({ content: 'x' }).model, 'deepseek-chat');
+test('buildResponse: echoes the requested model (default default)', () => {
+    assert.equal(responses.buildResponse({ content: 'x' }).model, 'default');
     assert.equal(responses.buildResponse({ content: 'x', model: 'my-model' }).model, 'my-model');
 });
 

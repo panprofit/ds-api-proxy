@@ -119,7 +119,7 @@ test('buildToolCallResponseFromTokens: reports the accumulated prompt token coun
 test('buildTextResponseFromTokens: echoes the requested model', () => {
     assert.equal(buildTextResponseFromTokens('hi', 1, '', 'stop', 'my-model').model, 'my-model');
     // Falls back to the default when no model was requested.
-    assert.equal(buildTextResponseFromTokens('hi', 1).model, 'deepseek-chat');
+    assert.equal(buildTextResponseFromTokens('hi', 1).model, 'default');
 });
 
 test('buildToolCallResponseFromTokens: ids are unique under rapid calls', () => {

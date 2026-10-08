@@ -86,7 +86,7 @@ tool-call markup) into the OpenAI Chat Completions format.
      -H 'Content-Type: application/json' \
      -H 'x-agent-session: my-agent' \
      -d '{
-       "model": "deepseek-chat",
+       "model": "default",
        "input": "Say hello in one word."
      }' | jq
    ```
