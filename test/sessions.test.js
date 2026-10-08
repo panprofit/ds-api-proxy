@@ -21,6 +21,7 @@ const {
     getOrCreateAgentSession,
     sweepIdleSessions,
     recordTokenRate,
+    tokenRatePressure,
     TOKEN_RATE_WINDOW_MS,
 } = sessions;
 
@@ -495,4 +496,60 @@ test('resetRemoteSession: clears the token-rate samples and peak', () => {
     resetRemoteSession(s);
     assert.deepEqual(s.tokenRateSamples, []);
     assert.equal(s.peakTokensPerMinute, 0);
+});
+
+// --- tokenRatePressure ------------------------------------------------------
+
+test('tokenRatePressure: no limit / no session / too few samples -> 0', () => {
+    const s = createSession();
+    assert.equal(tokenRatePressure(s, 0), 0, 'limit 0 disables');
+    assert.equal(tokenRatePressure(null, 6000), 0);
+    assert.equal(tokenRatePressure(s, 6000), 0, 'no samples yet');
+    recordTokenRate(s, 0, 0);
+    assert.equal(tokenRatePressure(s, 6000), 0, 'one sample is not an interval');
+});
+
+test('tokenRatePressure: 0 while the burn rate is at or below the limit', () => {
+    const s = createSession();
+    // 6000 tokens over 60s = 6000/min, exactly the limit -> no pressure.
+    recordTokenRate(s, 0, 0);
+    recordTokenRate(s, 6000, 60000);
+    assert.equal(tokenRatePressure(s, 6000, 60000), 0);
+    assert.equal(tokenRatePressure(s, 10000, 60000), 0, 'below the limit');
+});
+
+test('tokenRatePressure: linear between the limit and 2x, then clamped to 1', () => {
+    const s = createSession();
+    // 12000 tokens over 60s = 12000/min; limit 6000 -> pressure (12000-6000)/6000 = 1.
+    recordTokenRate(s, 0, 0);
+    recordTokenRate(s, 12000, 60000);
+    assert.equal(tokenRatePressure(s, 6000, 60000), 1);
+
+    const s2 = createSession();
+    // 9000/min with limit 6000 -> (9000-6000)/6000 = 0.5.
+    recordTokenRate(s2, 0, 0);
+    recordTokenRate(s2, 9000, 60000);
+    assert.equal(tokenRatePressure(s2, 6000, 60000), 0.5);
+
+    const s3 = createSession();
+    // 60000/min with limit 6000 -> would be 9, clamped to 1.
+    recordTokenRate(s3, 0, 0);
+    recordTokenRate(s3, 60000, 60000);
+    assert.equal(tokenRatePressure(s3, 6000, 60000), 1);
+});
+
+test('tokenRatePressure: a stale window reports no pressure', () => {
+    const s = createSession();
+    recordTokenRate(s, 0, 0);
+    recordTokenRate(s, 60000, 60000); // 60000/min, well above the limit
+    // Evaluate long after the last sample fell out of the rolling window.
+    const now = 60000 + TOKEN_RATE_WINDOW_MS + 1;
+    assert.equal(tokenRatePressure(s, 6000, now), 0);
+});
+
+test('tokenRatePressure: a retry that re-sends the same context is not pressure', () => {
+    const s = createSession();
+    recordTokenRate(s, 50000, 0);
+    recordTokenRate(s, 50000, 1000); // same context -> delta 0
+    assert.equal(tokenRatePressure(s, 6000, 1000), 0);
 });

@@ -8,7 +8,7 @@
 const {
     getOrCreateAgentSession, prepareSessionForPrompt,
     resetRemoteSession, sweepIdleSessions, setRemoteSessionDeleter,
-    resetAllRemoteSessions, recordTokenRate,
+    resetAllRemoteSessions, recordTokenRate, tokenRatePressure,
 } = require('./lib/sessions');
 const {
     selectAccountForSession, markAccountFailure,
@@ -69,6 +69,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         prepareSessionForPrompt,
         resetRemoteSession,
         recordTokenRate,
+        tokenRatePressure,
         selectAccountForSession,
         markAccountFailure,
         solvePowForPath,
