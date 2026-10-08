@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readDSResponse, debugSseEnabled, dumpSseEnabled } = require('../lib/sse');
+const { readDSResponse, debugSseEnabled, dumpSseEnabled, parseMutedBody } = require('../lib/sse');
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -405,4 +405,61 @@ test('readDSResponse: no raw dump by default', async () => {
     await readDSResponse(streamOf(body), session, '[agent]', { log });
     assert.equal(lines.some(l => l.includes('[SSE raw]')), false);
     assert.equal(lines.some(l => l.includes('[SSE dump]')), false);
+});
+
+// ---------------------------------------------------------------------------
+// muted-body detection
+// ---------------------------------------------------------------------------
+
+const MUTED_BODY = JSON.stringify({
+    code: 0,
+    msg: '',
+    data: { biz_code: 5, biz_msg: 'user is muted', biz_data: { is_muted: 1, mute_until: 1791636413.054 } },
+});
+
+test('parseMutedBody: parses a DS user-is-muted payload', () => {
+    const out = parseMutedBody(MUTED_BODY);
+    assert.ok(out);
+    assert.equal(out.message, 'user is muted');
+    assert.equal(out.muteUntil, 1791636413.054);
+});
+
+test('parseMutedBody: ignores SSE bodies, other biz codes and invalid JSON', () => {
+    assert.equal(parseMutedBody('data: {"v":1}\n\n'), null);
+    assert.equal(parseMutedBody('{"code":0,"data":{"biz_code":1,"biz_msg":"ok"}}'), null);
+    assert.equal(parseMutedBody('{"code":0,"data":{"biz_code":5,"biz_msg":"something else"}}'), null);
+    assert.equal(parseMutedBody('not json'), null);
+    assert.equal(parseMutedBody(''), null);
+});
+
+test('readDSResponse: a muted JSON body yields zero events and sets `muted`', async () => {
+    const session = SESSION();
+    const { log, lines } = collectLog();
+    const out = await readDSResponse(streamOf(MUTED_BODY), session, '[agent]', { log });
+    assert.equal(out.content, '');
+    assert.equal(out.messageId, null);
+    assert.ok(out.muted);
+    assert.equal(out.muted.message, 'user is muted');
+    assert.equal(out.muted.muteUntil, 1791636413.054);
+    // The muted body never advances the remote session.
+    assert.equal(session.parentMessageId, 'parent-0');
+    assert.equal(session.messageCount, 0);
+    assert.ok(lines.some(l => l.includes('DS account muted')));
+});
+
+test('readDSResponse: a normal empty stream is NOT flagged as muted', async () => {
+    const session = SESSION();
+    const out = await readDSResponse(streamOf(''), session, '[agent]', { log: () => {} });
+    assert.equal(out.muted, null);
+});
+
+test('readDSResponse: a muted body split across chunks is still detected', async () => {
+    const session = SESSION();
+    const half = Math.floor(MUTED_BODY.length / 2);
+    const out = await readDSResponse(
+        streamOf(MUTED_BODY.slice(0, half), MUTED_BODY.slice(half)),
+        session, '[agent]', { log: () => {} },
+    );
+    assert.ok(out.muted);
+    assert.equal(out.muted.muteUntil, 1791636413.054);
 });

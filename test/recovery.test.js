@@ -341,6 +341,67 @@ test('runWithRecovery: DS generation_err stops immediately with 0 retries config
     });
 });
 
+test('runWithRecovery: a muted body parks the account until mute_until and rotates', async () => {
+    // DS answers a muted account with a plain JSON `user is muted` payload
+    // instead of a stream. Retrying that account is pointless, so the loop must
+    // park it until the reported mute_until and rotate to the next account.
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    const muteUntilSec = Math.floor(Date.now() / 1000) + 3600;
+    const muted = { message: 'user is muted', muteUntil: muteUntilSec };
+    await withAccounts([a1, a2], async () => {
+        let first = true;
+        const ctx = baseCtx({
+            // Never wait out the cooldown inside the test.
+            deadlineHit: () => true,
+            askDSStream: async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                const acct = first ? a1 : a2;
+                session.accountId = acct.id;
+                first = false;
+                return { resp: { body: {} }, account: acct, promptUsed: args?.prompt || 'p', freshSessionReset: false };
+            },
+            // First call is muted; second (rotated account) succeeds.
+            readDSResponse: sseOnce([
+                { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted },
+                { content: 'after rotation', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.fullContent, 'after rotation');
+        // a1 parked until the reported mute_until, not the short 5s window.
+        const remaining = a1.cooldownUntil - Date.now();
+        assert.ok(remaining > 3500 * 1000, `expected ~1h park, got ${remaining}ms`);
+        assert.equal(a1.failures, 1);
+    });
+});
+
+test('runWithRecovery: a muted body on all accounts returns 429 with mute_until', async () => {
+    const a1 = makeAccount('a1');
+    const muteUntilSec = Math.floor(Date.now() / 1000) + 3600;
+    const muted = { message: 'user is muted', muteUntil: muteUntilSec };
+    await withAccounts([a1], async () => {
+        const ctx = baseCtx({
+            deadlineHit: () => true,
+            askDSStream: async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                session.accountId = a1.id;
+                return { resp: { body: {} }, account: a1, promptUsed: args?.prompt || 'p', freshSessionReset: false };
+            },
+            readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.status, 429);
+        assert.equal(out.error.body.type, 'rate_limit_error');
+        assert.equal(out.error.body.mute_until, muteUntilSec);
+        // The only account is parked until mute_until, so no account is
+        // available: the terminal message is the all-cooling one.
+        assert.equal(out.error.body.message, 'All auth accounts are muted or cooling down. Retry later.');
+    });
+});
+
 test('runWithRecovery: empty response on all accounts returns 429 terminal error', async () => {
     // The sole account starts already cooling down, so no rotation is possible
     // and the run must terminate with an error instead of retrying forever.
