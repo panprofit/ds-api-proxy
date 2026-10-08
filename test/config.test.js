@@ -32,6 +32,7 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.maxUploadBytes, 25 * 1024 * 1024);
     assert.equal(c.maxSessionResetsPerAccount, 3);
     assert.equal(c.maxUnknownToolRetries, 1);
+    assert.equal(c.maxToolResultEchoRetries, 1);
     assert.equal(c.shutdownGraceMs, 15000);
 });
 
@@ -80,6 +81,11 @@ test('config.load: clamps maxUnknownToolRetries to [0,10]', () => {
     assert.equal(config.load({ DS_MAX_UNKNOWN_TOOL_RETRIES: '99' }).maxUnknownToolRetries, 10);
     assert.equal(config.load({ DS_MAX_UNKNOWN_TOOL_RETRIES: '-5' }).maxUnknownToolRetries, 0);
     assert.equal(config.load({ DS_MAX_UNKNOWN_TOOL_RETRIES: 'nope' }).maxUnknownToolRetries, 1);
+    assert.equal(config.load({}).maxToolResultEchoRetries, 1);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '5' }).maxToolResultEchoRetries, 5);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '99' }).maxToolResultEchoRetries, 10);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '-5' }).maxToolResultEchoRetries, 0);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: 'nope' }).maxToolResultEchoRetries, 1);
 });
 
 test('config.load: clamps maxEmptyRetries to [0,10]', () => {

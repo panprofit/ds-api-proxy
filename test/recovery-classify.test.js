@@ -61,19 +61,11 @@ test('isRefusalContent: false for real continuation text and empty input', () =>
     assert.equal(isRefusalContent(undefined), false);
 });
 
-test('isToolResultEcho: an unknown balanced envelope is an echo', () => {
-    const text = '[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]';
-    assert.equal(isToolResultEcho(text), true);
-});
-
-test('isToolResultEcho: an issued id is legitimate, not an echo', () => {
-    const text = '[Tool Result id=call_1234]\nsome output\n[/Tool Result]';
-    assert.equal(isToolResultEcho(text, new Set(['call_1234'])), false);
-});
-
-test('isToolResultEcho: a different issued id still counts as an echo', () => {
-    const text = '[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]';
-    assert.equal(isToolResultEcho(text, new Set(['call_1234'])), true);
+test('isToolResultEcho: a balanced envelope is an echo regardless of id', () => {
+    // `[Tool Result …]` is the harness/client format; the model must never
+    // emit it back, so even an id the proxy itself issued is still an echo.
+    assert.equal(isToolResultEcho('[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]'), true);
+    assert.equal(isToolResultEcho('[Tool Result id=call_1234]\nsome output\n[/Tool Result]'), true);
 });
 
 test('isToolResultEcho: requires the marker at line start', () => {
