@@ -24,7 +24,7 @@ not include real `token`/`cookie` values in a report — redact them.
 
 ## Supported versions
 
-This project is pre-1.0 and tracks `master`. Security fixes land on `master`;
+This project tracks `master`. Security fixes land on `master`;
 there are no maintained release branches. Run the latest `master`.
 
 ## Built-in hardening (what is already handled)
