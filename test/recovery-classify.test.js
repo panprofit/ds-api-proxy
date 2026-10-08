@@ -9,6 +9,7 @@ const {
     isContinuationRecoverySafe,
     isContextTooLongError,
     isRefusalContent,
+    isToolResultEcho,
     normalizeRetryResponse,
     classifyRecoveryFailure,
     isUpstreamTransientError,
@@ -58,6 +59,39 @@ test('isRefusalContent: false for real continuation text and empty input', () =>
     assert.equal(isRefusalContent(''), false);
     assert.equal(isRefusalContent(null), false);
     assert.equal(isRefusalContent(undefined), false);
+});
+
+test('isToolResultEcho: an unknown balanced envelope is an echo', () => {
+    const text = '[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]';
+    assert.equal(isToolResultEcho(text), true);
+});
+
+test('isToolResultEcho: an issued id is legitimate, not an echo', () => {
+    const text = '[Tool Result id=call_1234]\nsome output\n[/Tool Result]';
+    assert.equal(isToolResultEcho(text, new Set(['call_1234'])), false);
+});
+
+test('isToolResultEcho: a different issued id still counts as an echo', () => {
+    const text = '[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]';
+    assert.equal(isToolResultEcho(text, new Set(['call_1234'])), true);
+});
+
+test('isToolResultEcho: requires the marker at line start', () => {
+    assert.equal(isToolResultEcho('see [Tool Result id=call_x] here'), false);
+});
+
+test('isToolResultEcho: an unclosed marker line is left alone', () => {
+    // No closing tag -> likely a real partial continuation that merely starts
+    // with the words; stripping it would lose content.
+    const text = '[Tool Result id=call_deadbeef]\nno close tag here';
+    assert.equal(isToolResultEcho(text), false);
+});
+
+test('isToolResultEcho: false for plain prose and empty input', () => {
+    assert.equal(isToolResultEcho('just a normal answer'), false);
+    assert.equal(isToolResultEcho(''), false);
+    assert.equal(isToolResultEcho(null), false);
+    assert.equal(isToolResultEcho(undefined), false);
 });
 
 test('isContextTooLongError: matches English context/token phrasings', () => {
