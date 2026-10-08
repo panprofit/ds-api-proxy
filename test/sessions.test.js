@@ -20,6 +20,8 @@ const {
     prepareSessionForPrompt,
     getOrCreateAgentSession,
     sweepIdleSessions,
+    recordTokenRate,
+    TOKEN_RATE_WINDOW_MS,
 } = sessions;
 
 // Upload-cache state is owned by ./upload-cache now.
@@ -443,4 +445,54 @@ test('exported constants are positive and consistent with defaults', () => {
     // The upload cache and its TTL now live in ./upload-cache.
     assert.ok(Number.isFinite(UPLOAD_CACHE_TTL_MS) && UPLOAD_CACHE_TTL_MS > 0);
     assert.equal(typeof uploadCache.sweep, 'function');
+});
+
+// --- recordTokenRate --------------------------------------------------------
+
+test('recordTokenRate: first sample records the context but reports no rate', () => {
+    const s = createSession();
+    const rate = recordTokenRate(s, 1000, 1000);
+    assert.equal(rate.tokensPerMinute, 0); // no interval yet -> no meaningful rate
+    assert.equal(rate.deltaTokens, 1000);
+    assert.equal(s.tokenRateSamples.length, 1);
+    assert.equal(s.peakTokensPerMinute, 0);
+});
+
+test('recordTokenRate: computes the burn rate between consecutive samples', () => {
+    const s = createSession();
+    // Two samples 60s apart, +6000 tokens: exactly 6000 tokens/min.
+    recordTokenRate(s, 0, 0);
+    const rate = recordTokenRate(s, 6000, 60000);
+    assert.equal(rate.tokensPerMinute, 6000);
+    assert.equal(rate.deltaTokens, 6000);
+    assert.equal(rate.windowMs, 60000);
+    assert.equal(s.peakTokensPerMinute, 6000);
+});
+
+test('recordTokenRate: drops samples older than the window', () => {
+    const s = createSession();
+    recordTokenRate(s, 0, 0);
+    recordTokenRate(s, 1000, TOKEN_RATE_WINDOW_MS + 1000);
+    assert.equal(s.tokenRateSamples.length, 1);
+});
+
+test('recordTokenRate: re-sending the same context does not create negative deltas', () => {
+    const s = createSession();
+    recordTokenRate(s, 5000, 0);
+    const rate = recordTokenRate(s, 5000, 1000);
+    assert.equal(rate.deltaTokens, 0);
+    assert.equal(rate.tokensPerMinute, 0);
+});
+
+test('recordTokenRate: rejects a non-numeric token count', () => {
+    assert.equal(recordTokenRate(createSession(), 'nope', 0), null);
+    assert.equal(recordTokenRate(null, 100, 0), null);
+});
+
+test('resetRemoteSession: clears the token-rate samples and peak', () => {
+    const s = createSession();
+    recordTokenRate(s, 1000, 0);
+    resetRemoteSession(s);
+    assert.deepEqual(s.tokenRateSamples, []);
+    assert.equal(s.peakTokensPerMinute, 0);
 });

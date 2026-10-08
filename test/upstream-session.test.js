@@ -29,6 +29,7 @@ function makeDeps(overrides = {}) {
         getOrCreateAgentSession: () => session,
         prepareSessionForPrompt: () => null,
         resetRemoteSession: (s) => { s.id = null; s.parentMessageId = null; s.accountId = null; },
+        recordTokenRate: (s, tokens) => { s.contextTokens = tokens; return { tokensPerMinute: 0, deltaTokens: 0, windowMs: 1 }; },
         selectAccountForSession: () => account,
         markAccountFailure: () => {},
         solvePowForPath: async (a, h, path) => { calls.pow.push(path); return 'pow'; },
