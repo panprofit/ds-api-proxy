@@ -160,6 +160,44 @@ test('askDSStream: recreates the session on 409/410 as well', async () => {
     }
 });
 
+test('askDSStream: a failed retry after session recreate marks the account and throws', async () => {
+    // The first call 400s (session expired) -> the session is recreated and the
+    // fresh prompt retried. If that retry ALSO fails, the error must be mapped
+    // with the retry's status and the account marked failed a second time
+    // (once per attempt), not swallowed or attributed to the original status.
+    const { deps, calls, session } = makeDeps({
+        session: makeSession({ id: 'stale', accountId: 'a1' }),
+    });
+    const failures = [];
+    deps.markAccountFailure = (acct, status, label, retryAfter) => {
+        failures.push({ status, label, retryAfter });
+    };
+    let n = 0;
+    deps.dsChatCompletionWithPow = async (args) => {
+        calls.completions.push(args);
+        n++;
+        if (n === 1) {
+            return { status: 400, ok: false, headers: { get: () => null }, text: async () => 'expired' };
+        }
+        return { status: 503, ok: false, headers: { get: () => '30' }, text: async () => 'still down' };
+    };
+    const ask = createUpstreamSession(deps);
+    await assert.rejects(
+        () => ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh-context' }),
+        /DS upstream HTTP 503/
+    );
+    // Failed original attempt + failed recreate retry.
+    assert.equal(calls.completions.length, 2);
+    assert.equal(calls.completions[1].prompt, 'fresh-context');
+    // The account was marked failed for BOTH attempts, with the recreate
+    // retry's own status/Retry-After (not the original 400's).
+    assert.deepEqual(failures, [
+        { status: 400, label: 'completion', retryAfter: null },
+        { status: 503, label: 'completion after session recreate', retryAfter: '30' },
+    ]);
+    assert.equal(session.id, 'sess-1');
+});
+
 test('askDSStream: uses the recovery prompt when session was reset by rotation', async () => {
     // Session has an id, but prepareSessionForPrompt clears it (simulating an
     // account-rotation reset). The fresh prompt must be used.
