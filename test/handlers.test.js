@@ -39,6 +39,24 @@ test('resolveAgentId: localhost falls back to dev-agent', () => {
     assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::ffff:127.0.0.1' }), {}), 'dev-agent');
 });
 
+test('resolveAgentId: strict mode rejects an anonymous request with 400', () => {
+    const config = require('../lib/config');
+    config.reload({ DS_REQUIRE_AGENT_SESSION: '1' });
+    try {
+        assert.throws(
+            () => handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {}),
+            (e) => e.status === 400 && e.type === 'invalid_request_error',
+        );
+        // An explicit header still resolves normally under strict mode.
+        assert.equal(
+            handlers.resolveAgentId(fakeReq({ headers: { 'x-agent-session': 'sess-1' } }), {}),
+            'sess-1',
+        );
+    } finally {
+        config.reload({});
+    }
+});
+
 test('resolveAgentId: remote address is used when nothing else is set', () => {
     assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '10.0.0.9' }), {}), '10.0.0.9');
 });

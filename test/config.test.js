@@ -177,3 +177,9 @@ test('config.load: defaultSearchEnabled defaults on, DS_DEFAULT_SEARCH_ENABLED=0
     assert.equal(config.load({ DS_DEFAULT_SEARCH_ENABLED: '0' }).defaultSearchEnabled, false);
     assert.equal(config.load({ DS_DEFAULT_SEARCH_ENABLED: '1' }).defaultSearchEnabled, true);
 });
+
+test('config.load: requireAgentSession defaults off, DS_REQUIRE_AGENT_SESSION=1 turns it on', () => {
+    assert.equal(config.load({}).requireAgentSession, false);
+    assert.equal(config.load({ DS_REQUIRE_AGENT_SESSION: '1' }).requireAgentSession, true);
+    assert.equal(config.load({ DS_REQUIRE_AGENT_SESSION: '0' }).requireAgentSession, false);
+});
