@@ -674,6 +674,14 @@ test('waitForAvailableAccount: gives up after maxWaitMs if nothing becomes avail
     assert.ok(Date.now() - start >= 50, 'should have waited roughly maxWaitMs');
 });
 
+test('waitForAvailableAccount: stops early when the client is gone', async () => {
+    setAccounts([makeAccount('a1', { cooldownUntil: Date.now() + 60000 })]);
+    const start = Date.now();
+    const ok = await waitForAvailableAccount(() => false, { maxWaitMs: 60000, pollMs: 10, clientGone: () => true });
+    assert.equal(ok, false);
+    assert.ok(Date.now() - start < 1000, 'should not wait out maxWaitMs when the client left');
+});
+
 // --- resetAccountState ------------------------------------------------------
 
 test('resetAccountState: clears cooldowns, failures and lastUsedAt', () => {

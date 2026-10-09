@@ -142,6 +142,25 @@ test('askDSStream: gives up on persistent 5xx after bounded retries', async () =
     assert.equal(calls.completions.length, 4);
 });
 
+test('askDSStream: a client disconnect stops transient 5xx retries', async () => {
+    const { deps, calls } = makeDeps({
+        session: makeSession({ id: 's1', accountId: 'a1' }),
+        sleep: async () => {},
+    });
+    deps.dsChatCompletionWithPow = async (args) => {
+        calls.completions.push(args);
+        return { status: 503, ok: false, headers: { get: () => null }, text: async () => 'unavailable' };
+    };
+    const ask = createUpstreamSession(deps);
+    // Client is already gone: the transient-retry loop must not send any retry
+    // (only the initial attempt), and the last 5xx is surfaced.
+    await assert.rejects(
+        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
+        /DS upstream HTTP 503/
+    );
+    assert.equal(calls.completions.length, 1);
+});
+
 test('askDSStream: recreates the session on 409/410 as well', async () => {
     for (const status of [409, 410]) {
         const { deps, calls, session } = makeDeps({
