@@ -89,6 +89,14 @@ test('config.load: token-rate adaptive throttle defaults, override and clamp', (
     assert.equal(config.load({ DS_TOKEN_RATE_BACKOFF_FACTOR: 'nope' }).tokenRateBackoffFactor, 2);
 });
 
+test('config.load: DS_MAX_RESPONSE_WORDS default, override and clamp', () => {
+    assert.equal(config.load({}).maxResponseWords, 500);
+    assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: '150' }).maxResponseWords, 150);
+    assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: '0' }).maxResponseWords, 0);
+    assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: '-5' }).maxResponseWords, 0);
+    assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: 'nope' }).maxResponseWords, 500);
+});
+
 test('config.load: clamps maxUnknownToolRetries to [0,10]', () => {
     assert.equal(config.load({}).maxUnknownToolRetries, 1);
     assert.equal(config.load({ DS_MAX_UNKNOWN_TOOL_RETRIES: '5' }).maxUnknownToolRetries, 5);

@@ -6,6 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const prompt = require('../lib/prompt');
+const config = require('../lib/config');
 
 test('normalizeMessageContent: strings pass through, nullish -> empty', () => {
     assert.equal(prompt.normalizeMessageContent('hi'), 'hi');
@@ -147,12 +148,19 @@ test('formatPendingTurns: renders user and tool turns', () => {
 });
 
 test('formatMessages: separates system prompt and conversation', () => {
-    const { prompt: conversation, systemPrompt } = prompt.formatMessages([
-        { role: 'system', content: 'be nice' },
-        { role: 'user', content: 'hi' },
-    ], []);
-    assert.equal(systemPrompt, 'be nice');
-    assert.equal(conversation, 'User: hi');
+    // Disable the default word-cap instruction so this test asserts only the
+    // user-supplied system prompt (the cap is covered separately below).
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const { prompt: conversation, systemPrompt } = prompt.formatMessages([
+            { role: 'system', content: 'be nice' },
+            { role: 'user', content: 'hi' },
+        ], []);
+        assert.equal(systemPrompt, 'be nice');
+        assert.equal(conversation, 'User: hi');
+    } finally {
+        config.reload({});
+    }
 });
 
 test('formatMessages: renders assistant tool_calls as strict JSON', () => {
@@ -265,4 +273,39 @@ test('formatMessages: folds response_format into the system prompt', () => {
 test('formatMessages: no response_format leaves the system prompt free-form', () => {
     const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], []);
     assert.ok(!systemPrompt.includes('~~~json'));
+});
+
+// --- response length limit --------------------------------------------------
+
+test('formatResponseLengthLimit: renders the word cap as an instruction', () => {
+    const out = prompt.formatResponseLengthLimit(500);
+    assert.ok(out.includes('500'));
+});
+
+test('formatResponseLengthLimit: 0 / negative / nullish -> empty', () => {
+    assert.equal(prompt.formatResponseLengthLimit(0), '');
+    assert.equal(prompt.formatResponseLengthLimit(-5), '');
+    assert.equal(prompt.formatResponseLengthLimit(null), '');
+    assert.equal(prompt.formatResponseLengthLimit(undefined), '');
+    assert.equal(prompt.formatResponseLengthLimit(NaN), '');
+});
+
+test('formatMessages: folds the configured word cap into the system prompt', () => {
+    config.reload({ DS_MAX_RESPONSE_WORDS: '250' });
+    try {
+        const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], []);
+        assert.ok(systemPrompt.includes('250'));
+    } finally {
+        config.reload({});
+    }
+});
+
+test('formatMessages: DS_MAX_RESPONSE_WORDS=0 omits the word cap', () => {
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], []);
+        assert.equal(systemPrompt, '');
+    } finally {
+        config.reload({});
+    }
 });
