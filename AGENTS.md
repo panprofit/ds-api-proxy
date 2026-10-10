@@ -113,6 +113,10 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
   snapshot/restore their mutable arrays rather than re-require the module graph.
 - Comments explain *why*, not *what*. Match the surrounding density: this repo
   is heavily commented on purpose.
+- **Comments must justify their existence.** It is strictly FORBIDDEN to write
+  comments on the principle of "a comment is useful if the information is true
+  and relevant". Use this rule instead: no comment by default — a comment must
+  earn the right to exist.
 - Keep public exports stable; if you remove one, remove its tests and the
   `module.exports` entry in the same change.
 

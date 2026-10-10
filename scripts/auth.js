@@ -103,8 +103,6 @@ function emailFromFileName(file) {
 // CDP setup in main).
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-// --- args -------------------------------------------------------------------
-
 function parseArgs(argv) {
     const opts = { headless: false, email: '', repair: false, accountId: null, yes: false, help: false };
     for (let i = 0; i < argv.length; i++) {
@@ -160,21 +158,16 @@ function sleepSync(ms) {
     } catch {}
 }
 
-// --- browser discovery ------------------------------------------------------
-
 function resolveBrowserPath(cfg) {
     if (cfg.chromePath) return cfg.chromePath;
     const candidates = [
-        // Linux
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/snap/bin/chromium',
-        // macOS
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        // Windows
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     ];
@@ -196,8 +189,6 @@ Set CHROME_PATH to the real binary, e.g.:
 
 Or install Chrome: https://www.google.com/chrome/`;
 }
-
-// --- profile hygiene --------------------------------------------------------
 
 function shellPatternSafe(s) {
     return String(s).replace(/[\\"']/g, '.');
@@ -241,8 +232,6 @@ function cleanup() {
     killExistingBrowser();
     removeProfileSafely(profileDir);
 }
-
-// --- interactive prompt -----------------------------------------------------
 
 let activeRl = null;
 function ask(q) {
@@ -311,8 +300,6 @@ function askHidden(q) {
     });
 }
 
-// --- CDP client -------------------------------------------------------------
-
 async function fetchJson(u, opts) {
     const r = await fetch(u, opts);
     if (!r.ok) throw new Error(`${u} -> HTTP ${r.status}`);
@@ -377,8 +364,6 @@ class CDP {
         try { this.ws.close(); } catch {}
     }
 }
-
-// --- page helpers -----------------------------------------------------------
 
 function parseMaybeJson(s) {
     if (!s) return null;
@@ -536,8 +521,6 @@ async function readPageAuth(cdp) {
 
     return { token, cookie, wasmUrl, hifDliq, hifLeim };
 }
-
-// --- main -------------------------------------------------------------------
 
 // Open the disposable browser and capture credentials. Returns
 // { ok: true, filePath } on success, or { ok: false, reason } when nothing was
@@ -713,8 +696,6 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         if (!cfg.keepProfile) cleanup();
     }
 }
-
-// --- repair: validate all accounts, offer headless re-login -----------------
 
 // Probe one account against the cheapest authenticated endpoint. Returns:
 //   { status: 'ok' }                       credentials work
