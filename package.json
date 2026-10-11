@@ -11,6 +11,7 @@
     "lib/",
     "scripts/",
     "README.md",
+    "docs/",
     ".env.example"
   ],
   "scripts": {

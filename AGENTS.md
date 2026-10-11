@@ -88,7 +88,7 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 | `lib/pow.js` | `X-DS-PoW-Response` header construction |
 
 This list is the **complete** module map and the single source of truth for
-"what lives where". [README.md](README.md) links here. Keep it in sync when
+"what lives where". [README.md](README.md) and [docs/reference.md](docs/reference.md) link here. Keep it in sync when
 adding, renaming or removing a module.
 
 `lib/config.js` is the single source of truth for env parsing. Modules read it
