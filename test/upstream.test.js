@@ -6,8 +6,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const config = require('../lib/config');
 const uploadCache = require('../lib/upload-cache');
 const upstream = require('../lib/upstream');
+
+const DS_BASE = `https://${config.get().remoteHost}/api/v0`;
 
 const realFetch = globalThis.fetch;
 
@@ -88,7 +91,7 @@ test('dsFetch: prefixes the remote host and API base', async () => {
     await withFetch(async (url) => { seenUrl = url; return jsonResponse({}); }, async () => {
         await upstream.dsFetch('/chat/x', { method: 'POST' });
     });
-    assert.equal(seenUrl, 'https://chat.deepseek.com/api/v0/chat/x');
+    assert.equal(seenUrl, `${DS_BASE}/chat/x`);
 });
 
 test('dsFetch: attaches an AbortSignal timeout by default', async () => {
@@ -132,7 +135,7 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
             powHeader: 'POW', dsHeaders: { 'X-Test': '1' }, fileIds: ['f1'],
         });
     });
-    assert.equal(seenOpts.url, 'https://chat.deepseek.com/api/v0/chat/completion');
+    assert.equal(seenOpts.url, `${DS_BASE}/chat/completion`);
     assert.equal(seenOpts.opts.method, 'POST');
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
@@ -153,7 +156,7 @@ test('createRemoteSession: returns the session id without deleting other session
     // Must NOT wipe unrelated sessions on the account: creating a new session
     // for one agent must not destroy other agents' live sessions.
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, 'https://chat.deepseek.com/api/v0/chat_session/create');
+    assert.equal(calls[0].url, `${DS_BASE}/chat_session/create`);
     assert.ok(!calls.some(c => c.url.endsWith('/chat_session/delete_all')));
 });
 
@@ -199,7 +202,7 @@ test('deleteRemoteSession: POSTs the session id and returns true on success', as
         const ok = await upstream.deleteRemoteSession({ id: 'acct', headers: { 'X-Test': '1' } }, { 'X-Test': '1' }, 'sess-42', 'test delete');
         assert.equal(ok, true);
     });
-    assert.equal(seen.url, 'https://chat.deepseek.com/api/v0/chat_session/delete');
+    assert.equal(seen.url, `${DS_BASE}/chat_session/delete`);
     assert.equal(seen.opts.method, 'POST');
     assert.deepEqual(JSON.parse(seen.opts.body), { chat_session_ids: ['sess-42'] });
     assert.equal(seen.opts.headers['X-Test'], '1');

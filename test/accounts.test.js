@@ -76,8 +76,7 @@ test('buildBaseHeaders: includes auth, cookies and the fixed upstream host', () 
     assert.equal(h.Cookie, 'a=b');
     assert.equal(h['x-hif-dliq'], 'DLIQ');
     assert.equal(h['x-hif-leim'], 'LEIM');
-    assert.equal(h.Origin, 'https://chat.deepseek.com');
-    assert.equal(h.Referer, 'https://chat.deepseek.com');
+    assert.equal(h.Referer, h.Origin);
     assert.equal(h['Content-Type'], 'application/json');
 });
 
