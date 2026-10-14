@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readDSResponse, debugSseEnabled, dumpSseEnabled, parseMutedBody } = require('../lib/sse');
+const { readDSResponse, dumpSseEnabled, parseMutedBody } = require('../lib/sse');
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -35,19 +35,6 @@ function collectLog() {
 }
 
 const SESSION = () => ({ parentMessageId: 'parent-0', messageCount: 0 });
-
-// ---------------------------------------------------------------------------
-// debugSseEnabled
-// ---------------------------------------------------------------------------
-
-test('debugSseEnabled: true for "1"/"true" (any case), false otherwise', () => {
-    assert.equal(debugSseEnabled({ DS_DEBUG: '1' }), true);
-    assert.equal(debugSseEnabled({ DS_DEBUG: 'TRUE' }), true);
-    assert.equal(debugSseEnabled({ DS_DEBUG: 'true' }), true);
-    assert.equal(debugSseEnabled({ DS_DEBUG: '0' }), false);
-    assert.equal(debugSseEnabled({ DS_DEBUG: '' }), false);
-    assert.equal(debugSseEnabled({}), false);
-});
 
 // ---------------------------------------------------------------------------
 // basic content paths
@@ -301,6 +288,27 @@ test('readDSResponse: malformed JSON not logged when debugSse is false', async (
     await readDSResponse(streamOf(body), session, '[agent]', { log, debugSse: false });
     assert.equal(lines.some(l => l.includes('JSON.parse failed')), false);
     assert.equal(lines.some(l => l.includes('unparseable event')), true);
+});
+
+test('readDSResponse: the env option gates the debug branch', async () => {
+    const { log, lines } = collectLog();
+    const body = 'data: {not json\n\n' + sse({ response_message_id: 'm' });
+    await readDSResponse(streamOf(body), SESSION(), '[agent]', { log, env: { DS_DEBUG: '1' } });
+    assert.equal(lines.some(l => l.includes('JSON.parse failed')), true);
+});
+
+test('readDSResponse: a silent env leaves the debug branch off', async () => {
+    const { log, lines } = collectLog();
+    const body = 'data: {not json\n\n' + sse({ response_message_id: 'm' });
+    await readDSResponse(streamOf(body), SESSION(), '[agent]', { log, env: {} });
+    assert.equal(lines.some(l => l.includes('JSON.parse failed')), false);
+});
+
+test('readDSResponse: an explicit debugSse overrides the env option', async () => {
+    const { log, lines } = collectLog();
+    const body = 'data: {not json\n\n' + sse({ response_message_id: 'm' });
+    await readDSResponse(streamOf(body), SESSION(), '[agent]', { log, env: { DS_DEBUG: '1' }, debugSse: false });
+    assert.equal(lines.some(l => l.includes('JSON.parse failed')), false);
 });
 
 // ---------------------------------------------------------------------------

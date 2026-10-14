@@ -384,6 +384,23 @@ test('handleResponses: a post-commit context overflow emits response.failed for 
     });
 });
 
+test('handleChatCompletions: strict mode rejects an anonymous client before SSE commit', async () => {
+    const config = require('../lib/config');
+    config.reload({ DS_REQUIRE_AGENT_SESSION: '1' });
+    try {
+        await withAccounts([makeAccount('a1')], async () => {
+            const req = fakeReq({ remoteAddress: '127.0.0.1' });
+            const res = fakeRes();
+            await handlers.handleChatCompletions(req, res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
+            assert.equal(res.statusCode, 400);
+            assert.equal(res.json().error.type, 'invalid_request_error');
+            assert.equal(res.headersSent, true);
+        });
+    } finally {
+        config.reload({});
+    }
+});
+
 test('handleResponses: a post-commit overflow is NOT the legacy event: error frame', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();

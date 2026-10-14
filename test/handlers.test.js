@@ -178,6 +178,23 @@ test('parseChatRequest: accepts an empty object and arrays', () => {
     assert.equal(handlers.parseChatRequest(JSON.stringify({ messages: [], tools: [] })).ok, true);
 });
 
+test('parseChatRequest: rejects role=tool without a tool_call_id', () => {
+    const parsed = handlers.parseChatRequest(JSON.stringify({ messages: [{ role: 'tool', content: 'x' }] }));
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error.message, /messages\[0\] role 'tool' requires a 'tool_call_id'/);
+});
+
+test('parseChatRequest: rejects role=function without a name', () => {
+    const parsed = handlers.parseChatRequest(JSON.stringify({ messages: [{ role: 'user', content: 'a' }, { role: 'function', content: 'b' }] }));
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error.message, /messages\[1\] role 'function' requires a 'name'/);
+});
+
+test('parseChatRequest: skips null/non-object message entries', () => {
+    const parsed = handlers.parseChatRequest(JSON.stringify({ messages: [null, 42, { role: 'assistant', content: 'ok' }] }));
+    assert.equal(parsed.ok, true);
+});
+
 test('readRequestBody: measures the cap in bytes, not UTF-16 code units', async () => {
     // A 2-byte char is 1 JS string unit but 2 bytes; a 4-byte emoji is 2 units
     // but 4 bytes. The cap must count bytes.

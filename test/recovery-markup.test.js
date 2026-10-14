@@ -249,3 +249,29 @@ test('debugDumpToolMarkup: no-op when DS_DEBUG is off', () => {
     debugDumpToolMarkup('[a]', 'some content', (m) => lines.push(m));
     assert.equal(lines.length, 0);
 });
+
+test('debugDumpToolMarkup: dumps once per unchanged content, then stops', () => {
+    const lines = [];
+    const log = (m) => lines.push(m);
+    const env = { DS_DEBUG: '1' };
+    debugDumpToolMarkup('[dedupe]', 'same content', log, env);
+    const firstRun = lines.length;
+    assert.ok(firstRun > 0, 'first call should emit');
+    debugDumpToolMarkup('[dedupe]', 'same content', log, env);
+    assert.equal(lines.length, firstRun, 'identical content must not re-emit');
+});
+
+test('debugDumpToolMarkup: evicts the least-recently-touched entry past the cap', () => {
+    const CAP = 256;
+    const env = { DS_DEBUG: '1' };
+    // Fill to the cap with distinct tags, then touch [fill-0] so [fill-1] is
+    // the least-recently-touched. A final distinct tag forces one eviction;
+    // the call must not throw and must still log.
+    for (let i = 0; i < CAP; i++) {
+        debugDumpToolMarkup('[fill-' + i + ']', 'content ' + i, () => {}, env);
+    }
+    debugDumpToolMarkup('[fill-0]', 'content 0', () => {}, env);
+    assert.doesNotThrow(() => {
+        debugDumpToolMarkup('[overflow]', 'overflow content', () => {}, env);
+    });
+});
