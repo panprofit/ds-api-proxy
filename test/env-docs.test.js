@@ -33,7 +33,6 @@ const UNDOCUMENTED_IN_EXAMPLE = new Set([
     // Advanced, documented in the README env table but not the sample.
     'DS_ALLOWED_ORIGINS',
     'DS_DEFAULT_SEARCH_ENABLED',
-    'DS_REMOTE_HOST',
     'DS_SHUTDOWN_GRACE_MS',
     'DS_STREAM_KEEPALIVE_MS',
     // Auth helper (scripts/auth.js), documented in README's auth-helper table.

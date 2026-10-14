@@ -21,13 +21,6 @@ const { getAccounts, buildBaseHeaders, discoverAuthPaths, loadDSConfig,
 
 // --- helpers ----------------------------------------------------------------
 
-// Point the shared config at a test upstream host. config.reload() takes the
-// full env object, so the override is merged in WITHOUT mutating process.env
-// (a global that would leak into the next test if this one threw).
-function setRemoteHost(host) {
-    config.reload({ DS_REMOTE_HOST: host });
-}
-
 afterEach(() => {
     // Restore module state after every test (accounts array + LRU timestamps).
     config.reload();
@@ -77,15 +70,14 @@ function withTempAuthDir(configs, fn) {
 
 // --- buildBaseHeaders -------------------------------------------------------
 
-test('buildBaseHeaders: includes auth, cookies and the configured remote host', () => {
-    setRemoteHost('example.test');
+test('buildBaseHeaders: includes auth, cookies and the fixed upstream host', () => {
     const h = buildBaseHeaders({ token: 'TOK', cookie: 'a=b', hifDliq: 'DLIQ', hifLeim: 'LEIM' });
     assert.equal(h.Authorization, 'Bearer TOK');
     assert.equal(h.Cookie, 'a=b');
     assert.equal(h['x-hif-dliq'], 'DLIQ');
     assert.equal(h['x-hif-leim'], 'LEIM');
-    assert.equal(h.Origin, 'https://example.test');
-    assert.equal(h.Referer, 'https://example.test');
+    assert.equal(h.Origin, 'https://chat.deepseek.com');
+    assert.equal(h.Referer, 'https://chat.deepseek.com');
     assert.equal(h['Content-Type'], 'application/json');
 });
 

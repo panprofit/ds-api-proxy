@@ -10,7 +10,6 @@ test('config.load: defaults when env is empty', () => {
     const c = config.load({});
     assert.equal(c.port, 9876);
     assert.equal(c.host, '127.0.0.1');
-    assert.equal(c.remoteHost, config.get().remoteHost);
     assert.equal(c.maxConcurrent, 24);
 
 
@@ -40,7 +39,6 @@ test('config.load: parses and overrides from env', () => {
     const c = config.load({
         PORT: '9999',
         HOST: '0.0.0.0',
-        DS_REMOTE_HOST: 'example.com',
         DS_MAX_CONCURRENT: '5',
         DS_REQUEST_DEADLINE_MS: '1000',
         DS_MAX_RETRIES: '7',
@@ -50,7 +48,6 @@ test('config.load: parses and overrides from env', () => {
     });
     assert.equal(c.port, 9999);
     assert.equal(c.host, '0.0.0.0');
-    assert.equal(c.remoteHost, 'example.com');
     assert.equal(c.maxConcurrent, 5);
     assert.equal(c.requestDeadlineMs, 1000);
     assert.equal(c.maxEmptyRetries, 7);

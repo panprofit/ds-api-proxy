@@ -10,9 +10,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const uploadCache = require('../lib/upload-cache');
-
-const config = require('../lib/config');
-config.reload({ DS_REMOTE_HOST: 'ds.test' });
 const upstream = require('../lib/upstream');
 
 const realFetch = globalThis.fetch;

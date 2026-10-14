@@ -29,7 +29,6 @@ async function startServer(port, extraEnv = {}) {
         env: {
             ...process.env,
             DS_AUTH_DIR: '/nonexistent',
-            DS_REMOTE_HOST: 'ds.test',
             HOST: '127.0.0.1',
             PORT: String(port),
             ...extraEnv,
