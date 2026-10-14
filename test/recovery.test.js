@@ -153,7 +153,7 @@ test('runWithRecovery: reasoning-only response is returned without cooling the a
 });
 
 test('runWithRecovery: empty response parks the account for the short recoverable window', async () => {
-    // An empty stream must NOT use the long accountCooldownMs (10 min default).
+    // An empty stream must NOT use the long accountCooldownMs (5 min default).
     // It is a transient glitch, so the account gets the short malformedCooldownMs.
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
