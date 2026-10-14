@@ -30,7 +30,7 @@ function resetSessions() {
 
 // Build a state + deps pair for the recovery passes. `readDSResponse` results
 // are consumed in order; `askDSStream` records the options object of each call.
-function makeCtx({ content, allowed = ['read', 'bash'], responses = [], configOverrides = {} } = {}) {
+function makeCtx({ content, allowed = ['read', 'bash'], responses = [], accountSeq = ['a1'], configOverrides = {} } = {}) {
     resetSessions();
     const session = sessions.getOrCreateAgentSession('agent1');
     session.id = 'sess-1';
@@ -47,11 +47,12 @@ function makeCtx({ content, allowed = ['read', 'bash'], responses = [], configOv
     };
     const calls = [];
     let i = 0;
+    let ai = 0;
     const deps = {
         agentId: 'agent1',
         agentTag: '[agent1]',
         session,
-        askDSStream: async (args) => { calls.push(args); return { resp: { body: {} }, account: { id: 'a1' } }; },
+        askDSStream: async (args) => { calls.push(args); const id = accountSeq[Math.min(ai, accountSeq.length - 1)]; ai++; return { resp: { body: {} }, account: { id } }; },
         readDSResponse: async () => (i < responses.length ? responses[i++] : { content: '', reasoningContent: '', messageId: null, finishReason: 'stop', modelError: null }),
         fileIds: [],
         thinkingEnabled: false,
@@ -200,6 +201,44 @@ test('runStrictToolRetry: resets the remote session before retrying', async () =
         // The strict retry must start from a fresh remote session; observe it
         // via the reset's effect (the session id is cleared).
         assert.equal(session.id, null, 'the remote session was reset before the retry');
+    });
+});
+
+test('runMarkupCompletion: a continuation that rotated account is skipped', async () => {
+    const { state, deps, calls } = makeCtx({
+        content: '{"tool_call":{"name":"read","arguments":{"p":',
+        // The completion call is the continuation, and it reports a2 while the
+        // session stays pinned to a1, so the foreign-session body is discarded.
+        accountSeq: ['a2'],
+        responses: [{ content: '{"name":"read"}', reasoningContent: '', messageId: null, finishReason: 'stop', modelError: null }],
+    });
+    const before = state.fullContent;
+    await runMarkupCompletion(state, deps);
+    assert.equal(state.fullContent, before, 'a foreign-account continuation must not be merged');
+    assert.equal(state.toolCall, null);
+    assert.equal(calls.length, 1, 'the loop must stop after the rotation');
+});
+
+test('runMarkupCompletion: an empty continuation stops without changing the content', async () => {
+    const { state, deps, calls } = makeCtx({
+        content: '{"tool_call":{"name":"read","arguments":{"p":',
+        responses: [{ content: '', reasoningContent: '', messageId: null, finishReason: 'stop', modelError: null }],
+    });
+    const before = state.fullContent;
+    await runMarkupCompletion(state, deps);
+    assert.equal(state.fullContent, before, 'an empty completion must not change the content');
+    assert.equal(state.toolCall, null);
+    assert.ok(calls.length >= 1, 'at least one continuation was attempted');
+});
+
+test('runStrictToolRetry: an empty retry leaves toolCall null', async () => {
+    await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const { state, deps } = makeCtx({
+            content: '{"tool_call":{"name":"read","arguments":{"p":',
+            responses: [{ content: '', reasoningContent: '', messageId: null, finishReason: 'stop', modelError: null }],
+        });
+        await runStrictToolRetry(state, deps);
+        assert.equal(state.toolCall, null);
     });
 });
 

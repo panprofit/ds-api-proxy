@@ -1510,3 +1510,100 @@ test('runWithRecovery: truncated tool markup is left to markup completion, not a
         assert.equal(out.toolCall.name, 'read');
     });
 });
+
+// --- branch-isolated recovery paths -----------------------------------------
+
+test('runWithRecovery: rate-limit empty response cools the account via the Retry-After path', async () => {
+    // A rate-limit model error must take the markAccountFailure(429) branch,
+    // not the short recoverable-failure cooldown used for an empty stream.
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        // deadlineHit=true stops the rotation loop from waiting out the cooldown.
+        const ctx = baseCtx({
+            deadlineHit: () => true,
+            askDSStream: askStub([a1]),
+            readDSResponse: sseOnce([{
+                content: '',
+                reasoningContent: '',
+                messageId: 'm1',
+                finishReason: 'rate_limit_reached',
+                modelError: { type: 'rate_limit', content: 'too many requests', finish_reason: 'rate_limit_reached' },
+            }]),
+        });
+        ctx.session.accountId = a1.id;
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.body.type, 'rate_limit_error');
+        assert.ok(a1.failures >= 1, 'rate-limit path must count a failure');
+        assert.ok(a1.cooldownUntil > Date.now(), 'account must be cooled down');
+    });
+});
+
+test('runWithRecovery: context-too-long stops empty-retries before burning one', async () => {
+    // The context-too-long guard fires before the generic modelError break, so
+    // a deterministic failure never issues a retry.
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const ctx = baseCtx({
+            askDSStream: askStub([a1], calls),
+            readDSResponse: sseOnce([{
+                content: '',
+                reasoningContent: '',
+                messageId: null,
+                finishReason: null,
+                modelError: { type: 'error', content: 'maximum context length exceeded', finish_reason: null },
+            }]),
+        });
+        ctx.session.accountId = a1.id;
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.body.type, 'context_length_exceeded');
+        assert.equal(calls.length, 1, 'no retry must be issued for a deterministic context-too-long');
+        assert.equal(out.error.body.retry_attempts, 0, 'retry counter must stay at 0');
+    });
+});
+
+test('runWithRecovery: an action-promise continuation that returns nothing keeps the original body', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([a1, a1], calls),
+            readDSResponse: sseOnce([
+                { content: 'Let me check the tests.', reasoningContent: 'I should look at the tests.', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: '', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        ctx.session.accountId = a1.id;
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(calls.length, 2, 'exactly one continuation round');
+        assert.equal(out.fullContent, 'Let me check the tests.', 'the original promise body must be preserved');
+        assert.equal(out.toolCall, null);
+    });
+});
+
+test('runWithRecovery: a corrective retry that picks another unknown tool reports the latest name', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const first = '{"tool_call":{"name":"nope1","arguments":{}}}';
+        const second = '{"tool_call":{"name":"nope2","arguments":{}}}';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([a1, a1], calls),
+            readDSResponse: sseOnce([
+                { content: first, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: second, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        ctx.session.accountId = a1.id;
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.body.type, 'unknown_tool');
+        assert.equal(out.error.body.requested_tool, 'nope2', 'terminal error must report the latest unknown name');
+        assert.deepEqual(calls.map(c => c.agentId), ['test-agent', 'test-agent'], 'deterministic failure must not rotate');
+    });
+});
