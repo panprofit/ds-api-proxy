@@ -1607,3 +1607,37 @@ test('runWithRecovery: a corrective retry that picks another unknown tool report
         assert.deepEqual(calls.map(c => c.agentId), ['test-agent', 'test-agent'], 'deterministic failure must not rotate');
     });
 });
+
+// HTTP 429 from the upstream is NOT treated as a rotation trigger: unlike a
+// 401/403 auth failure, typeForStatus() maps it to 'rate_limit_error', which
+// handleAuthExpired() deliberately does not catch. The error is re-thrown and
+// handlers.writeError() forwards it to the client with the Retry-After header.
+// The account itself is already cooled down by upstream-session's
+// markAccountFailure() before the throw, so a later request rotates away from
+// it. A 429 therefore fails THIS request instead of silently retrying on
+// another account (a DS 429 is not guaranteed to be account-scoped).
+test('runWithRecovery: an upstream HTTP 429 propagates to the caller instead of rotating', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const { createUpstreamHttpError } = require('../lib/http');
+        const accountStub = async (args) => {
+            const session = sessions.getOrCreateAgentSession(args.agentId);
+            session.accountId = a1.id;
+            throw createUpstreamHttpError(429, 'rate limited', '120');
+        };
+        const ctx = baseCtx({
+            deadlineHit: () => true,
+            askDSStream: accountStub,
+            readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+        });
+        await assert.rejects(
+            () => runWithRecovery(ctx),
+            (e) => {
+                assert.equal(e.status, 429);
+                assert.equal(e.type, 'rate_limit_error');
+                assert.equal(e.retryAfter, '120');
+                return true;
+            },
+        );
+    });
+});
