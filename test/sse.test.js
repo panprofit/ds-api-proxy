@@ -7,8 +7,6 @@ const { readDSResponse, debugSseEnabled, dumpSseEnabled, parseMutedBody } = requ
 // helpers
 // ---------------------------------------------------------------------------
 
-// Build an async-iterable of Uint8Array chunks from raw string pieces, so we can
-// exercise arbitrary chunk boundaries (including splits inside a single line).
 function streamOf(...chunks) {
     return {
         async *[Symbol.asyncIterator]() {
@@ -18,7 +16,6 @@ function streamOf(...chunks) {
     };
 }
 
-// Wrap pre-encoded Uint8Array chunks without re-encoding them.
 function byteStreamOf(chunks) {
     return {
         async *[Symbol.asyncIterator]() {
@@ -31,7 +28,6 @@ function sse(...events) {
     return events.map(e => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join('');
 }
 
-// Silent logger collector: returns { log, lines }.
 function collectLog() {
     const lines = [];
     const log = (...args) => lines.push(args.join(' '));

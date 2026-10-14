@@ -11,12 +11,10 @@ function acct({ token = 't', cookie = 'c', cooldownUntil = 0 } = {}) {
     return { config: { token, cookie }, cooldownUntil };
 }
 
-// Minimal stand-in for the semaphore's read-only getters.
 function sem(inFlight, limit) {
     return { inFlight, limit, available: limit - inFlight };
 }
 
-// A response stub that records writeHead(status, headers) and the body.
 function fakeRes() {
     return {
         statusCode: null,

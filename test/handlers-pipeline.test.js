@@ -17,7 +17,6 @@ function fakeReq({ headers = {}, remoteAddress = '127.0.0.1' } = {}) {
     return { headers, socket: { remoteAddress }, on: () => {} };
 }
 
-// Minimal ServerResponse stand-in that records the status and body.
 function fakeRes() {
     const res = new EventEmitter();
     res.headersSent = false;

@@ -149,7 +149,6 @@ test('parseResponsesRequest: input may be an array of message items', () => {
 
 // --- sendResponseStream -----------------------------------------------------
 
-// Minimal fake ServerResponse that records written chunks and events.
 function makeFakeRes() {
     const chunks = [];
     const res = {

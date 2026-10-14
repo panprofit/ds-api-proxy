@@ -345,8 +345,6 @@ test('hasAuthConfig: true only when token AND cookie are present', () => {
 
 // --- auditAuthDir -----------------------------------------------------------
 
-// withEnvDir runs `fn` with DS_AUTH_DIR pointed at `dir` (or unset when dir is
-// null), reloading the central config so auditAuthDir() sees the change.
 function withEnvDir(dir, fn) {
     const env = { ...process.env };
     if (dir === null) delete env.DS_AUTH_DIR;
