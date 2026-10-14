@@ -10,7 +10,7 @@ test('config.load: defaults when env is empty', () => {
     const c = config.load({});
     assert.equal(c.port, 9876);
     assert.equal(c.host, '127.0.0.1');
-    assert.equal(c.maxConcurrent, 24);
+    assert.equal(c.maxConcurrent, 10);
 
 
 test('load: DS_MAX_CONCURRENT is capped at 256', () => {
@@ -23,7 +23,7 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.malformedToolCallCooldownMs, 5000);
     assert.equal(c.accountCooldownMs, 10 * 60 * 1000);
-    assert.equal(c.accountMinCompletionIntervalMs, 5000);
+    assert.equal(c.accountMinCompletionIntervalMs, 6000);
     assert.equal(c.accountStateFlushMs, 60 * 1000);
     assert.equal(c.sessionTtlMs, 2 * 60 * 60 * 1000);
     assert.equal(c.maxSessions, 1000);
@@ -57,11 +57,11 @@ test('config.load: parses and overrides from env', () => {
 });
 
 test('config.load: DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS default, override and clamp', () => {
-    assert.equal(config.load({}).accountMinCompletionIntervalMs, 5000);
+    assert.equal(config.load({}).accountMinCompletionIntervalMs, 6000);
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '250' }).accountMinCompletionIntervalMs, 250);
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }).accountMinCompletionIntervalMs, 0);
     assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '-5' }).accountMinCompletionIntervalMs, 0);
-    assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: 'nope' }).accountMinCompletionIntervalMs, 5000);
+    assert.equal(config.load({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: 'nope' }).accountMinCompletionIntervalMs, 6000);
 });
 
 test('config.load: DS_ACCOUNT_STATE_FLUSH_MS default, override and clamp', () => {
@@ -116,7 +116,7 @@ test('config.load: clamps maxEmptyRetries to [0,10]', () => {
 test('config.load: ignores non-numeric values, keeps defaults', () => {
     const c = config.load({ PORT: 'abc', DS_MAX_CONCURRENT: 'x' });
     assert.equal(c.port, 9876);
-    assert.equal(c.maxConcurrent, 24);
+    assert.equal(c.maxConcurrent, 10);
 });
 
 test('config.get / reload round-trip', () => {
