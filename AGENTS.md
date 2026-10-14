@@ -62,6 +62,9 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 | `lib/metrics.js` | in-flight / lifetime counters, surfaced via `/health` |
 | `lib/recovery.js` | recovery state machine (empty-retry / reasoning-only / upstream-transient / auto-continuation / tool-extraction / unknown-tool / markup / rotation phases) |
 | `lib/recovery-markup.js` | tool-markup diagnostics + completion/strict-retry passes |
+| `lib/recovery-transitions.js` | shared recovery transitions (RETRY/ROTATE/SUCCESS), terminal-result builder, account-rotation helper |
+| `lib/recovery-continuation.js` | account-affinity-safe continuation call + auto-continue / reasoning-only / empty-retry loops |
+| `lib/recovery-failures.js` | terminal failure handlers (auth-expired, muted, transient outage, context-too-long, recoverable give-up) |
 | `lib/recovery-util.js` | shared retry-delay / config helpers for the recovery passes |
 | `lib/recovery-classify.js` | response classification (refusal, context-too-long, ...) |
 | `lib/upstream-session.js` | one completion attempt + expired-session recreation |
