@@ -186,6 +186,17 @@ test('createServer: a generic pre-listen error exits(1)', () => {
     srv.server.close();
 });
 
+test('createServer: listen works without a callback', async () => {
+    const { srv } = build();
+    await new Promise((resolve) => {
+        srv.listen();
+        // Poll `listening` until the bind callback flips it.
+        const t = setInterval(() => { if (srv.listening) { clearInterval(t); resolve(); } }, 5);
+    });
+    assert.equal(srv.listening, true);
+    await new Promise((resolve) => srv.server.close(resolve));
+});
+
 test('createServer: a runtime error after listen keeps the process alive', async () => {
     const { srv, exits, errors } = build();
     await new Promise((resolve) => srv.listen(resolve));
