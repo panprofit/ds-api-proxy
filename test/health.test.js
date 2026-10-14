@@ -157,6 +157,20 @@ test('handleHealth: a loopback peer receives the metrics block', () => {
     });
     assert.deepEqual(JSON.parse(res.body).metrics, { requests: 9 });
 });
+test('buildHealthReport: a null accounts list is treated as empty', () => {
+    const report = health.buildHealthReport({ accounts: null, sessionCount: 2 });
+    assert.deepEqual(report.accounts, { total: 0, usable: 0, available: 0, cooling: 0 });
+    assert.equal(report.sessions, 2);
+});
+
+test('handleHealth: an explicit peerAddress overrides the socket lookup', () => {
+    const res = fakeRes();
+    // A loopback peerAddress on a non-loopback socket must still be trusted,
+    // because the explicit deps value wins over req.socket.remoteAddress.
+    health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, { peerAddress: '127.0.0.1', sessionCount: 5 });
+    assert.equal(JSON.parse(res.body).sessions, 5);
+});
+
 test('handleHealth: an explicit detailed flag overrides the peer lookup', () => {
     const res = fakeRes();
     health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, { detailed: true, sessionCount: 7 });
