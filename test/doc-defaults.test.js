@@ -23,7 +23,6 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     PORT: 'port',
     HOST: 'host',
     DS_ACCOUNT_COOLDOWN_MS: 'accountCooldownMs',
-    DS_ACCOUNT_MAX_REQUESTS_PER_HOUR: 'accountMaxRequestsPerHour',
     DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: 'accountMinCompletionIntervalMs',
     DS_ACCOUNT_STATE_FLUSH_MS: 'accountStateFlushMs',
     DS_CLIENT_LOCALE: 'clientLocale',

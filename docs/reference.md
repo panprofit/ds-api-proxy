@@ -139,10 +139,6 @@ requests rotate to another account:
   account is never parked and the session is never reset for it — the request
   just does one corrective retry (see Tool-call parsing) and then fails with
   `unknown_tool`;
-- its **hourly completion cap** — each `chat/completion` call is counted (PoW
-  challenges, session create/delete, uploads and `fetch_files` are free); at
-  `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR` the account is parked until the window
-  resets. Set the cap to `0` to disable it.
 
 When every account is parked the request returns HTTP 429 with a
 `retry_in`-style hint until the earliest window opens.
@@ -164,9 +160,8 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `HOST`                               | `127.0.0.1`                 | HTTP listen host. **On a non-loopback bind with an empty `DS_ALLOWED_ORIGINS`, CORS denies all browser origins (anti-CSRF); set the allowlist to permit specific origins.**                                                                                        |
 | `DS_AUTH_DIR`                        | — (needed for any accounts) | Directory scanned for `*.json` auth configs (sorted). There is no default: when unset, no accounts load and every completion returns 503. Audited at startup (unset/missing dir, no `*.json` files, or none loading all produce a clear log line).                 |
 | `DS_ACCOUNT_COOLDOWN_MS`             | `300000` (5 min)            | Cooldown after an HTTP 401/403/429 account failure.                                                                                                                                                                                                                |
-| `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`   | `200`                       | Max upstream requests (PoW, session create/delete, completion, uploads) per account per rolling hour. At the cap the account is parked until the window resets, so the next request rotates to another account. `0` disables the cap.                              |
 | `DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS` | `6000`                    | Minimum spacing (ms) between consecutive completions on the same account, so a burst spreads across the pool instead of hammering one account. `0` disables the throttle.                                                                                            |
-| `DS_ACCOUNT_STATE_FLUSH_MS`          | `60000`                     | How often (ms) the persisted per-account runtime state (`$DS_AUTH_DIR/.account-state.json`: cooldowns, hourly counters, LRU) is flushed to disk. `0` disables persistence.                                                                                          |
+| `DS_ACCOUNT_STATE_FLUSH_MS`          | `60000`                     | How often (ms) the persisted per-account runtime state (`$DS_AUTH_DIR/.account-state.json`: cooldowns, LRU) is flushed to disk. `0` disables persistence.                                                                                          |
 | `DS_CLIENT_LOCALE`                   | `en`                        | Default `x-client-locale` sent upstream; per-account `locale` overrides it.                                                                                                                                                                                        |
 | `DS_CLIENT_TIMEZONE_OFFSET`          | `0`                         | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it.                                                                                                                                                                      |
 | `DS_MAX_CONCURRENT`                  | `10`                        | Max simultaneous in-flight completions.                                                                                                                                                                                                                            |
@@ -271,7 +266,7 @@ vulnerability privately. The hardening below is what the proxy already does.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `All auth accounts are cooling down. Retry in ~Ns` (HTTP 429) | Every account hit a 401/403/429, a recoverable failure (`DS_ACCOUNT_COOLDOWN_MS`), or its hourly request cap (`DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`), so none is available. | Wait, add another `*.json` account in `DS_AUTH_DIR`, lower `DS_ACCOUNT_COOLDOWN_MS`, or raise/disable `DS_ACCOUNT_MAX_REQUESTS_PER_HOUR`. |
+| `All auth accounts are cooling down. Retry in ~Ns` (HTTP 429) | Every account hit a 401/403/429 or a recoverable failure (`DS_ACCOUNT_COOLDOWN_MS`), so none is available. | Wait, add another `*.json` account in `DS_AUTH_DIR`, or lower `DS_ACCOUNT_COOLDOWN_MS`. |
 | `No valid auth accounts.` (HTTP 503) | `DS_AUTH_DIR` is empty/unreadable, or every config is missing `token`/`cookie`. | Check the startup log — the `DS_AUTH_DIR` audit line plus per-file messages report the cause. Re-run `npm run auth`. |
 | `Server busy (N/N requests in flight)` (HTTP 503) | Hit `DS_MAX_CONCURRENT`. | Retry shortly, raise `DS_MAX_CONCURRENT`, or add accounts. |
 | HTTP 408 `Request body read timed out` | Body took longer than `DS_BODY_READ_TIMEOUT_MS` to arrive. | Raise the timeout or send a smaller body. |
