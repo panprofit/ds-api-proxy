@@ -33,10 +33,16 @@ test('resolveAgentId: falls back to body session/user', () => {
     assert.equal(handlers.resolveAgentId(fakeReq(), { user: 'bu' }), 'bu');
 });
 
-test('resolveAgentId: localhost falls back to dev-agent', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {}), 'dev-agent');
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::1' }), {}), 'dev-agent');
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::ffff:127.0.0.1' }), {}), 'dev-agent');
+test('resolveAgentId: localhost falls back to dev-agent when the strict flag is off', () => {
+    const config = require('../lib/config');
+    config.reload({ DS_REQUIRE_AGENT_SESSION: '0' });
+    try {
+        assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {}), 'dev-agent');
+        assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::1' }), {}), 'dev-agent');
+        assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::ffff:127.0.0.1' }), {}), 'dev-agent');
+    } finally {
+        config.reload({});
+    }
 });
 
 test('resolveAgentId: strict mode rejects an anonymous request with 400', () => {
@@ -57,8 +63,14 @@ test('resolveAgentId: strict mode rejects an anonymous request with 400', () => 
     }
 });
 
-test('resolveAgentId: remote address is used when nothing else is set', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '10.0.0.9' }), {}), '10.0.0.9');
+test('resolveAgentId: remote address is used when nothing else is set and the strict flag is off', () => {
+    const config = require('../lib/config');
+    config.reload({ DS_REQUIRE_AGENT_SESSION: '0' });
+    try {
+        assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '10.0.0.9' }), {}), '10.0.0.9');
+    } finally {
+        config.reload({});
+    }
 });
 
 // --- resolveThinkingEnabled ------------------------------------------------

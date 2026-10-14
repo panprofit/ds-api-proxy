@@ -13,7 +13,9 @@ const accounts = require('../lib/accounts');
 
 // --- fakes ------------------------------------------------------------------
 
-function fakeReq({ headers = {}, remoteAddress = '127.0.0.1' } = {}) {
+// Requests default to an explicit session header: requireAgentSession is on
+// by default, so an identified client is what the pipeline actually sees.
+function fakeReq({ headers = { 'x-agent-session': 'test-agent' }, remoteAddress = '127.0.0.1' } = {}) {
     return { headers, socket: { remoteAddress }, on: () => {} };
 }
 
@@ -284,7 +286,7 @@ test('handleChatCompletions: a prompt rollover resets the session before the pro
     // prepareSessionForPrompt() fires and logs the rollover before building the
     // prompt. (Rollover is TTL-only now; message depth no longer triggers it.)
     await withAccounts([makeAccount('a1')], async () => {
-        const session = sessions.getOrCreateAgentSession('dev-agent');
+        const session = sessions.getOrCreateAgentSession('test-agent');
         session.id = 'remote-1';
         session.messageCount = 100;
         // Idle longer than DS_SESSION_TTL_MS (default 2h) => rolled over.
@@ -389,7 +391,7 @@ test('handleChatCompletions: strict mode rejects an anonymous client before SSE 
     config.reload({ DS_REQUIRE_AGENT_SESSION: '1' });
     try {
         await withAccounts([makeAccount('a1')], async () => {
-            const req = fakeReq({ remoteAddress: '127.0.0.1' });
+            const req = fakeReq({ headers: {}, remoteAddress: '127.0.0.1' });
             const res = fakeRes();
             await handlers.handleChatCompletions(req, res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
             assert.equal(res.statusCode, 400);
