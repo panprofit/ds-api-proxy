@@ -20,7 +20,7 @@ endpoint. The primary consumer is the pi coding agent, which uses
 ### `GET /health`
 
 Returns a JSON liveness/readiness report. To a **loopback peer** the full
-report is: `status` (`ok` / `shutting_down`), `uptime_ms`, `remote_host`, an
+report is: `status` (`ok` / `shutting_down`), `uptime_ms`, an
 `accounts` summary (`total` / `usable` / `available` / `cooling`), `sessions`,
 `shutting_down`, and - while the server is up - a `concurrency` block
 (`in_flight` / `limit` / `available`). A non-loopback caller gets only the

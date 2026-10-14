@@ -6,7 +6,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const health = require('../lib/health');
-const config = require('../lib/config');
 
 function acct({ token = 't', cookie = 'c', cooldownUntil = 0 } = {}) {
     return { config: { token, cookie }, cooldownUntil };
@@ -76,18 +75,16 @@ test('buildHealthReport: uptime is computed from startedAt and floored at 0', ()
     assert.equal(health.buildHealthReport({ startedAt: 2000, now: 1500 }).uptime_ms, 0);
 });
 
-test('buildHealthReport: reflects the shutdown flag and remote host', () => {
-    const report = health.buildHealthReport({ shuttingDown: true, remoteHost: config.get().remoteHost });
+test('buildHealthReport: reflects the shutdown flag', () => {
+    const report = health.buildHealthReport({ shuttingDown: true });
     assert.equal(report.status, 'shutting_down');
     assert.equal(report.shutting_down, true);
-    assert.equal(report.remote_host, config.get().remoteHost);
-    assert.equal(health.buildHealthReport({ remoteHost: '' }).remote_host, null);
 });
 
 test('buildHealthReport: a non-detailed report exposes only readiness', () => {
     const report = health.buildHealthReport({
         accounts: [acct()], sessionCount: 9, semaphore: sem(1, 24),
-        remoteHost: config.get().remoteHost, startedAt: 1000, now: 1500,
+        startedAt: 1000, now: 1500,
         detailed: false,
     });
     assert.deepEqual(report, { status: 'ok', shutting_down: false });
@@ -122,7 +119,7 @@ test('handleHealth: writes 503 while shutting down', () => {
 test('handleHealth: a non-loopback peer gets only the minimal readiness report', () => {
     const res = fakeRes();
     health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, {
-        accounts: [acct()], sessionCount: 4, semaphore: sem(0, 24), remoteHost: config.get().remoteHost,
+        accounts: [acct()], sessionCount: 4, semaphore: sem(0, 24),
     });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(JSON.parse(res.body), { status: 'ok', shutting_down: false });
