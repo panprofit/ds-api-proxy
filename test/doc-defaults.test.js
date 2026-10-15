@@ -46,6 +46,7 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_RECOVERY_RETRY_DELAY_MS: 'recoveryRetryDelayMs',
     DS_MALFORMED_TOOL_CALL_COOLDOWN_MS: 'malformedToolCallCooldownMs',
     DS_MAX_SESSION_RESETS_PER_ACCOUNT: 'maxSessionResetsPerAccount',
+    DS_IGNORE_AGENT_SESSION: 'ignoreAgentSession',
     DS_SESSION_TTL_MS: 'sessionTtlMs',
     DS_MAX_SESSIONS: 'maxSessions',
     DS_SESSION_SWEEP_INTERVAL_MS: 'sessionSweepIntervalMs',

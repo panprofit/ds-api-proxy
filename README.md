@@ -252,7 +252,8 @@ How those fields map onto the proxy:
 - `compat.sendSessionAffinityHeaders: true` -> pi sends the session-affinity
   header, which the proxy resolves to `x-agent-session` (see
   [Session routing](#session-routing)). One pi conversation keeps one sticky
-  upstream DS session across requests.
+  upstream DS session across requests. With `DS_IGNORE_AGENT_SESSION=1` the
+  header is ignored and every request gets its own throwaway session instead.
 - `reasoning: true` -> the proxy surfaces DS thinking in the Responses
   `reasoning` output items and in `output_tokens_details.reasoning_tokens`.
 - `input: ["text", "image"]` -> image attachments are uploaded through the

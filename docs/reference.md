@@ -116,8 +116,36 @@ side-channel mitigation. Usage-only and terminal chunks carry no padding.
 The per-agent session key is taken from the first of these request headers that
 is present: `x-agent-session`, `x-session-affinity`, `x-session-id`,
 `session_id`, `x-client-request-id`, the `session`/`user` body fields, or the
-remote address (localhost -> `dev-agent`). Use `x-agent-session` to pin a
-conversation to a specific upstream session; change it to start a fresh one.
+remote address. Use `x-agent-session` to pin a conversation to a specific
+upstream session; change it to start a fresh one.
+
+### Anonymous (ephemeral) mode
+
+A request with **no** session identifier at all is served in *anonymous* mode
+(a unique `anon:<uuid>` key). `DS_IGNORE_AGENT_SESSION=1` forces this mode for
+**every** request, even when the agent does send an identifier — the headers
+above are ignored outright.
+
+Anonymous mode is **stateless on the upstream side**:
+
+- Each request is its own remote conversation. A fresh DS chat session is
+  created and the **full prompt** (all `messages`, the system prompt, tools)
+  is sent on every turn — nothing is reused from the previous turn.
+- The remote session is deleted as soon as the response is written (the
+  upstream delete is fire-and-forget, so it never delays the reply), and the
+  local session record is dropped.
+- Account selection is **LRU-only**: the request skips the sticky-account
+  fast-path and is spread across the pool, so no single account accumulates a
+  long-lived conversation.
+
+In the **non-anonymous** (named-session) mode the proxy keeps one sticky DS chat
+per session id and forwards only the *new* turns: it reuses the existing remote
+session, sends the delta since the last request, and keeps the `parentMessageId`
+thread. That is cheaper (less re-sent history) and preserves upstream context,
+but it is stateful — an idle session is rolled over after `DS_SESSION_TTL_MS`,
+and a shrink of the `messages` array (e.g. a `/compact` summary) resets the
+remote session immediately. Use anonymous mode for one-shot or fully stateless
+clients; use a named session when continuity matters.
 
 ### Account selection and rotation
 
@@ -182,7 +210,8 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_MAX_RESPONSE_WORDS`              | `500`                       | Max response length in words, injected as a system-prompt instruction so the model keeps answers short. `0` disables the instruction.                                                                                                                              |
 | `DS_RECOVERY_RETRY_DELAY_MS`         | `500`                       | Base delay between recovery retries (scaled, capped at 3×).                                                                                                                                                                                                        |
 | `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000`                      | Cooldown after malformed tool-call markup (applied when the account is finally rotated).                                                                                                                                                                           |
-| `DS_MAX_SESSION_RESETS_PER_ACCOUNT`  | `3`                         | Consecutive remote-session recreations on the same account to recover from malformed tool-call markup before the account is rotated.                                                                                                                               |
+| `DS_MAX_SESSION_RESETS_PER_ACCOUNT`  | `3`                         | Consecutive remote-session recreations on the same account to recover from malformed tool-call markup before the account is rotated.
+| `DS_IGNORE_AGENT_SESSION`           | `0` (off)                  | When set to `1`, force every request into the ephemeral anonymous mode: all session-id headers/body fields are ignored and each call gets a unique throwaway session, even from agents that do send an identifier. Off by default, so session headers are honored. |                                                                                                                               |
 | `DS_SESSION_TTL_MS`                  | `7200000` (2 h)             | Idle TTL: a remote session is rolled over only after this long without conversation activity. An actively-used session is never reset on age alone. Independently, a shorter `messages` array than the previous request (a `/compact` summary replacing the history) resets the remote session immediately. |
 | `DS_MAX_SESSIONS`                    | `1000`                      | Max concurrent agent sessions.                                                                                                                                                                                                                                     |
 | `DS_SESSION_SWEEP_INTERVAL_MS`       | `600000` (10 min)           | Interval between idle-session / stale-upload sweeps.                                                                                                                                                                                                               |
