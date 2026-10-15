@@ -335,6 +335,28 @@ test('resetAllRemoteSessions: skips sessions without a remote id', () => {
 
 // --- sweepIdleSessions ------------------------------------------------------
 
+test('sweepIdleSessions: ephemeral sessions use the short backstop age', () => {
+    // An ephemeral session is expected to be deleted right after its response;
+    // the sweep is only a backstop. It must therefore reclaim it on the short
+    // EPHEMERAL_SWEEP_MAX_IDLE_MS age, NOT the long conversational TTL, even
+    // when the caller passes a larger maxIdleMs.
+    const s = getOrCreateAgentSession('anon:test');
+    s.ephemeral = true;
+    s.lastActivityAt = Date.now() - 11 * 60 * 1000;
+    const removed = quietly(() => sweepIdleSessions(SESSION_TTL_MS * 2));
+    assert.equal(removed, 1);
+    assert.equal(getSessionCount(), 0);
+});
+
+test('sweepIdleSessions: a fresh ephemeral session is kept', () => {
+    const s = getOrCreateAgentSession('anon:fresh');
+    s.ephemeral = true;
+    s.lastActivityAt = Date.now();
+    const removed = quietly(() => sweepIdleSessions(SESSION_TTL_MS * 2));
+    assert.equal(removed, 0);
+    assert.equal(getSessionCount(), 1);
+});
+
 test('sweepIdleSessions: deletes the upstream session before dropping an idle one', () => {
     // Regression: a sweep used to call sessions.delete() directly, leaking the
     // remote session on the account. It must route through resetRemoteSession().

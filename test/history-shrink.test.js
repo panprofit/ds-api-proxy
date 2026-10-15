@@ -11,8 +11,11 @@ const handlers = require('../lib/handlers');
 const sessions = require('../lib/sessions');
 const accounts = require('../lib/accounts');
 
+// These tests exercise the session-preserving branches, so they must send a
+// session id: an anonymous request (no headers) is ephemeral and the pipeline
+// would delete the session before the assertions run.
 function fakeReq() {
-    return { headers: {}, socket: { remoteAddress: '127.0.0.1' }, on: () => {} };
+    return { headers: { 'x-session-id': 'dev-agent' }, socket: { remoteAddress: '127.0.0.1' }, on: () => {} };
 }
 
 function fakeRes() {

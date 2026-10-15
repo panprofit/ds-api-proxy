@@ -17,30 +17,28 @@ function fakeReq({ headers = {}, remoteAddress = '10.0.0.9' } = {}) {
 }
 
 test('resolveAgentId: prefers x-agent-session header', () => {
-    const id = handlers.resolveAgentId(fakeReq({ headers: { 'x-agent-session': 'sess-1' } }), {});
-    assert.equal(id, 'sess-1');
+    const r = handlers.resolveAgentId(fakeReq({ headers: { 'x-agent-session': 'sess-1' } }), {});
+    assert.deepEqual(r, { agentId: 'sess-1', ephemeral: false });
 });
 
 test('resolveAgentId: falls through the affinity header list', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-session-affinity': 'a' } }), {}), 'a');
-    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-session-id': 'b' } }), {}), 'b');
-    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { session_id: 'c' } }), {}), 'c');
-    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-client-request-id': 'd' } }), {}), 'd');
+    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-session-affinity': 'a' } }), {}).agentId, 'a');
+    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-session-id': 'b' } }), {}).agentId, 'b');
+    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { session_id: 'c' } }), {}).agentId, 'c');
+    assert.equal(handlers.resolveAgentId(fakeReq({ headers: { 'x-client-request-id': 'd' } }), {}).agentId, 'd');
 });
 
 test('resolveAgentId: falls back to body session/user', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq(), { session: 'bs' }), 'bs');
-    assert.equal(handlers.resolveAgentId(fakeReq(), { user: 'bu' }), 'bu');
+    assert.equal(handlers.resolveAgentId(fakeReq(), { session: 'bs' }).agentId, 'bs');
+    assert.equal(handlers.resolveAgentId(fakeReq(), { user: 'bu' }).agentId, 'bu');
 });
 
-test('resolveAgentId: localhost falls back to dev-agent', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {}), 'dev-agent');
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::1' }), {}), 'dev-agent');
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '::ffff:127.0.0.1' }), {}), 'dev-agent');
-});
-
-test('resolveAgentId: remote address is used when nothing else is set', () => {
-    assert.equal(handlers.resolveAgentId(fakeReq({ remoteAddress: '10.0.0.9' }), {}), '10.0.0.9');
+test('resolveAgentId: no session id yields a unique ephemeral id', () => {
+    const a = handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {});
+    const b = handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {});
+    assert.equal(a.ephemeral, true);
+    assert.match(a.agentId, /^anon:/);
+    assert.notEqual(a.agentId, b.agentId, 'anonymous requests must not share a session');
 });
 
 // --- resolveThinkingEnabled ------------------------------------------------

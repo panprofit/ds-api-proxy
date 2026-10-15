@@ -290,7 +290,9 @@ test('handleChatCompletions: a prompt rollover resets the session before the pro
         // Idle longer than DS_SESSION_TTL_MS (default 2h) => rolled over.
         session.createdAt = Date.now() - 3 * 60 * 60 * 1000;
         session.lastActivityAt = Date.now() - 3 * 60 * 60 * 1000;
-        const req = fakeReq();
+        // A session id keeps the request non-ephemeral, so the rolled-over
+        // session is not deleted by the anonymous-cleanup in finally.
+        const req = fakeReq({ headers: { 'x-session-id': 'dev-agent' } });
         const res = fakeRes();
         await handlers.handleChatCompletions(req, res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
         assert.equal(res.statusCode, 200);
@@ -381,6 +383,44 @@ test('handleResponses: a post-commit context overflow emits response.failed for 
         assert.match(body, /event: response.failed/);
         assert.match(body, /context_length_exceeded/);
         assert.match(body, /[DONE]/);
+    });
+});
+
+test('handleChatCompletions: an anonymous request deletes its ephemeral session', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const deleted = [];
+        sessions.setRemoteSessionDeleter((accountId, sessionId) => { deleted.push(sessionId); });
+        try {
+            const res = fakeRes();
+            // No session header => ephemeral: a fresh remote session is created
+            // for this one request and must be forgotten afterwards.
+            await handlers.handleChatCompletions(fakeReq(), res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
+            assert.equal(res.statusCode, 200);
+            // The fake upstream never creates a remote id, so there is nothing
+            // upstream to delete here; the point is that the ephemeral local
+            // session is gone. With a real upstream session, the same
+            // resetRemoteSession() call deletes the remote chat (see the
+            // resetRemoteSession deleter tests in sessions.test.js).
+            assert.equal(sessions.getSessionCount(), 0, 'the ephemeral local session must be deleted');
+        } finally {
+            sessions.setRemoteSessionDeleter(null);
+        }
+    });
+});
+
+test('handleChatCompletions: a request with a session id keeps its session', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const deleted = [];
+        sessions.setRemoteSessionDeleter((accountId, sessionId) => { deleted.push(sessionId); });
+        try {
+            const res = fakeRes();
+            await handlers.handleChatCompletions(fakeReq({ headers: { 'x-session-id': 'keep-me' } }), res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
+            assert.equal(res.statusCode, 200);
+            assert.ok(sessions.getSessions().has('keep-me'), 'a named session must survive the request');
+            assert.deepEqual(deleted, [], 'no upstream delete for a named session');
+        } finally {
+            sessions.setRemoteSessionDeleter(null);
+        }
     });
 });
 

@@ -448,6 +448,18 @@ test('selectAccountForSession: picks the least-recently-used ready account', () 
     assert.deepEqual([first.id, second.id, third.id], ['a1', 'a2', 'a1']);
 });
 
+test('selectAccountForSession: forceLru ignores a healthy sticky account', () => {
+    const a1 = makeAccount('a1', { lastUsedAt: Date.now() - 60000 });
+    const a2 = makeAccount('a2', { lastUsedAt: Date.now() - 1000 });
+    setAccounts([a1, a2]);
+    // a2 is sticky and healthy, but forceLru (anonymous request) must ignore it
+    // and hand back the least-recently-used account instead.
+    const session = { accountId: 'a2' };
+    const picked = selectAccountForSession(session, { forceLru: true });
+    assert.equal(picked, a1);
+    assert.equal(session.accountId, 'a1');
+});
+
 test('selectAccountForSession: prefers an idle account over a recently used one', () => {
     const now = Date.now();
     // a1 was used long ago, a2 a moment ago. LRU must pick a1 even though a2
