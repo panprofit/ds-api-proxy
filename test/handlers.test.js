@@ -41,6 +41,18 @@ test('resolveAgentId: no session id yields a unique ephemeral id', () => {
     assert.notEqual(a.agentId, b.agentId, 'anonymous requests must not share a session');
 });
 
+test('resolveAgentId: ignoreAgentSession forces ephemeral even when a session header is sent', () => {
+    const config = require('../lib/config');
+    config.reload({ DS_IGNORE_AGENT_SESSION: '1' });
+    try {
+        const r = handlers.resolveAgentId(fakeReq({ headers: { 'x-agent-session': 'sess-1' } }), { session: 'bs' });
+        assert.equal(r.ephemeral, true);
+        assert.match(r.agentId, /^anon:/);
+    } finally {
+        config.reload({});
+    }
+});
+
 // --- resolveThinkingEnabled ------------------------------------------------
 
 test('resolveThinkingEnabled: absent reasoning_effort -> disabled', () => {
