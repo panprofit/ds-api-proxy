@@ -245,13 +245,6 @@ test('shortAgentId: accepts uppercase UUIDs', () => {
     );
 });
 
-test('shortAgentId: shortens the UUID inside an anon: id', () => {
-    assert.equal(
-        http.shortAgentId('anon:b27b72ee-f4e5-43ce-af64-1ceaa116f682'),
-        'anon:1ceaa116f682',
-    );
-});
-
 test('shortAgentId: leaves non-UUID ids unchanged', () => {
     assert.equal(http.shortAgentId('dev-agent'), 'dev-agent');
     assert.equal(http.shortAgentId('127.0.0.1'), '127.0.0.1');

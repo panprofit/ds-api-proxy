@@ -37,7 +37,7 @@ test('resolveAgentId: no session id yields a unique ephemeral id', () => {
     const a = handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {});
     const b = handlers.resolveAgentId(fakeReq({ remoteAddress: '127.0.0.1' }), {});
     assert.equal(a.ephemeral, true);
-    assert.match(a.agentId, /^anon:/);
+    assert.match(a.agentId, /^[0-9a-f-]{36}$/i);
     assert.notEqual(a.agentId, b.agentId, 'anonymous requests must not share a session');
 });
 
@@ -47,7 +47,7 @@ test('resolveAgentId: ignoreAgentSession forces ephemeral even when a session he
     try {
         const r = handlers.resolveAgentId(fakeReq({ headers: { 'x-agent-session': 'sess-1' } }), { session: 'bs' });
         assert.equal(r.ephemeral, true);
-        assert.match(r.agentId, /^anon:/);
+        assert.match(r.agentId, /^[0-9a-f-]{36}$/i);
     } finally {
         config.reload({});
     }

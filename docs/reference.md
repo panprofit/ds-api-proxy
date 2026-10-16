@@ -122,7 +122,7 @@ upstream session; change it to start a fresh one.
 ### Anonymous (ephemeral) mode
 
 A request with **no** session identifier at all is served in *anonymous* mode
-(a unique `anon:<uuid>` key). `DS_IGNORE_AGENT_SESSION=1` forces this mode for
+(a unique UUID key). `DS_IGNORE_AGENT_SESSION=1` forces this mode for
 **every** request, even when the agent does send an identifier — the headers
 above are ignored outright.
 

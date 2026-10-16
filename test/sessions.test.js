@@ -340,7 +340,7 @@ test('sweepIdleSessions: ephemeral sessions use the short backstop age', () => {
     // the sweep is only a backstop. It must therefore reclaim it on the short
     // EPHEMERAL_SWEEP_MAX_IDLE_MS age, NOT the long conversational TTL, even
     // when the caller passes a larger maxIdleMs.
-    const s = getOrCreateAgentSession('anon:test');
+    const s = getOrCreateAgentSession('anon-test');
     s.ephemeral = true;
     s.lastActivityAt = Date.now() - 11 * 60 * 1000;
     const removed = quietly(() => sweepIdleSessions(SESSION_TTL_MS * 2));
@@ -349,7 +349,7 @@ test('sweepIdleSessions: ephemeral sessions use the short backstop age', () => {
 });
 
 test('sweepIdleSessions: a fresh ephemeral session is kept', () => {
-    const s = getOrCreateAgentSession('anon:fresh');
+    const s = getOrCreateAgentSession('anon-fresh');
     s.ephemeral = true;
     s.lastActivityAt = Date.now();
     const removed = quietly(() => sweepIdleSessions(SESSION_TTL_MS * 2));
