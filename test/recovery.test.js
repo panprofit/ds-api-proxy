@@ -1372,6 +1372,29 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
     });
 });
 
+test('runWithRecovery: logs the incremental-prompt diagnostic on the first (fresh-session) turn', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const lines = [];
+        // Mimics selectAccountForSession: no session.id yet, so the first run
+        // takes the fresh-session branch that used to skip the diagnostic.
+        const accountStub = async (args) => {
+            const s = sessions.getOrCreateAgentSession(args.agentId);
+            if (!s.id) { s.id = 'sess-1'; s.messageCount = 0; }
+            return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+        };
+        const ctx = baseCtx({
+            askDSStream: accountStub,
+            readDSResponse: sseOnce([{ content: 'ok', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+            log: (...args) => lines.push(args.join(' ')),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        const line = lines.find(l => l.includes('Incremental prompt:'));
+        assert.ok(line, 'expected the Incremental prompt log line on the first turn');
+        assert.match(line, /1 pending turn\(s\)/);
+    });
+});
+
 // --- stop sequences ---------------------------------------------------------
 
 test('runWithRecovery: stop sequence truncates the visible content', async () => {
