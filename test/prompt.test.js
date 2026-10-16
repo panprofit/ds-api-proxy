@@ -147,6 +147,29 @@ test('formatPendingTurns: renders user and tool turns', () => {
     assert.ok(out.includes('[Tool Result id=c1]'));
 });
 
+test('renderTurn: renders a user turn, a tool turn and nothing else', () => {
+    assert.equal(prompt.renderTurn({ role: 'user', content: 'hello' }), 'User: hello\n\n');
+    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res', tool_call_id: 'c1' }), '[Tool Result id=c1]\nres\n\n');
+    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res' }), '[Tool Result]\nres\n\n');
+    assert.equal(prompt.renderTurn({ role: 'assistant', content: 'x' }), '');
+    assert.equal(prompt.renderTurn({ role: 'user', content: '' }), '');
+    assert.equal(prompt.renderTurn(null), '');
+});
+
+test('formatMessages: renders tool results through the shared renderTurn path', () => {
+    // Guards the formatPendingTurns/formatMessages refactor: the full-history
+    // path must produce byte-identical tool output to the incremental one.
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const msg = { role: 'tool', content: 'out', tool_call_id: 'c9' };
+        const { prompt: conversation } = prompt.formatMessages([msg], []);
+        assert.equal(conversation, prompt.formatPendingTurns([msg]));
+        assert.equal(conversation, '[Tool Result id=c9]\nout');
+    } finally {
+        config.reload({});
+    }
+});
+
 test('formatMessages: separates system prompt and conversation', () => {
     // Disable the default word-cap instruction so this test asserts only the
     // user-supplied system prompt (the cap is covered separately below).
