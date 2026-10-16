@@ -22,28 +22,20 @@ tool-call markup) into the OpenAI Chat Completions format.
 > **Full details:** endpoints, environment variables, account rotation and
 > troubleshooting live in [docs/reference.md](docs/reference.md).
 
-
 1. DS auth configs (token + cookie from a logged-in DS web session) live in a
-   directory of `*.json` files. It defaults to `./.auth`; override only if
-   you keep them elsewhere:
-
-   ```bash
-   export DS_AUTH_DIR=.auth              # optional; ./.auth is the default
-   ```
+   directory of `*.json` files. It defaults to `./.auth`; override `DS_AUTH_DIR`
+   only if you keep them elsewhere.
 
    You can generate the auth file automatically with `npm run auth` (see
    [Auth helper](#auth-helper)) instead of pasting token/cookie by hand.
 
-2. (Optional) Use a `.env` file instead of exporting variables:
-
-   ```bash
-   cp .env.example .env
-   # edit .env, then
-   npm start           # node --env-file-if-exists=.env index.js
-   ```
+2. (Optional) Override defaults with a `.env` file. There is no required
+   setup: every variable already has a default in `lib/config.js`.
 
    `.env` is loaded automatically by `npm start` if present; real environment
-   variables always take precedence over the file.
+   variables always take precedence over the file. See `.env.example` for the
+   full list of supported names and their defaults (a reference, not a
+   template to copy).
 
 3. Start the server:
 

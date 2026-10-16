@@ -19,8 +19,12 @@ Node.js project; the guidelines below keep it that way.
 
 ```bash
 npm install          # installs devDeps and installs the pre-commit hook
-cp .env.example .env # then edit .env
 ```
+
+No `.env` is required: every variable already has a default in `lib/config.js`.
+Copy only the lines you want to override from `.env.example` (a reference list
+of names and defaults, not a template) into `.env`; `npm start` picks it up via
+`--env-file-if-exists`.
 
 `npm install` runs the `prepare` script, which points `core.hooksPath` at the
 committed `.githooks/` directory. Re-install manually with `npm run hooks:install`.
