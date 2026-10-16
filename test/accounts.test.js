@@ -274,11 +274,10 @@ test('persistAccountState: writes future cooldowns, drops expired ones, keeps la
     });
 });
 
-test('persistAccountState: is a no-op when DS_AUTH_DIR is unset', () => {
-    config.reload({ DS_AUTH_DIR: '' });
+test('persistAccountState: resolves a path for the defaulted auth dir', () => {
+    config.reload({});
     try {
-        assert.equal(accountStatePath(), null);
-        // Must not throw even with no directory to write to.
+        assert.equal(accountStatePath(), path.join('./.auth', '.account-state.json'));
         persistAccountState();
     } finally {
         config.reload();
@@ -363,12 +362,19 @@ test('auditAuthDir: ok when the dir exists and accounts loaded', () => {
     });
 });
 
-test('auditAuthDir: error when DS_AUTH_DIR is unset', () => {
-    withEnvDir(null, () => {
+test('auditAuthDir: reports on the defaulted auth dir when DS_AUTH_DIR is unset', () => {
+    const env = { ...process.env };
+    delete env.DS_AUTH_DIR;
+    config.reload(env);
+    try {
         const report = auditAuthDir();
-        assert.equal(report.level, 'error');
-        assert.equal(report.reason, 'unset');
-    });
+        // DS_AUTH_DIR always falls back to ./.auth, which exists in this repo
+        // (with a .gitkeep), so the audit lands on no-configs.
+        assert.equal(report.message.includes('./.auth'), true);
+        assert.equal(report.reason, 'no-configs');
+    } finally {
+        config.reload();
+    }
 });
 
 test('auditAuthDir: error when the dir does not exist', () => {

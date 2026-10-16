@@ -11,6 +11,7 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.port, 9876);
     assert.equal(c.host, '127.0.0.1');
     assert.equal(c.maxConcurrent, 10);
+    assert.equal(c.authDir, './.auth');
 
 
 test('load: DS_MAX_CONCURRENT is capped at 256', () => {

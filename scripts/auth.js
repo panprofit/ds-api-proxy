@@ -749,7 +749,7 @@ async function runRepair(opts) {
         list = list.filter(a => a.id === opts.accountId);
         if (list.length === 0) throw new Error(`no loaded account with id=${opts.accountId}`);
     }
-    if (list.length === 0) throw new Error(`no auth accounts loaded from DS_AUTH_DIR=${cfg.authDir || '(unset)'}`);
+    if (list.length === 0) throw new Error(`no auth accounts loaded from DS_AUTH_DIR=${cfg.authDir}`);
 
     console.log(`[auth:repair] host=${cfg.remoteHost}, accounts=${list.length}`);
     const results = [];

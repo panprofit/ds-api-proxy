@@ -23,10 +23,12 @@ tool-call markup) into the OpenAI Chat Completions format.
 > troubleshooting live in [docs/reference.md](docs/reference.md).
 
 
-1. Export a DS auth config (token + cookie from a logged-in DS web session):
+1. DS auth configs (token + cookie from a logged-in DS web session) live in a
+   directory of `*.json` files. It defaults to `./.auth`; override only if
+   you keep them elsewhere:
 
    ```bash
-   export DS_AUTH_DIR=.auth              # a directory of *.json files
+   export DS_AUTH_DIR=.auth              # optional; ./.auth is the default
    ```
 
    You can generate the auth file automatically with `npm run auth` (see
@@ -117,7 +119,7 @@ existing accounts and re-login any that have expired, use `npm run auth:repair`
 
 - Chrome/Chromium available locally — set `CHROME_PATH` if it is not on a
   standard path (e.g. `CHROME_PATH=$(which chromium) npm run auth`).
-- `DS_AUTH_DIR` set (in the environment or `.env`).
+- `DS_AUTH_DIR` set (in the environment or `.env`) — defaults to `./.auth`.
 
 Flow:
 

@@ -108,7 +108,7 @@ async function main() {
         }
     }
     if (accounts.length === 0) {
-        console.error(`[sessions:delete] FATAL: no auth accounts loaded from DS_AUTH_DIR=${config.get().authDir || '(unset)'}`);
+        console.error(`[sessions:delete] FATAL: no auth accounts loaded from DS_AUTH_DIR=${config.get().authDir}`);
         process.exitCode = 1;
         return;
     }

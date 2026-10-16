@@ -22,6 +22,7 @@ const REFERENCE = fs.readFileSync(path.join(__dirname, '..', 'docs', 'reference.
 const DOC_KEY_TO_CONFIG_FIELD = {
     PORT: 'port',
     HOST: 'host',
+    DS_AUTH_DIR: 'authDir',
     DS_ACCOUNT_COOLDOWN_MS: 'accountCooldownMs',
     DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: 'accountMinCompletionIntervalMs',
     DS_ACCOUNT_STATE_FLUSH_MS: 'accountStateFlushMs',
