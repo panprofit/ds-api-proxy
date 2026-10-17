@@ -477,6 +477,21 @@ test('normalizeInput: reasoning items are dropped', () => {
     assert.equal(out[0].content, 'hi');
 });
 
+test('normalizeInput: dropped reasoning item is logged under DS_DEBUG', () => {
+    const prev = process.env.DS_DEBUG;
+    const lines = [];
+    const orig = console.log;
+    process.env.DS_DEBUG = '1';
+    console.log = (...a) => lines.push(a.join(' '));
+    try {
+        responses.normalizeInput([{ type: 'reasoning', id: 'rs_1' }, { role: 'user', content: 'hi' }]);
+    } finally {
+        console.log = orig;
+        if (prev === undefined) delete process.env.DS_DEBUG; else process.env.DS_DEBUG = prev;
+    }
+    assert.ok(lines.some(l => l.includes('dropping reasoning item') && l.includes('rs_1')), `expected a reasoning-drop log, got: ${lines.join(' | ')}`);
+});
+
 test('normalizeInput: an untagged object with role becomes a message', () => {
     const out = responses.normalizeInput([{ role: 'assistant', content: 'yo' }]);
     assert.equal(out[0].role, 'assistant');
@@ -553,6 +568,21 @@ test('normalizeTools: already-nested tools pass through unchanged', () => {
 
 test('normalizeTools: hosted/non-function tools are dropped', () => {
     assert.deepEqual(responses.normalizeTools([{ type: 'web_search' }]), []);
+});
+
+test('normalizeTools: dropped hosted tool is logged under DS_DEBUG', () => {
+    const prev = process.env.DS_DEBUG;
+    const lines = [];
+    const orig = console.log;
+    process.env.DS_DEBUG = '1';
+    console.log = (...a) => lines.push(a.join(' '));
+    try {
+        responses.normalizeTools([{ type: 'web_search' }]);
+    } finally {
+        console.log = orig;
+        if (prev === undefined) delete process.env.DS_DEBUG; else process.env.DS_DEBUG = prev;
+    }
+    assert.ok(lines.some(l => l.includes('dropping unsupported tool type') && l.includes('web_search')), `expected a hosted-tool drop log, got: ${lines.join(' | ')}`);
 });
 
 test('normalizeTools: invalid entries are dropped', () => {
