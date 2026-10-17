@@ -12,3 +12,12 @@ if (MODE === 'boot-crash') {
 } else if (MODE === 'uncaught') {
     setTimeout(() => { throw new Error('injected uncaught'); }, 100);
 }
+// sweep-throw: make the periodic idle-session sweep throw, so index.js's
+// try/catch around it (the setInterval callback in main()) is exercised while
+// the server keeps serving. sweepIdleSessions is destructured from
+// ./lib/sessions when index.js loads, so replacing it here is what index.js
+// will capture - hence this must run before requiring index.js.
+if (MODE === 'sweep-throw') {
+    const sessions = require(process.env.DS_TEST_SESSIONS_PATH);
+    sessions.sweepIdleSessions = () => { throw new Error('injected sweep failure'); };
+}

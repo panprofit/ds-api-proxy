@@ -55,7 +55,7 @@ async function runLauncher(mode, timeoutMs = 8000) {
             resolve({ code, signal, out });
         });
     });
-    return { child, done };
+    return { child, done, log: () => out };
 }
 
 test('index.js: an uncaughtException is logged with its stack and exits 1', async () => {
@@ -73,4 +73,55 @@ test('index.js: a throw from main() at boot is reported as FATAL and exits 1', a
     assert.equal(code, 1, 'a boot failure must exit with status 1');
     assert.match(out, /\[DS-API\] FATAL:/);
     assert.match(out, /injected boot failure/);
+});
+
+// Start the launcher and wait until it reports listening on its port.
+async function startAndWait() {
+    const port = await freePort();
+    const child = spawn(process.execPath, ['--require', PRELOAD, path.join(ROOT, 'index.js')], {
+        env: {
+            ...process.env,
+            DS_AUTH_DIR: '/nonexistent',
+            HOST: '127.0.0.1',
+            PORT: String(port),
+            DS_TEST_MODE: 'sweep-throw',
+            DS_TEST_SERVER_PATH: path.join(ROOT, 'lib', 'server.js'),
+            DS_TEST_SESSIONS_PATH: path.join(ROOT, 'lib', 'sessions.js'),
+            DS_SESSION_SWEEP_INTERVAL_MS: '1000',
+            DS_DEBUG: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { out += d; });
+    const done = new Promise((resolve) => {
+        child.on('exit', (code, signal) => resolve({ code, signal, out }));
+    });
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+        if (out.includes('Server on')) break;
+        if (child.exitCode !== null) throw new Error('server exited early: ' + out);
+        await new Promise(r => setTimeout(r, 50));
+    }
+    return { child, done, log: () => out };
+}
+test('index.js: a throwing idle-session sweep is caught, logged and does not kill the server', async () => {
+    // The setInterval callback in main() must not let a sweep failure become an
+    // uncaughtException (which exits). DS_DEBUG=1 is required because the catch
+    // logs through debugLog(). The interval is 1000ms (the config minimum).
+    const { child, done, log } = await startAndWait();
+    try {
+        const deadline = Date.now() + 4000;
+        while (Date.now() < deadline) {
+            if (/sweepIdleSessions failed: injected sweep failure/.test(log())) break;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        assert.match(log(), /sweepIdleSessions failed: injected sweep failure/);
+        assert.equal(child.exitCode, null, 'the server must keep running after a failed sweep');
+        assert.doesNotMatch(log(), /uncaughtException/);
+    } finally {
+        child.kill('SIGKILL');
+        await done;
+    }
 });
