@@ -16,6 +16,7 @@ const {
     getSessions,
     getSessionCount,
     createSession,
+    deleteSession,
     resetRemoteSession,
     prepareSessionForPrompt,
     getOrCreateAgentSession,
@@ -117,6 +118,17 @@ test('getOrCreateAgentSession: ids sharing the truncation prefix collide', () =>
     const b = getOrCreateAgentSession(base + 'BBB');
     assert.equal(a, b);
     assert.equal(getSessionCount(), 1);
+});
+
+test('deleteSession: deletes a long id under its truncated key, not the raw one', () => {
+    const longId = 'z'.repeat(MAX_SESSION_ID_LENGTH + 20);
+    const created = getOrCreateAgentSession(longId);
+    assert.equal(getSessionCount(), 1);
+    // The raw id is not a registry key, so deleting must truncate first or the
+    // entry (and its remote session) would leak.
+    assert.equal(deleteSession(longId), true);
+    assert.equal(getSessionCount(), 0);
+    assert.notEqual(getOrCreateAgentSession(longId), created);
 });
 
 test('getOrCreateAgentSession: repairs a session whose sentKeys is not a Set', () => {
