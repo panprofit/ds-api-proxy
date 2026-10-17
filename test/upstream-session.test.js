@@ -343,6 +343,19 @@ test('askDSStream: throttles before solving PoW', async () => {
     assert.equal(calls.completions.length, 1);
 });
 
+test('askDSStream: creates a fresh session before solving PoW so the header stays fresh', async () => {
+    // A fresh session costs a create round-trip. Solving the time/nonce-bound
+    // PoW before it could let the challenge expire before the completion is
+    // sent, so the order must be create -> pow.
+    const order = [];
+    const { deps } = makeDeps();
+    deps.createRemoteSession = async () => { order.push('create'); return 'sess-1'; };
+    deps.solvePowForPath = async () => { order.push('pow'); return 'pow'; };
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    assert.deepEqual(order, ['create', 'pow']);
+});
+
 test('askDSStream: forwards deadlineHit and clientGone into the throttle', async () => {
     const rec = throttleRecorder();
     const { deps } = makeDeps({ waitForCompletionSlot: rec.slot });
