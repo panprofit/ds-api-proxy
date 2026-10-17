@@ -477,7 +477,7 @@ test('normalizeInput: reasoning items are dropped', () => {
     assert.equal(out[0].content, 'hi');
 });
 
-test('normalizeInput: untagged object with role falls back to a message', () => {
+test('normalizeInput: an untagged object with role becomes a message', () => {
     const out = responses.normalizeInput([{ role: 'assistant', content: 'yo' }]);
     assert.equal(out[0].role, 'assistant');
     assert.equal(out[0].content, 'yo');
@@ -485,6 +485,13 @@ test('normalizeInput: untagged object with role falls back to a message', () => 
 
 test('normalizeInput: skips non-object entries', () => {
     assert.deepEqual(responses.normalizeInput([null, 5, 'x']), []);
+});
+
+test('normalizeInput: an unknown item type with a role falls back to a message', () => {
+    // Distinct from the untagged branch: a present-but-unrecognized `type`
+    // (forward-compat) still carries role/content, so it must not be dropped.
+    const out = responses.normalizeInput([{ type: 'future_item', role: 'assistant', content: 'yo' }]);
+    assert.deepEqual(out, [{ role: 'assistant', content: 'yo' }]);
 });
 
 
@@ -588,4 +595,24 @@ test('toInternalParams: text.format json_schema maps to a json_schema block', ()
 
 test('toInternalParams: no text.format -> response_format undefined', () => {
     assert.equal(responses.toInternalParams({ input: 'hi' }).response_format, undefined);
+});
+
+test('toInternalParams: an unknown text.format type -> response_format undefined', () => {
+    assert.equal(responses.toInternalParams({ input: 'hi', text: { format: { type: 'nope' } } }).response_format, undefined);
+});
+
+test('toInternalParams: instructions become a leading system message', () => {
+    const internal = responses.toInternalParams({
+        instructions: 'be terse',
+        input: [{ type: 'message', role: 'user', content: 'hi' }],
+    });
+    assert.deepEqual(internal.messages, [
+        { role: 'system', content: 'be terse' },
+        { role: 'user', content: 'hi' },
+    ]);
+});
+
+test('toInternalParams: a blank or non-string instructions field is ignored', () => {
+    assert.deepEqual(responses.toInternalParams({ instructions: '   ', input: 'hi' }).messages, [{ role: 'user', content: 'hi' }]);
+    assert.deepEqual(responses.toInternalParams({ instructions: 5, input: 'hi' }).messages, [{ role: 'user', content: 'hi' }]);
 });
