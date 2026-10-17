@@ -118,6 +118,26 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
+    // The completion carries its own signal (see the next test), so it never
+    // falls back to dsFetch's shorter generic timeout.
+    assert.equal(seenOpts.opts.signal.constructor.name, 'AbortSignal');
+});
+
+test('dsChatCompletionWithPow: bounds the call by the request deadline, not the fetch timeout', async () => {
+    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_FETCH_TIMEOUT_MS: '1000' });
+    try {
+        assert.equal(upstream.completionTimeoutMs(), 123456);
+        let seenSignal = null;
+        await withFetch(async (url, opts) => { seenSignal = opts.signal; return jsonResponse({}); }, async () => {
+            await upstream.dsChatCompletionWithPow({
+                sessionId: 's1', parentMessageId: 'p1', prompt: 'hi', powHeader: 'POW', dsHeaders: {},
+            });
+        });
+        assert.ok(seenSignal);
+        assert.equal(seenSignal.constructor.name, 'AbortSignal');
+    } finally {
+        config.reload({});
+    }
 });
 
 // --- createRemoteSession ----------------------------------------------------
