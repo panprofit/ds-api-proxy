@@ -10,7 +10,7 @@ Node.js project; the guidelines below keep it that way.
 
 ## Requirements
 
-- **Node.js >= 22** (see `.nvmrc`; `nvm use` picks it up). CI also runs Node 24.
+- **Node.js >= 24** (see `.nvmrc`; `nvm use` picks it up).
 - No runtime dependencies. `eslint`, `@eslint/js` and `globals` are the only
   devDependencies — please do not add runtime dependencies without a strong
   reason discussed in an issue first.
@@ -54,7 +54,7 @@ Formatting is pinned by `.editorconfig` (4-space indent, LF, final newline).
 - **Add tests with the code.** New modules get a direct `test/<module>.test.js`;
   bug fixes get a regression test that fails without the fix.
 - The coverage gate requires **95% lines / 90% functions / 90% branches**
-  (`npm run test:coverage`). CI runs it on Node 22 and 24.
+  (`npm run test:coverage`). CI runs it on Node 24.
 - Tests must not reach the network or open real sockets. Inject dependencies
   (`askDSStream`, `readDSResponse`, account/session stubs) as the existing
   suites do.

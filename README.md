@@ -5,7 +5,7 @@ proof-of-work challenge, rotates across multiple auth accounts, keeps a sticky
 remote chat session per agent, and translates DS responses (including truncated
 tool-call markup) into the OpenAI Chat Completions format.
 
-- Node.js **>= 22** (uses the built-in `fetch`, `AbortSignal.timeout`, `node:test`
+- Node.js **>= 24** (uses the built-in `fetch`, `AbortSignal.timeout`, `node:test`
   and `--env-file-if-exists`)
 - No runtime dependencies — everything is in the standard library.
 
@@ -284,11 +284,11 @@ npm run lint          # eslint .
 npm run check         # node --check on index.js and lib/*.js, then eslint .
 ```
 
-CI runs syntax check + lint, then tests with a coverage gate, on Node 22 and
-24 (`.github/workflows/test.yml`). Formatting is pinned by `.editorconfig`
+CI runs syntax check + lint, then tests with a coverage gate, on Node 24
+(`.github/workflows/test.yml`). Formatting is pinned by `.editorconfig`
 (4-space indent, LF, final newline).
 
-The Node version is pinned by `.nvmrc` (`22`); `nvm use` picks it up.
+The Node version is pinned by `.nvmrc` (`24`); `nvm use` picks it up.
 
 ### Pre-commit hook
 

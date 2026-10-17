@@ -9,7 +9,7 @@ OpenAI-compatible proxy for the DeepSeek web chat API. Adds PoW solving,
 multi-account rotation, tool-call parsing/repair and recovery on top of DS's
 private Web API, exposing `/v1/chat/completions` and `/v1/responses`.
 
-- Runtime: **Node >= 22**, **CommonJS**, every file starts with `'use strict';`.
+- Runtime: **Node >= 24**, **CommonJS**, every file starts with `'use strict';`.
 - Zero runtime dependencies. Dev-only: eslint, typescript (for `tsc` checking).
 - Entry point: `index.js` (process/lifecycle wiring) -> `lib/server.js` (router).
 
@@ -167,7 +167,7 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
 
 ## Environment notes
 
-- Node 22+ is required (`--env-file-if-exists` is used by the start scripts).
+- Node 24+ is required (`--env-file-if-exists` is used by the start scripts).
 - `npm run auth` (and `auth:repair`) needs a real browser (AWS WAF JS challenge);
   set `CHROME_PATH` if Chrome/Chromium is not in a standard location.
 - See `.env.example` for every tunable and its default.
