@@ -571,6 +571,42 @@ test('runWithRecovery: unknown tool name is corrected by one retry in the same s
     });
 });
 
+test('runWithRecovery: unknown-tool retry appends reasoning instead of overwriting it', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const bad = '{"tool_call":{"name":"nope","arguments":{}}}';
+        const good = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1'), makeAccount('a1')]),
+            readDSResponse: sseOnce([
+                { content: bad, reasoningContent: 'first', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: good, reasoningContent: 'second', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.reasoningContent, 'first\nsecond', 'the corrective retry reasoning must be appended, not replace');
+    });
+});
+
+test('runWithRecovery: unknown-tool retry keeps the initial reasoning when the retry has none', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const bad = '{"tool_call":{"name":"nope","arguments":{}}}';
+        const good = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([makeAccount('a1'), makeAccount('a1')]),
+            readDSResponse: sseOnce([
+                { content: bad, reasoningContent: 'kept', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: good, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.reasoningContent, 'kept', 'the initial reasoning must survive a reasoning-less retry');
+    });
+});
+
 test('runWithRecovery: unknown tool stays unknown after the retry -> terminal, no rotation', async () => {
     const accountsArr = accounts.getAccounts();
     const saved = accountsArr.slice();

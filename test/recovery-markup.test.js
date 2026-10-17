@@ -171,6 +171,20 @@ test('runStrictToolRetry: a clean retry replaces the content and tool call', asy
     });
 });
 
+test('runStrictToolRetry: appends the retry reasoning instead of overwriting it', async () => {
+    await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const good = '{"tool_call":{"name":"read","arguments":{"p":9}}}';
+        const { state, deps } = makeCtx({
+            content: '{"tool_call":{"name":"read","arguments":{"p":',
+            responses: [{ content: good, reasoningContent: 'after', messageId: 'm', finishReason: 'stop', modelError: null }],
+        });
+        state.reasoningContent = 'prior';
+        await runStrictToolRetry(state, deps);
+        assert.ok(state.toolCall);
+        assert.equal(state.reasoningContent, 'prior\nafter');
+    });
+});
+
 test('runStrictToolRetry: a still-broken retry leaves toolCall null', async () => {
     await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
         const { state, deps } = makeCtx({
