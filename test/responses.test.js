@@ -492,6 +492,23 @@ test('normalizeInput: dropped reasoning item is logged under DS_DEBUG', () => {
     assert.ok(lines.some(l => l.includes('dropping reasoning item') && l.includes('rs_1')), `expected a reasoning-drop log, got: ${lines.join(' | ')}`);
 });
 
+test('normalizeInput: an unrecognized typed item is dropped and logged under DS_DEBUG', () => {
+    const prev = process.env.DS_DEBUG;
+    const lines = [];
+    const orig = console.log;
+    process.env.DS_DEBUG = '1';
+    console.log = (...a) => lines.push(a.join(' '));
+    let out;
+    try {
+        out = responses.normalizeInput([{ type: 'web_search_call', id: 'ws_1' }, { role: 'user', content: 'hi' }]);
+    } finally {
+        console.log = orig;
+        if (prev === undefined) delete process.env.DS_DEBUG; else process.env.DS_DEBUG = prev;
+    }
+    assert.equal(out.length, 1);
+    assert.ok(lines.some(l => l.includes('unrecognized input item type') && l.includes('web_search_call')), `expected an unknown-item log, got: ${lines.join(' | ')}`);
+});
+
 test('normalizeInput: an untagged object with role becomes a message', () => {
     const out = responses.normalizeInput([{ role: 'assistant', content: 'yo' }]);
     assert.equal(out[0].role, 'assistant');
