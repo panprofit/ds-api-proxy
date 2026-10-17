@@ -10,6 +10,7 @@ const {
     isContextTooLongError,
     isRefusalContent,
     isToolResultEcho,
+    stripToolResultEchoes,
     normalizeRetryResponse,
     classifyRecoveryFailure,
     isUpstreamTransientError,
@@ -72,11 +73,11 @@ test('isToolResultEcho: requires the marker at line start', () => {
     assert.equal(isToolResultEcho('see [Tool Result id=call_x] here'), false);
 });
 
-test('isToolResultEcho: an unclosed marker line is left alone', () => {
-    // No closing tag -> likely a real partial continuation that merely starts
-    // with the words; stripping it would lose content.
+test('isToolResultEcho: a line-anchored marker without a closing tag is still an echo', () => {
+    // prompt.renderTurn writes the envelope without [/Tool Result], so the
+    // model's imitation has no closing tag either.
     const text = '[Tool Result id=call_deadbeef]\nno close tag here';
-    assert.equal(isToolResultEcho(text), false);
+    assert.equal(isToolResultEcho(text), true);
 });
 
 test('isToolResultEcho: false for plain prose and empty input', () => {
@@ -224,4 +225,27 @@ test('looksLikeActionPromise: only the tail matters (long answer wins)', () => {
     const long = 'First let me explain the approach. ' + 'filler '.repeat(40) + 'In conclusion, the fix is complete.';
     assert.ok(long.length > 200);
     assert.equal(looksLikeActionPromise(long), false);
+});
+
+test('stripToolResultEchoes: removes a balanced envelope and keeps surrounding prose', () => {
+    const text = 'Before\n[Tool Result id=call_1]\nFAKE\n[/Tool Result]\nAfter';
+    assert.equal(stripToolResultEchoes(text), 'Before\nAfter');
+});
+
+test('stripToolResultEchoes: removes multiple envelopes', () => {
+    const text = '[Tool Result id=a]\nx\n[/Tool Result]\nmid\n[Tool Result id=b]\ny\n[/Tool Result]';
+    assert.equal(stripToolResultEchoes(text), 'mid');
+});
+
+test('stripToolResultEchoes: recognizes the id-less and empty-id harness forms', () => {
+    assert.equal(stripToolResultEchoes('[Tool Result]\nx\n[/Tool Result]'), '');
+    assert.equal(stripToolResultEchoes('[Tool Result ]\nx\n[/Tool Result]'), '');
+    assert.equal(isToolResultEcho('[Tool Result]\nx\n[/Tool Result]'), true);
+});
+
+test('stripToolResultEchoes: drops an unclosed marker and its body, keeps preceding prose', () => {
+    assert.equal(stripToolResultEchoes('[Tool Result id=call_x]\nno close'), '');
+    assert.equal(stripToolResultEchoes('before\n[Tool Result id=call_x]\nFAKE'), 'before');
+    assert.equal(stripToolResultEchoes('see [Tool Result id=call_x] here'), 'see [Tool Result id=call_x] here');
+    assert.equal(stripToolResultEchoes(null), '');
 });

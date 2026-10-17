@@ -1700,3 +1700,75 @@ test('runWithRecovery: an upstream HTTP 429 propagates to the caller instead of 
         );
     });
 });
+
+test('runWithRecovery: an initial [Tool Result ...] echo is re-prompted and the real answer is delivered', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT\n[/Tool Result]';
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'the real answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'the real answer');
+            assert.doesNotMatch(out.fullContent, /FAKE OUTPUT/);
+            assert.equal(calls.length, 2);
+            assert.equal(a1.failures, 0);
+            assert.equal(a1.cooldownUntil, 0);
+        });
+    });
+});
+
+test('runWithRecovery: a persistent [Tool Result ...] echo is dropped to empty without reset or rotation', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT\n[/Tool Result]';
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: echo, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, '');
+            assert.doesNotMatch(JSON.stringify(out), /FAKE OUTPUT/);
+            assert.equal(calls.length, 2);
+            assert.equal(a1.failures, 0);
+            assert.equal(a1.cooldownUntil, 0);
+        });
+    });
+});
+
+test('runWithRecovery: an unbalanced [Tool Result ...] echo (the real prompt format) is re-prompted', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT';
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'the real answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'the real answer');
+            assert.doesNotMatch(out.fullContent, /FAKE OUTPUT/);
+            assert.equal(calls.length, 2);
+            assert.equal(a1.failures, 0);
+            assert.equal(a1.cooldownUntil, 0);
+        });
+    });
+});
