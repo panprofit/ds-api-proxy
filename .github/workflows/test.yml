@@ -24,3 +24,5 @@ jobs:
         run: npm run check
       - name: Tests + coverage gate
         run: npm run test:coverage
+      - name: index.js per-file coverage gate
+        run: npm run test:coverage:index
