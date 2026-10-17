@@ -99,6 +99,17 @@ test('createServer: a non-GET request to /health is 405', async () => {
     srv.server.close();
 });
 
+test('createServer: a malformed request URL is 400 instead of a hung socket', async () => {
+    const { srv } = build();
+    const res = fakeRes();
+    // `//[` makes `new URL(req.url, base)` throw. The async request handler must
+    // catch it and answer, not leak an unhandledRejection and stall the client.
+    await dispatch(srv, fakeReq({ url: '//[' }), res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body()).error.type, 'invalid_request_error');
+    srv.server.close();
+});
+
 test('createServer: an unknown path is 404', async () => {
     const { srv } = build();
     const res = fakeRes();
