@@ -1,7 +1,7 @@
 'use strict';
 // Tests for lib/recovery.js runWithRecovery. These inject fake askDSStream /
 // readDSResponse functions and stub the accounts/sessions singletons so the
-// control-flow (empty-retry, continuation, markup-completion, account
+// control-flow (empty-retry, continuation, account
 // rotation) is exercised without any network or HTTP server.
 
 const { test } = require('node:test');
@@ -1081,7 +1081,7 @@ test('runWithRecovery: a tool-result echo with an ISSUED id is still not merged'
 });
 
 
-// --- auto-continuation / markup-completion / strict retry -------------------
+// --- auto-continuation -----------------------------------------------------
 //
 // These passes are driven through runWithRecovery: the injected
 // readDSResponse returns length-finished content or truncated tool-call
@@ -1169,99 +1169,6 @@ test('runWithRecovery: continuation that rotates account is skipped and session 
     });
 });
 
-test('runWithRecovery: markup completion repairs a truncated tool call', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_MARKUP_COMPLETION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const truncated = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}';
-            const calls = [];
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                askDSStream: askStub([makeAccount('a1')], calls),
-                readDSResponse: sseOnce([
-                    { content: truncated, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: '}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.ok(out.toolCall);
-            assert.equal(out.toolCall.name, 'read');
-            assert.equal(calls.length, 2);
-        });
-    });
-});
-
-test('runWithRecovery: markup completion ignores a fenced restart', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_MARKUP_COMPLETION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const truncated = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}';
-            const fenced = '```json\n{"tool_call"...';
-            // A clean tool call for the later strict-retry pass, so the run
-            // terminates deterministically with ok:true.
-            const clean = '{"tool_call":{"name":"read","arguments":{"path":"/y"}}}';
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                askDSStream: askStub([makeAccount('a1')]),
-                readDSResponse: sseOnce([
-                    { content: truncated, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: fenced, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                    { content: clean, reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            // The fenced completion must never be appended to the content.
-            assert.ok(!out.fullContent.includes('```'), `fenced completion leaked into content: ${out.fullContent}`);
-            assert.equal(out.fullContent, clean);
-            assert.ok(out.toolCall);
-            assert.deepEqual(JSON.parse(out.toolCall.arguments), { path: '/y' });
-        });
-    });
-});
-
-test('runWithRecovery: strict retry succeeds with a clean tool call after reset', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_MARKUP_COMPLETION: '0', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const truncated = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}';
-            const clean = '{"tool_call":{"name":"read","arguments":{"path":"/y"}}}';
-            const calls = [];
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                askDSStream: askStub([makeAccount('a1')], calls),
-                readDSResponse: sseOnce([
-                    { content: truncated, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: clean, reasoningContent: 'r', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.ok(out.toolCall);
-            assert.deepEqual(JSON.parse(out.toolCall.arguments), { path: '/y' });
-            assert.equal(out.reasoningContent, 'r');
-        });
-    });
-});
-
-test('runWithRecovery: strict retry that stays broken returns 429 for the only account', async () => {
-    // Sole account already cooling down so the terminal error path (not a
-    // rotation) is what surfaces the 429.
-    const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
-    await withAccounts([cooling], async () => {
-        await withConfig({ DS_MAX_MARKUP_COMPLETION: '0', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const truncated = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}';
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                deadlineHit: () => true,
-                askDSStream: askStub([cooling]),
-                readDSResponse: async () => ({ content: truncated, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, false);
-            assert.equal(out.error.status, 429);
-            assert.equal(out.error.body.type, 'rate_limit_error');
-        });
-    });
-});
-
 test('runWithRecovery: MEDIA paths from tool results are injected when absent', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         // extractScreenshotPaths() stats the path with the real fs, so create a
@@ -1301,65 +1208,6 @@ test('runWithRecovery: a fresh session marks every turn sent', async () => {
         assert.equal(out.ok, true);
         assert.equal(ctx.session.sentKeys.size, 2);
     });
-});
-
-test('runWithRecovery: unclosed-markup log carries a markup diagnostic summary', async () => {
-    // A DSML opening tag that never closes: hasUnclosedToolMarkup() is true,
-    // so runMarkupCompletion runs and must log the enriched diagnostic
-    // (length/shape/dsmlTags/parse + head/tail) plus the markup-dump line.
-    // Cap the completion rounds at 1 so the loop logs the diagnostic once
-    // and then exits; deadlineHit must stay false or the loop is skipped.
-    const config = require('../lib/config');
-    config.reload({ DS_MAX_MARKUP_COMPLETION: '1' });
-    try {
-    await withAccounts([makeAccount('a1')], async () => {
-        const lines = [];
-        const content = '<|DSML|invoke name="read"><|DSML|parameter name="path">';
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-            log: (...args) => lines.push(args.join(' ')),
-            askDSStream: askStub([makeAccount('a1')]),
-            readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
-        });
-        await runWithRecovery(ctx);
-        const unclosed = lines.find(l => l.includes('Unclosed tool-call markup'));
-        assert.ok(unclosed, 'expected an Unclosed tool-call markup log line');
-        assert.match(unclosed, /shape=dsml/);
-        assert.match(unclosed, /dsmlTags=/);
-        assert.match(unclosed, /parse=/);
-        assert.ok(lines.some(l => l.includes('Markup head=') && l.includes('tail=')), 'expected a head/tail diagnostic line');
-    });
-    } finally {
-        config.reload();
-    }
-});
-
-test('runWithRecovery: strict-retry log carries a markup diagnostic summary', async () => {
-    // JSON-shaped markup that looks like a tool call but never parses. The
-    // completion rounds are disabled (maxMarkupCompletion=0), so control
-    // reaches runStrictToolRetry and the invalid/truncated log line.
-    const config = require('../lib/config');
-    config.reload({ DS_MAX_MARKUP_COMPLETION: '0' });
-    try {
-        await withAccounts([makeAccount('a1')], async () => {
-            const lines = [];
-            const content = '{"tool_call":{"name":"read","arguments":{"path":';
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                log: (...args) => lines.push(args.join(' ')),
-                askDSStream: askStub([makeAccount('a1')]),
-                readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
-            });
-            await runWithRecovery(ctx);
-            const strict = lines.find(l => l.includes('invalid/truncated'));
-            assert.ok(strict, 'expected a Tool-call markup detected but invalid/truncated log line');
-            assert.match(strict, /shape=json/);
-            assert.match(strict, /parse=/);
-            assert.ok(lines.some(l => l.includes('Markup head=') && l.includes('tail=')), 'expected a head/tail diagnostic line');
-        });
-    } finally {
-        config.reload();
-    }
 });
 
 test('runWithRecovery: a reused session forwards only pending turns', async () => {
@@ -1533,29 +1381,6 @@ test('runWithRecovery: promise marker on a LONG body does not continue', async (
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
         assert.equal(calls.length, 1, 'a body over actionPromiseMaxChars is not a promise');
-    });
-});
-
-test('runWithRecovery: truncated tool markup is left to markup completion, not action-promise', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const calls = [];
-        // Looks like markup but never closes -> markup completion path.
-        const MK_START = '<|tool\u2581calls\u2581begin|>';
-        const MK_END = '<|tool\u2581calls\u2581end|>';
-        const truncated = MK_START + '[{"name":"read","arguments":{"path":"';
-        const toolJson = MK_START + '[{"name":"read","arguments":{"path":"/x"}}]' + MK_END;
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-            askDSStream: askStub([makeAccount('a1'), makeAccount('a1'), makeAccount('a1')], calls),
-            readDSResponse: sseOnce([
-                { content: truncated, reasoningContent: 'now I will call the tool', messageId: 'm1', finishReason: 'stop', modelError: null },
-                { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-            ]),
-        });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.ok(out.toolCall, 'markup completion must still recover the truncated call');
-        assert.equal(out.toolCall.name, 'read');
     });
 });
 
