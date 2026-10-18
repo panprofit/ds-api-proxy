@@ -1257,31 +1257,38 @@ test('runWithRecovery: stop does not truncate a tool call', async () => {
     });
 });
 
-// --- action-promise continuation -------------------------------------------
+// --- action-promise rotation -----------------------------------------------
 // A reasoning block followed by a SHORT final line ("Let me check the tests")
 // with finish=stop and no tool call used to strand the client: phaseReasoningOnly
 // needs an EMPTY body and runAutoContinuation needs finish=length or >25k chars.
-// phaseActionPromise asks once for the actual action.
+// phaseActionPromise rotates the account instead of re-prompting.
 
-test('runWithRecovery: short action-promise triggers one continuation -> tool call', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const calls = [];
-        const promise = 'Let me check the tests.';
-        const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-            askDSStream: askStub([makeAccount('a1'), makeAccount('a1')], calls),
-            readDSResponse: sseOnce([
-                { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: 'stop', modelError: null },
-                { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-            ]),
+test('runWithRecovery: short action-promise rotates to the next account and yields the tool call', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const promise = 'Let me check the tests.';
+            const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.ok(out.toolCall, 'the promised action must become a real tool call');
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
+            // The retry is a plain fresh attempt, not a corrective re-prompt.
+            assert.equal(calls[1].prompt, calls[0].prompt);
+            assert.equal(a1.cooldownUntil, 0);
+            assert.equal(a1.failures, 0);
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.ok(out.toolCall, 'the promised action must become a real tool call');
-        assert.equal(out.toolCall.name, 'read');
-        assert.equal(calls.length, 2, 'one continuation round');
-        assert.match(calls[1].prompt, /did not actually do it/);
     });
 });
 
@@ -1371,24 +1378,25 @@ test('runWithRecovery: context-too-long stops empty-retries before burning one',
     });
 });
 
-test('runWithRecovery: an action-promise continuation that returns nothing keeps the original body', async () => {
+test('runWithRecovery: action-promise gives up with a terminal 502 when rotation is impossible', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         const calls = [];
         const ctx = baseCtx({
             tools: [{ type: 'function', function: { name: 'read' } }],
-            askDSStream: askStub([a1, a1], calls),
+            // The client is gone, so rotation cannot wait for an account.
+            clientGone: () => true,
+            askDSStream: askStub([a1], calls),
             readDSResponse: sseOnce([
                 { content: 'Let me check the tests.', reasoningContent: 'I should look at the tests.', messageId: 'm1', finishReason: 'stop', modelError: null },
-                { content: '', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
             ]),
         });
-        ctx.session.accountId = a1.id;
         const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(calls.length, 2, 'exactly one continuation round');
-        assert.equal(out.fullContent, 'Let me check the tests.', 'the original promise body must be preserved');
-        assert.equal(out.toolCall, null);
+        assert.equal(calls.length, 1);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.status, 502);
+        assert.equal(out.error.body.type, 'action_promise');
+        assert.equal(a1.cooldownUntil, 0);
     });
 });
 
