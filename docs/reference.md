@@ -71,13 +71,11 @@ not a request), except for a lone ```sh/```bash fence, which is treated as a
 
 If the parsed call names a tool that is **not** in the request's `tools` list,
 the proxy does **not** treat it as broken markup (the JSON was valid — the model
-just hallucinated a name). It re-prompts once in the *same* remote session with
-the list of available names (`DS_MAX_UNKNOWN_TOOL_RETRIES`, default 1). A
-hallucinated name is deterministic, so this path never resets the session or
-rotates accounts. If the retry still picks an invalid name, the request ends
-with a terminal `502 unknown_tool` error rather than returning the raw
-`{"tool_call":…}` markup as assistant text (which would strand the consuming
-agent).
+just hallucinated a name). It records the name and rotates to another account,
+since a hallucinated name is deterministic for that account+session. If no
+account is available, the request ends with a terminal `502 unknown_tool` error
+rather than returning the raw `{"tool_call":…}` markup as assistant text (which
+would strand the consuming agent).
 
 ### Streaming `obfuscation`
 
@@ -161,12 +159,8 @@ requests rotate to another account:
 
 - an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
   upstream `Retry-After`, whichever is longer);
-- a **recoverable failure** (malformed tool markup, empty response) — rotated
-  immediately, without parking the account. A parsed-but-
-  **unknown tool name** is *not* one of these: it is deterministic, so the
-  account is never parked and the session is never reset for it — the request
-  just does one corrective retry (see Tool-call parsing) and then fails with
-  `unknown_tool`;
+- a **recoverable failure** (malformed tool markup, empty response, unknown
+  tool name) — rotated immediately, without parking the account;
 
 When every account is parked the request returns HTTP 429 with a
 `retry_in`-style hint until the earliest window opens.
@@ -198,7 +192,6 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_MAX_UPSTREAM_RETRIES`            | `3`                         | Same-account retries when DS itself reports a transient outage (`finish_reason=generation_err` / "Server temporarily unavailable."). Rotating accounts cannot help here (all share the same upstream), so the current account is retried instead of parked (0–10). |
 | `DS_MAX_CONTINUATION`                | `2`                         | Max auto-continuation rounds for long/length-finished responses (0–10).                                                                                                                                                                                            |
 | `DS_ACTION_PROMISE_MAX_CHARS`        | `600`                       | Max content length (chars) for the action-promise phase: a longer body is a real answer, not a promise to act.                                                                                                                                                     |
-| `DS_MAX_UNKNOWN_TOOL_RETRIES`        | `1`                         | Corrective retries when the model asks for a tool not in the request's `tools`. Deterministic, so it never resets the session or rotates the account; on failure the request ends with a terminal `unknown_tool` error instead of leaking the raw markup as text (0–10). |
 | `DS_TOKEN_RATE_LIMIT_PER_MIN`        | `0` (off)                   | Adaptive completion throttle by burn rate. Above this tokens/min the interval between completions on one account is stretched, so a long continuation burst self-spaces instead of tripping the upstream 429. `0` disables the adaptive part (the fixed `DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS` still applies).                                                                    |
 | `DS_TOKEN_RATE_BACKOFF_FACTOR`       | `2`                         | Extra intervals a fully pressured session (burn ≥ 2× the limit above) waits; the stretch scales linearly from 0 at the limit to this factor. `0` disables it (0–10).                                                                                                                                                                     |
 | `DS_CONTINUATION_SIZE_THRESHOLD`     | `25000`                     | Response length (chars) above which auto-continuation kicks in.                                                                                                                                                                                                    |
