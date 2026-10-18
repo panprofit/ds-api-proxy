@@ -986,6 +986,14 @@ test('parseToolCall: XML-like id key with a large content value', () => {
   assert.equal(args.content, 'const a = 1;\n');
 });
 
+test('parseToolCall: bare arguments key glued to the previous value', () => {
+  const input = '{"tool_call":{ id="call_b0a1c2d3e4f50617" name="codemode" arguments:{"code":"return a;"}}}';
+  const tc = parser.parseToolCall(input, silentLog);
+  assert.ok(tc, 'the call must be recovered, not lost as plain text');
+  assert.equal(tc.name, 'codemode');
+  assert.deepEqual(JSON.parse(tc.arguments), { code: 'return a;' });
+});
+
 // ---------------------------------------------------------------------------
 // repairStrayClosingQuote / parseToolCall: value missing its closing quote
 // ---------------------------------------------------------------------------

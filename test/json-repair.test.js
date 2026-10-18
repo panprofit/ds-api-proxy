@@ -105,6 +105,16 @@ test('repairXmlLikeKeys: unchanged when no attribute syntax is present', () => {
     assert.equal(jr.repairXmlLikeKeys(ok), ok);
 });
 
+test('repairXmlLikeKeys: quotes a bare key glued to the previous value', () => {
+    const out = jr.repairXmlLikeKeys('{ id="call_1" name="read" arguments:{"path":"/x"}}');
+    assert.equal(out, '{ "id":"call_1", "name":"read", "arguments":{"path":"/x"}}');
+    assert.deepEqual(JSON.parse(out), {
+        id: 'call_1',
+        name: 'read',
+        arguments: { path: '/x' },
+    });
+});
+
 // --- repairStrayClosingQuote -----------------------------------------------
 
 test('repairStrayClosingQuote: drops a stray quote before the closers', () => {
