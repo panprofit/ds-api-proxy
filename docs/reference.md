@@ -51,15 +51,17 @@ tool call is never truncated.
 
 ### Tool-call parsing
 
-DS does not have native function calling; the proxy prompts for a text format
-and parses it back into OpenAI `tool_calls`. The parser accepts, in order:
+DS does not expose native function calling over its Web API; the proxy prompts
+for DeepSeek's own DSML grammar (the V4.x chat template's `｜DSML｜ calls` block
+built from `｜DSML｜ invoke` / `｜DSML｜ parameter name=… string=…` elements) and
+parses it back into OpenAI `tool_calls`. The parser accepts, in order:
 
-1. **Strict / fenced JSON** — `{"tool_call":{"name","arguments"}}` inline or in
+1. **DSML/XML markup** — `｜DSML｜ calls` / `｜DSML｜ invoke` and the
+`<invoke>`/`<parameter>` grammar (the format the prompt asks for).
+2. **Strict / fenced JSON** — `{"tool_call":{"name","arguments"}}` inline or in
 a ```json fence (with the usual JSON repair heuristics for truncated or
-mis-escaped output).
-2. **DSML/XML markup** — `<|DSML| tool_calls> … <|DSML| invoke> …` and the
-`<invoke>`/`<parameter>` grammar.
-3. **Native markers** — DS's own `<|tool▁calls▁begin|> … <|tool▁calls▁end|>`
+mis-escaped output); kept as a fallback for older upstream behavior.
+3. **Native markers** — DS's older `<|tool▁calls▁begin|> … <|tool▁calls▁end|>`
 grammar wrapping a bare `[{"name","arguments"}]` array. Marker matching is
 *fuzzy*: the fullwidth pipe `｜` (U+FF5C) is treated as `|` and the separator
 `▁` (U+2581) as `_`, so a hallucinated `</|tool_calls▁end｜>` still closes the

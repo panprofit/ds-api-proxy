@@ -26,7 +26,7 @@ test('normalizeMessageContent: joins text parts and skips images', () => {
 
 test('normalizeMessageContent: renders tool_result parts recursively', () => {
     const content = [{ type: 'tool_result', tool_use_id: 't1', content: 'inner' }];
-    assert.equal(prompt.normalizeMessageContent(content), '[Tool Result t1]\ninner');
+    assert.equal(prompt.normalizeMessageContent(content), '<tool_result>\ninner\n</tool_result>');
 });
 
 test('composePrompt: joins system + conversation, trims, omits empty system', () => {
@@ -45,15 +45,23 @@ test('formatToolDefinitions: empty tools -> empty string', () => {
     assert.equal(prompt.formatToolDefinitions(null), '');
 });
 
-test('formatToolDefinitions: renders name, description and parameters', () => {
+test('formatToolDefinitions: renders the native DSML instruction and schemas', () => {
     const out = prompt.formatToolDefinitions([{
         type: 'function',
         function: { name: 'read', description: 'Read a file', parameters: { type: 'object' } },
     }]);
-    assert.ok(out.includes('## read'));
-    assert.ok(out.includes('Read a file'));
+    assert.ok(out.includes('### Available Tool Schemas'));
+    assert.ok(out.includes('"name":"read"'));
+    assert.ok(out.includes('"description":"Read a file"'));
     assert.ok(out.includes('"type":"object"'));
-    assert.ok(out.includes('--- END TOOL REQUEST SYSTEM ---'));
+    assert.ok(out.includes('\uFF5CDSML\uFF5C calls'));
+    assert.ok(out.includes('string="true|false"'));
+    assert.ok(!out.includes('strict JSON'));
+});
+
+test('formatToolDefinitions: skips non-function entries', () => {
+    assert.equal(prompt.formatToolDefinitions([{ type: 'other' }]), '');
+    assert.equal(prompt.formatToolDefinitions([{ type: 'function', function: { description: 'no name' } }]), '');
 });
 
 test('formatToolDefinitions: truncates long descriptions', () => {
@@ -144,13 +152,13 @@ test('formatPendingTurns: renders user and tool turns', () => {
         { role: 'tool', content: 'res', tool_call_id: 'c1' },
     ]);
     assert.ok(out.includes('User: hello'));
-    assert.ok(out.includes('[Tool Result id=c1]'));
+    assert.ok(out.includes('<tool_result>\nres\n</tool_result>'));
 });
 
 test('renderTurn: renders a user turn, a tool turn and nothing else', () => {
     assert.equal(prompt.renderTurn({ role: 'user', content: 'hello' }), 'User: hello\n\n');
-    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res', tool_call_id: 'c1' }), '[Tool Result id=c1]\nres\n\n');
-    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res' }), '[Tool Result]\nres\n\n');
+    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res', tool_call_id: 'c1' }), '<tool_result>\nres\n</tool_result>\n\n');
+    assert.equal(prompt.renderTurn({ role: 'tool', content: 'res' }), '<tool_result>\nres\n</tool_result>\n\n');
     assert.equal(prompt.renderTurn({ role: 'assistant', content: 'x' }), '');
     assert.equal(prompt.renderTurn({ role: 'user', content: '' }), '');
     assert.equal(prompt.renderTurn(null), '');
@@ -164,7 +172,7 @@ test('formatMessages: renders tool results through the shared renderTurn path', 
         const msg = { role: 'tool', content: 'out', tool_call_id: 'c9' };
         const { prompt: conversation } = prompt.formatMessages([msg], []);
         assert.equal(conversation, prompt.formatPendingTurns([msg]));
-        assert.equal(conversation, '[Tool Result id=c9]\nout');
+        assert.equal(conversation, '<tool_result>\nout\n</tool_result>');
     } finally {
         config.reload({});
     }
@@ -186,20 +194,37 @@ test('formatMessages: separates system prompt and conversation', () => {
     }
 });
 
-test('formatMessages: renders assistant tool_calls as strict JSON', () => {
+test('formatMessages: renders assistant tool_calls as native DSML invokes', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'user', content: 'go' },
         { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"path":"a"}' } }] },
     ], []);
-    assert.ok(conversation.includes('"name":"read"'));
-    assert.ok(conversation.includes('"arguments":{"path":"a"}'));
+    assert.ok(conversation.includes('invoke name="read"'));
+    assert.ok(conversation.includes('parameter name="path" string="true">a</'));
+    assert.ok(conversation.includes('\uFF5CDSML\uFF5C calls>'));
+});
+
+test('formatMessages: non-string arguments are JSON-encoded with string="false"', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: { n: 1, ok: true } } }] },
+    ], []);
+    assert.ok(conversation.includes('parameter name="n" string="false">1</'));
+    assert.ok(conversation.includes('parameter name="ok" string="false">true</'));
+});
+
+test('formatMessages: unparseable arguments fall back to a raw arguments parameter', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: 'not json' } }] },
+    ], []);
+    assert.ok(conversation.includes('parameter name="arguments" string="true">not json</'));
 });
 
 test('formatMessages: includes tool definitions in the system prompt', () => {
     const { systemPrompt } = prompt.formatMessages([], [
         { type: 'function', function: { name: 'read', description: 'Read' } },
     ]);
-    assert.ok(systemPrompt.includes('## read'));
+    assert.ok(systemPrompt.includes('"name":"read"'));
+    assert.ok(systemPrompt.includes('### Available Tool Schemas'));
 });
 
 test('extractScreenshotPaths: collects structured screenshot_path JSON fields', () => {
@@ -331,4 +356,35 @@ test('formatMessages: DS_MAX_RESPONSE_WORDS=0 omits the word cap', () => {
     } finally {
         config.reload({});
     }
+});
+
+// --- native format round-trip -----------------------------------------------
+
+test('round-trip: prompt-rendered markup parses back into the same tool call', () => {
+    const parser = require('../lib/parser');
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"path":"a","n":2}' } }] },
+    ], []);
+    const call = parser.parseToolCall(conversation, () => {});
+    assert.ok(call);
+    assert.equal(call.name, 'read');
+    assert.deepEqual(JSON.parse(call.arguments), { path: 'a', n: 2 });
+});
+
+test('round-trip: prompt-rendered markup escapes XML-unsafe argument values', () => {
+    const parser = require('../lib/parser');
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'bash', arguments: '{"command":"echo a && echo <b>"}' } }] },
+    ], []);
+    const call = parser.parseToolCall(conversation, () => {});
+    assert.ok(call);
+    assert.equal(call.name, 'bash');
+    assert.deepEqual(JSON.parse(call.arguments), { command: 'echo a && echo <b>' });
+});
+
+test('round-trip: a rendered tool result is recognized as a harness envelope', () => {
+    const { isToolResultEcho } = require('../lib/recovery-classify');
+    const rendered = prompt.renderTurn({ role: 'tool', content: 'out', tool_call_id: 'c1' });
+    assert.equal(isToolResultEcho(rendered), true);
+    assert.equal(isToolResultEcho(rendered.trimEnd()), true);
 });

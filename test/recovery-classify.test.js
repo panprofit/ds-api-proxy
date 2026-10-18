@@ -62,29 +62,22 @@ test('isRefusalContent: false for real continuation text and empty input', () =>
     assert.equal(isRefusalContent(undefined), false);
 });
 
-test('isToolResultEcho: a balanced envelope is an echo regardless of id', () => {
-    // `[Tool Result …]` is the harness/client format; the model must never
-    // emit it back, so even an id the proxy itself issued is still an echo.
-    assert.equal(isToolResultEcho('[Tool Result id=call_deadbeef]\nsome output\n[/Tool Result]'), true);
-    assert.equal(isToolResultEcho('[Tool Result id=call_1234]\nsome output\n[/Tool Result]'), true);
-});
-
-test('isToolResultEcho: requires the marker at line start', () => {
-    assert.equal(isToolResultEcho('see [Tool Result id=call_x] here'), false);
-});
-
-test('isToolResultEcho: a line-anchored marker without a closing tag is still an echo', () => {
-    // prompt.renderTurn writes the envelope without [/Tool Result], so the
-    // model's imitation has no closing tag either.
-    const text = '[Tool Result id=call_deadbeef]\nno close tag here';
-    assert.equal(isToolResultEcho(text), true);
-});
-
 test('isToolResultEcho: false for plain prose and empty input', () => {
     assert.equal(isToolResultEcho('just a normal answer'), false);
     assert.equal(isToolResultEcho(''), false);
     assert.equal(isToolResultEcho(null), false);
     assert.equal(isToolResultEcho(undefined), false);
+});
+
+test('isToolResultEcho: native <tool_result> envelopes are echoes', () => {
+    assert.equal(isToolResultEcho('<tool_result>\nfake output\n</tool_result>'), true);
+    assert.equal(isToolResultEcho('<tool_result>single line pair</tool_result>'), true);
+    assert.equal(isToolResultEcho('<tool_result>\nunclosed body'), true);
+    assert.equal(isToolResultEcho('<tool_result name="x">\nno close tag'), true);
+});
+
+test('isToolResultEcho: an inline prose mention is not an echo', () => {
+    assert.equal(isToolResultEcho('the harness writes <tool_result> blocks'), false);
 });
 
 test('isContextTooLongError: matches English context/token phrasings', () => {
@@ -227,25 +220,20 @@ test('looksLikeActionPromise: only the tail matters (long answer wins)', () => {
     assert.equal(looksLikeActionPromise(long), false);
 });
 
-test('stripToolResultEchoes: removes a balanced envelope and keeps surrounding prose', () => {
-    const text = 'Before\n[Tool Result id=call_1]\nFAKE\n[/Tool Result]\nAfter';
-    assert.equal(stripToolResultEchoes(text), 'Before\nAfter');
+test('stripToolResultEchoes: removes native envelopes and keeps surrounding prose', () => {
+    assert.equal(stripToolResultEchoes('Before\n<tool_result>\nFAKE\n</tool_result>\nAfter'), 'Before\nAfter');
+    assert.equal(stripToolResultEchoes('Before\n<tool_result>FAKE</tool_result>\nAfter'), 'Before\nAfter');
+    assert.equal(stripToolResultEchoes('<tool_result>a</tool_result>\nmid\n<tool_result>b</tool_result>'), 'mid');
 });
 
-test('stripToolResultEchoes: removes multiple envelopes', () => {
-    const text = '[Tool Result id=a]\nx\n[/Tool Result]\nmid\n[Tool Result id=b]\ny\n[/Tool Result]';
-    assert.equal(stripToolResultEchoes(text), 'mid');
-});
-
-test('stripToolResultEchoes: recognizes the id-less and empty-id harness forms', () => {
-    assert.equal(stripToolResultEchoes('[Tool Result]\nx\n[/Tool Result]'), '');
-    assert.equal(stripToolResultEchoes('[Tool Result ]\nx\n[/Tool Result]'), '');
-    assert.equal(isToolResultEcho('[Tool Result]\nx\n[/Tool Result]'), true);
-});
-
-test('stripToolResultEchoes: drops an unclosed marker and its body, keeps preceding prose', () => {
-    assert.equal(stripToolResultEchoes('[Tool Result id=call_x]\nno close'), '');
-    assert.equal(stripToolResultEchoes('before\n[Tool Result id=call_x]\nFAKE'), 'before');
-    assert.equal(stripToolResultEchoes('see [Tool Result id=call_x] here'), 'see [Tool Result id=call_x] here');
+test('stripToolResultEchoes: native unclosed marker drops its body', () => {
+    assert.equal(stripToolResultEchoes('<tool_result>\nFAKE'), '');
+    assert.equal(stripToolResultEchoes('before\n<tool_result>\nFAKE'), 'before');
+    assert.equal(stripToolResultEchoes('before\n<tool_result>FAKE inline'), 'before');
+    assert.equal(stripToolResultEchoes('see <tool_result> here'), 'see <tool_result> here');
     assert.equal(stripToolResultEchoes(null), '');
+});
+
+test('stripToolResultEchoes: inline balanced pairs are removed in place', () => {
+    assert.equal(stripToolResultEchoes('x <tool_result>y</tool_result> z'), 'x  z');
 });
