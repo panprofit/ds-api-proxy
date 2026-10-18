@@ -175,9 +175,10 @@ test('handleChatCompletions: no available account is rejected as 429 before reco
 
 test('handleChatCompletions: a terminal recovery failure (non-stream) is written as JSON', async () => {
     // A healthy account at selection time, but the upstream always returns
-    // unclosed tool markup. Recovery exhausts its retries, cools the sole
-    // account and fails terminally; because nothing was committed yet (no
-    // streaming), the error must be a JSON body with the recovery status.
+    // unclosed tool markup. Recovery rotates immediately (no same-account
+    // retry, no cooldown) and fails terminally on the exhausted account budget;
+    // because nothing was committed yet (no streaming), the error must be a
+    // JSON body with the recovery status.
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -191,9 +192,11 @@ test('handleChatCompletions: a terminal recovery failure (non-stream) is written
             messages: [{ role: 'user', content: 'hi' }],
             tools: [{ type: 'function', function: { name: 'read' } }],
         }), deps);
-        assert.equal(res.statusCode, 429);
+        assert.equal(res.statusCode, 502);
         assert.equal(res.headers['Content-Type'], 'application/json');
-        assert.equal(res.json().error.type, 'rate_limit_error');
+        // Single-account budget: the terminal body comes from the shared
+        // exhausted-accounts block, whose type falls back to 'empty_response'.
+        assert.equal(res.json().error.type, 'empty_response');
     });
 });
 

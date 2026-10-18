@@ -283,20 +283,6 @@ test('prepareSessionForPrompt: idle TTL boundary is exclusive (not expired at ex
     assert.equal(s.id, 'remote-1');
 });
 
-test('prepareSessionForPrompt: clears the malformed-reset counter on rollover', () => {
-    // The counter is scoped to one remote session; a TTL rollover starts
-    // a fresh conversation and must not carry strikes over to it, otherwise the
-    // account would be rotated prematurely.
-    const s = createSession();
-    s.id = 'remote-1';
-    s.lastActivityAt = 1000;
-    s.messageCount = 1;
-    s.malformedResets = 2;
-
-    prepareSessionForPrompt(s, 1000 + SESSION_TTL_MS + 1);
-    assert.equal(s.malformedResets, 0);
-});
-
 test('prepareSessionForPrompt: falls back to createdAt when lastActivityAt is missing', () => {
     const s = createSession();
     s.id = 'remote-1';

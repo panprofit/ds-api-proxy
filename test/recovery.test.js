@@ -720,7 +720,7 @@ test('runWithRecovery: malformed markup on the only account reports all-cooling 
     });
 });
 
-test('runWithRecovery: malformed markup recreates the session on the same account before rotating', async () => {
+test('runWithRecovery: malformed markup rotates the account immediately', async () => {
     // NOTE: managed by hand (not withAccounts) because the live accounts array
     // must stay populated for the whole async run — withAccounts restores it
     // as soon as the async callback returns its first promise.
@@ -759,12 +759,17 @@ test('runWithRecovery: malformed markup recreates the session on the same accoun
         });
         const out = await runWithRecovery(ctx);
 
-        // 3 resets on a1, then 3 on a2 before the terminal error.
-        assert.equal(calls.length, 6);
-        assert.deepEqual(calls.slice(0, 3).map(c => c.accountId), ['a1', 'a1', 'a1']);
-        assert.deepEqual(calls.slice(3).map(c => c.accountId), ['a2', 'a2', 'a2']);
+        // One attempt per account: no same-account retry, no session recreation.
+        assert.equal(calls.length, 2);
+        assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
         assert.equal(out.ok, false);
-        assert.equal(out.error.status, 429);
+        // No cooldown is applied, so the remaining account stays available and
+        // the terminal failure is a 502, not an all-cooling 429. The account
+        // budget runs out on the final rotation, so the shared terminal builds
+        // the body: the type falls back to 'empty_response' (state.modelError
+        // is null), not the phase's 'malformed_tool_call'.
+        assert.equal(out.error.status, 502);
+        assert.equal(out.error.body.type, 'empty_response');
     } finally {
         accountsArr.length = 0;
         accountsArr.push(...saved);
@@ -855,18 +860,6 @@ test('runWithRecovery: auth_expired on the only account returns a terminal error
         accountsArr.length = 0;
         accountsArr.push(...saved);
     }
-});
-
-test('runWithRecovery: successful completion clears the malformed-reset counter', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const ctx = baseCtx({
-            askDSStream: askStub([makeAccount('a1')]),
-            readDSResponse: sseOnce([{ content: 'ok', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
-        });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(ctx.session.malformedResets, 0);
-    });
 });
 
 test('runWithRecovery: clientGone during empty-retry aborts without error body', async () => {

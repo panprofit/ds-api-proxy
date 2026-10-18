@@ -30,7 +30,6 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.maxSessions, 1000);
     assert.equal(c.fetchTimeoutMs, 60000);
     assert.equal(c.maxUploadBytes, 25 * 1024 * 1024);
-    assert.equal(c.maxSessionResetsPerAccount, 3);
     assert.equal(c.maxUnknownToolRetries, 1);
     assert.equal(c.maxToolResultEchoRetries, 1);
     assert.equal(c.shutdownGraceMs, 15000);
