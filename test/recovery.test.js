@@ -82,7 +82,6 @@ function baseCtx(overrides = {}) {
         prompt: 'User: hi',
         systemPrompt: 'SYS',
         fileIds: [],
-        malformedCooldownMs: 5000,
         clientGone: () => false,
         deadlineHit: () => false,
         log: () => {},
@@ -158,29 +157,27 @@ test('runWithRecovery: reasoning-only response is returned without cooling the a
     });
 });
 
-test('runWithRecovery: empty response parks the account for the short recoverable window', async () => {
-    // An empty stream must NOT use the long accountCooldownMs (5 min default).
-    // It is a transient glitch, so the account gets the short malformedCooldownMs.
+test('runWithRecovery: empty response rotates without parking the account', async () => {
+    // An empty stream is a transient model/protocol glitch: the account is
+    // rotated but neither cooled down nor counted as failed.
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         // Mirror the real selectAccountForSession: set the session's sticky
-        // account so markAccountBroken() has an account to penalise.
+        // account so a penalty, if any, would be attributable.
         const accountStub = async (args) => {
             const session = sessions.getOrCreateAgentSession(args.agentId);
             session.accountId = a1.id;
             return { resp: { body: {} }, account: a1, promptUsed: args?.prompt || 'p', freshSessionReset: false };
         };
         const ctx = baseCtx({
-            malformedCooldownMs: 5000,
-            // Never wait out the short cooldown inside the test.
             deadlineHit: () => true,
             askDSStream: accountStub,
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
         });
-        await runWithRecovery(ctx);
-        const remaining = a1.cooldownUntil - Date.now();
-        assert.ok(remaining > 0, 'account should be cooling down');
-        assert.ok(remaining <= 6000, `cooldown should be ~5s, got ${remaining}ms`);
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(a1.cooldownUntil, 0, 'empty response must not park the account');
+        assert.equal(a1.failures, 0, 'empty response must not count a failure');
     });
 });
 
@@ -434,7 +431,6 @@ test('runWithRecovery: exhausting the account budget returns an error, not an em
         const ctx = baseCtx({
             askDSStream: askStub([a1, a2]),
             deadlineHit: () => false,
-            malformedCooldownMs: 1,
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
         });
         const out = await runWithRecovery(ctx);
@@ -454,7 +450,6 @@ test('runWithRecovery: rotation stops once the rotation budget elapses', async (
         await withConfig({ DS_ROTATION_BUDGET_MS: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const ctx = baseCtx({
                 deadlineHit: () => false,
-                malformedCooldownMs: 60000,
                 askDSStream: askStub([a1, a2]),
                 readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
             });

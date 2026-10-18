@@ -21,7 +21,6 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
 });
     assert.equal(c.requestDeadlineMs, 120000);
     assert.equal(c.maxUpstreamRetries, 3);
-    assert.equal(c.malformedToolCallCooldownMs, 5000);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
     assert.equal(c.accountMinCompletionIntervalMs, 6000);
     assert.equal(c.accountStateFlushMs, 60 * 1000);
@@ -40,7 +39,6 @@ test('config.load: parses and overrides from env', () => {
         HOST: '0.0.0.0',
         DS_MAX_CONCURRENT: '5',
         DS_REQUEST_DEADLINE_MS: '1000',
-        DS_MALFORMED_TOOL_CALL_COOLDOWN_MS: '250',
         DS_SESSION_TTL_MS: '1234',
         DS_AUTH_DIR: '/auth',
     });
@@ -48,7 +46,6 @@ test('config.load: parses and overrides from env', () => {
     assert.equal(c.host, '0.0.0.0');
     assert.equal(c.maxConcurrent, 5);
     assert.equal(c.requestDeadlineMs, 1000);
-    assert.equal(c.malformedToolCallCooldownMs, 250);
     assert.equal(c.sessionTtlMs, 1234);
     assert.equal(c.authDir, '/auth');
 });

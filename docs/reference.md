@@ -161,8 +161,8 @@ requests rotate to another account:
 
 - an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
   upstream `Retry-After`, whichever is longer);
-- a **recoverable failure** (malformed tool markup, empty response) — parked for
-  `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` / the recovery window. A parsed-but-
+- a **recoverable failure** (malformed tool markup, empty response) — rotated
+  immediately, without parking the account. A parsed-but-
   **unknown tool name** is *not* one of these: it is deterministic, so the
   account is never parked and the session is never reset for it — the request
   just does one corrective retry (see Tool-call parsing) and then fails with
@@ -208,7 +208,6 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_CONTINUATION_SIZE_THRESHOLD`     | `25000`                     | Response length (chars) above which auto-continuation kicks in.                                                                                                                                                                                                    |
 | `DS_MAX_RESPONSE_WORDS`              | `500`                       | Max response length in words, injected as a system-prompt instruction so the model keeps answers short. `0` disables the instruction.                                                                                                                              |
 | `DS_RECOVERY_RETRY_DELAY_MS`         | `500`                       | Base delay between recovery retries (scaled, capped at 3×).                                                                                                                                                                                                        |
-| `DS_MALFORMED_TOOL_CALL_COOLDOWN_MS` | `5000`                      | Short cooldown after an empty/recoverable upstream response, before the account is rotated. Malformed tool-call markup rotates immediately without it.                                                                                                                                                                           |
 | `DS_IGNORE_AGENT_SESSION`           | `0` (off)                  | When set to `1`, force every request into the ephemeral anonymous mode: all session-id headers/body fields are ignored and each call gets a unique throwaway session, even from agents that do send an identifier. Off by default, so session headers are honored. |                                                                                                                               |
 | `DS_SESSION_TTL_MS`                  | `7200000` (2 h)             | Idle TTL: a remote session is rolled over only after this long without conversation activity. An actively-used session is never reset on age alone. Independently, a shorter `messages` array than the previous request (a `/compact` summary replacing the history) resets the remote session immediately. |
 | `DS_MAX_SESSIONS`                    | `1000`                      | Max concurrent agent sessions.                                                                                                                                                                                                                                     |

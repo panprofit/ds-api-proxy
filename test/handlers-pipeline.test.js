@@ -67,7 +67,6 @@ function depsOk({ results = [{ content: 'hello', reasoningContent: '', messageId
     return {
         askDSStream: async (args) => ({ resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false }),
         readDSResponse: async () => results[Math.min(i++, results.length - 1)],
-        malformedCooldownMs: 0,
         requestDeadlineMs: 5000,
     };
 }
