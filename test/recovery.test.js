@@ -82,7 +82,6 @@ function baseCtx(overrides = {}) {
         prompt: 'User: hi',
         systemPrompt: 'SYS',
         fileIds: [],
-        maxEmptyRetries: 2,
         malformedCooldownMs: 5000,
         clientGone: () => false,
         deadlineHit: () => false,
@@ -108,10 +107,13 @@ test('runWithRecovery: happy path returns text content', async () => {
     });
 });
 
-test('runWithRecovery: empty response retries then succeeds on same account', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
+test('runWithRecovery: empty response rotates the account instead of retrying it', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        const calls = [];
         const ctx = baseCtx({
-            askDSStream: askStub([makeAccount('a1')]),
+            askDSStream: askStub([a1, a2], calls),
             readDSResponse: sseOnce([
                 { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null },
                 { content: 'recovered', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
@@ -120,7 +122,11 @@ test('runWithRecovery: empty response retries then succeeds on same account', as
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'recovered');
-        assert.equal(out.retryAttempt, 1);
+        // One attempt on a1, then a rotation straight to a2: no same-account retry.
+        assert.equal(calls.length, 2);
+        // The failure is attributed to the session's sticky account, which the
+        // stub never sets, so no account is cooled down here (the cooling path
+        // is covered by the 'parks the account' test).
     });
 });
 
@@ -411,7 +417,7 @@ test('runWithRecovery: empty response on all accounts returns 429 terminal error
             askDSStream: askStub([cooling]),
             // Never wait for cooldowns in tests.
             deadlineHit: () => true,
-            // Always empty -> exhausts maxEmptyRetries and account attempts.
+            // Always empty -> cools the account and exhausts the account budget.
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
         });
         const out = await runWithRecovery(ctx);
@@ -862,7 +868,7 @@ test('runWithRecovery: auth_expired on the only account returns a terminal error
     }
 });
 
-test('runWithRecovery: clientGone during empty-retry aborts without error body', async () => {
+test('runWithRecovery: clientGone while rotating after an empty response aborts without error body', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         let gone = false;
         const ctx = baseCtx({
@@ -927,9 +933,6 @@ test('runWithRecovery: context-too-long model error is surfaced as 400', async (
     const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
     await withAccounts([cooling], async () => {
         const ctx = baseCtx({
-            // Context-too-long is retried by the empty loop; cap retries so the
-            // test does not sleep through the real backoff.
-            maxEmptyRetries: 0,
             deadlineHit: () => true,
             askDSStream: askStub([cooling]),
             readDSResponse: async () => ({
@@ -951,7 +954,6 @@ test('runWithRecovery: context-too-long skips empty retries (deterministic failu
     await withAccounts([a1], async () => {
         const calls = [];
         const ctx = baseCtx({
-            maxEmptyRetries: 5,
             deadlineHit: () => true,
             askDSStream: askStub([a1], calls),
             readDSResponse: async () => ({
@@ -962,7 +964,6 @@ test('runWithRecovery: context-too-long skips empty retries (deterministic failu
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, false);
         assert.equal(calls.length, 1, 'context-too-long must not be retried');
-        assert.equal(out.error.body.retry_attempts, 0);
         assert.equal(out.error.body.type, 'context_length_exceeded');
     });
 });
@@ -1612,7 +1613,6 @@ test('runWithRecovery: context-too-long stops empty-retries before burning one',
         assert.equal(out.ok, false);
         assert.equal(out.error.body.type, 'context_length_exceeded');
         assert.equal(calls.length, 1, 'no retry must be issued for a deterministic context-too-long');
-        assert.equal(out.error.body.retry_attempts, 0, 'retry counter must stay at 0');
     });
 });
 

@@ -20,7 +20,6 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(config.load({ DS_MAX_CONCURRENT: '0' }).maxConcurrent, 1);
 });
     assert.equal(c.requestDeadlineMs, 120000);
-    assert.equal(c.maxEmptyRetries, 2);
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.malformedToolCallCooldownMs, 5000);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
@@ -41,7 +40,6 @@ test('config.load: parses and overrides from env', () => {
         HOST: '0.0.0.0',
         DS_MAX_CONCURRENT: '5',
         DS_REQUEST_DEADLINE_MS: '1000',
-        DS_MAX_RETRIES: '7',
         DS_MALFORMED_TOOL_CALL_COOLDOWN_MS: '250',
         DS_SESSION_TTL_MS: '1234',
         DS_AUTH_DIR: '/auth',
@@ -50,7 +48,6 @@ test('config.load: parses and overrides from env', () => {
     assert.equal(c.host, '0.0.0.0');
     assert.equal(c.maxConcurrent, 5);
     assert.equal(c.requestDeadlineMs, 1000);
-    assert.equal(c.maxEmptyRetries, 7);
     assert.equal(c.malformedToolCallCooldownMs, 250);
     assert.equal(c.sessionTtlMs, 1234);
     assert.equal(c.authDir, '/auth');
@@ -105,12 +102,6 @@ test('config.load: clamps maxUnknownToolRetries to [0,10]', () => {
     assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '99' }).maxToolResultEchoRetries, 10);
     assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '-5' }).maxToolResultEchoRetries, 0);
     assert.equal(config.load({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: 'nope' }).maxToolResultEchoRetries, 1);
-});
-
-test('config.load: clamps maxEmptyRetries to [0,10]', () => {
-    assert.equal(config.load({ DS_MAX_RETRIES: '99' }).maxEmptyRetries, 10);
-    assert.equal(config.load({ DS_MAX_RETRIES: '-5' }).maxEmptyRetries, 0);
-    assert.equal(config.load({ DS_MAX_RETRIES: 'not-a-number' }).maxEmptyRetries, 2);
 });
 
 test('config.load: ignores non-numeric values, keeps defaults', () => {

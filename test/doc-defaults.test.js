@@ -31,7 +31,6 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_MAX_CONCURRENT: 'maxConcurrent',
     DS_REQUEST_DEADLINE_MS: 'requestDeadlineMs',
     DS_ROTATION_BUDGET_MS: 'rotationBudgetMs',
-    DS_MAX_RETRIES: 'maxEmptyRetries',
     DS_MAX_UPSTREAM_RETRIES: 'maxUpstreamRetries',
     DS_MAX_CONTINUATION: 'maxContinuation',
     DS_MAX_REASONING_CONTINUATION: 'maxReasoningContinuation',
