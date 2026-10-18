@@ -1514,14 +1514,15 @@ test('runWithRecovery: an upstream HTTP 429 propagates to the caller instead of 
     });
 });
 
-test('runWithRecovery: an initial [Tool Result ...] echo is re-prompted and the real answer is delivered', async () => {
+test('runWithRecovery: a [Tool Result ...] echo rotates to the next account and delivers the real answer', async () => {
     const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
             const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT\n[/Tool Result]';
             const ctx = baseCtx({
-                askDSStream: askStub([a1], calls),
+                askDSStream: askStub([a1, a2], calls),
                 readDSResponse: sseOnce([
                     { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: 'the real answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
@@ -1531,45 +1532,24 @@ test('runWithRecovery: an initial [Tool Result ...] echo is re-prompted and the 
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'the real answer');
             assert.doesNotMatch(out.fullContent, /FAKE OUTPUT/);
+            // One attempt on a1, then a rotation straight to a2: no re-prompt.
             assert.equal(calls.length, 2);
+            // The imitation is not an account fault: a1 is rotated but not parked.
             assert.equal(a1.failures, 0);
             assert.equal(a1.cooldownUntil, 0);
         });
     });
 });
 
-test('runWithRecovery: a persistent [Tool Result ...] echo is dropped to empty without reset or rotation', async () => {
+test('runWithRecovery: an unbalanced [Tool Result ...] echo (the real prompt format) also rotates', async () => {
     const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const calls = [];
-            const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT\n[/Tool Result]';
-            const ctx = baseCtx({
-                askDSStream: askStub([a1], calls),
-                readDSResponse: sseOnce([
-                    { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: echo, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.equal(out.fullContent, '');
-            assert.doesNotMatch(JSON.stringify(out), /FAKE OUTPUT/);
-            assert.equal(calls.length, 2);
-            assert.equal(a1.failures, 0);
-            assert.equal(a1.cooldownUntil, 0);
-        });
-    });
-});
-
-test('runWithRecovery: an unbalanced [Tool Result ...] echo (the real prompt format) is re-prompted', async () => {
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_TOOL_RESULT_ECHO_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
             const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT';
             const ctx = baseCtx({
-                askDSStream: askStub([a1], calls),
+                askDSStream: askStub([a1, a2], calls),
                 readDSResponse: sseOnce([
                     { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: 'the real answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
@@ -1580,8 +1560,30 @@ test('runWithRecovery: an unbalanced [Tool Result ...] echo (the real prompt for
             assert.equal(out.fullContent, 'the real answer');
             assert.doesNotMatch(out.fullContent, /FAKE OUTPUT/);
             assert.equal(calls.length, 2);
-            assert.equal(a1.failures, 0);
-            assert.equal(a1.cooldownUntil, 0);
         });
+    });
+});
+
+test('runWithRecovery: a [Tool Result ...] echo gives up with a terminal 502 when rotation is impossible', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const echo = '[Tool Result id=call_deadbeef]\nFAKE OUTPUT\n[/Tool Result]';
+        const ctx = baseCtx({
+            // The client is gone, so rotation cannot wait for an account and the
+            // phase must not hang.
+            clientGone: () => true,
+            askDSStream: askStub([a1], calls),
+            readDSResponse: sseOnce([
+                { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(calls.length, 1);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.status, 502);
+        assert.equal(out.error.body.type, 'tool_result_echo');
+        // a1 is available, so this is not the all-cooling 429 path.
+        assert.equal(a1.cooldownUntil, 0);
     });
 });

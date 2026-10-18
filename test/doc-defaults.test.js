@@ -37,7 +37,6 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_MAX_ACTION_PROMISE_CONTINUATION: 'maxActionPromiseContinuation',
     DS_ACTION_PROMISE_MAX_CHARS: 'actionPromiseMaxChars',
     DS_MAX_UNKNOWN_TOOL_RETRIES: 'maxUnknownToolRetries',
-    DS_MAX_TOOL_RESULT_ECHO_RETRIES: 'maxToolResultEchoRetries',
     DS_TOKEN_RATE_LIMIT_PER_MIN: 'tokenRateLimitPerMin',
     DS_TOKEN_RATE_BACKOFF_FACTOR: 'tokenRateBackoffFactor',
     DS_CONTINUATION_SIZE_THRESHOLD: 'continuationSizeThreshold',

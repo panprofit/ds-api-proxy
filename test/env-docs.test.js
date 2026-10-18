@@ -3,8 +3,7 @@
 //
 // `lib/config.js` is the single source of truth for env parsing; `.env.example`
 // is the operator-facing sample. Nothing keeps the two in sync today, so an
-// env var added to one and forgotten in the other silently drifts (that is how
-// DS_MAX_TOOL_RESULT_ECHO_RETRIES first shipped).
+// env var added to one and forgotten in the other silently drifts.
 //
 // The invariant enforced here:
 //   1. every key in .env.example is actually read by lib/config.js (no dead
