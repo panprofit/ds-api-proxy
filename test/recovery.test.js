@@ -1234,7 +1234,7 @@ test('runWithRecovery: stop does not truncate a tool call', async () => {
 
 // --- action-promise rotation -----------------------------------------------
 // A reasoning block followed by a SHORT final line ("Let me check the tests")
-// with finish=stop and no tool call used to strand the client: phaseReasoningOnly
+// with a clean end and no tool call used to strand the client: phaseReasoningOnly
 // needs an EMPTY body and runAutoContinuation needs finish=length or >25k chars.
 // phaseActionPromise rotates the account instead of re-prompting.
 
@@ -1260,6 +1260,37 @@ test('runWithRecovery: short action-promise rotates to the next account and yiel
             assert.equal(out.toolCall.name, 'read');
             assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
             // The retry is a plain fresh attempt, not a corrective re-prompt.
+            assert.equal(calls[1].prompt, calls[0].prompt);
+            assert.equal(a1.cooldownUntil, 0);
+            assert.equal(a1.failures, 0);
+        });
+    });
+});
+
+test('runWithRecovery: an action-promise with no finish_reason still rotates and yields the tool call', async () => {
+    // DS's current flow ends clean turns with `response/status: FINISHED` and
+    // never sends `response/finish_reason`, so a null finish reason must count
+    // as a clean stop or this phase stays dead in production.
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const promise = 'Let me check the tests.';
+            const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: null, modelError: null },
+                    { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: null, modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.ok(out.toolCall, 'the promised action must become a real tool call');
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
             assert.equal(calls[1].prompt, calls[0].prompt);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
