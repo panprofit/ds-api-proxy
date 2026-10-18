@@ -111,7 +111,7 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
   child process).
 - **Request-path code reads config via `config.get()` at call time.** Exported
   load-time snapshot constants (e.g. `upstream.DS_FETCH_TIMEOUT_MS`) exist only
-  for tests/back-compat and do NOT track `reload()`.
+  for the tests that import them and do NOT track `reload()`.
 - Modules are singletons where noted (`accounts`, `sessions`); tests must
   snapshot/restore their mutable arrays rather than re-require the module graph.
 - Comments explain *why*, not *what*. Match the surrounding density: this repo

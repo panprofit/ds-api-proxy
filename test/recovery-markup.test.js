@@ -73,3 +73,12 @@ test('debugDumpToolMarkup: evicts the least-recently-touched entry past the cap'
         debugDumpToolMarkup('[overflow]', 'overflow content', () => {}, env);
     });
 });
+
+test('describeToolMarkup: a JSON error without a line/column suffix is kept compact', () => {
+    // Extra closing brace: JSON.parse reports a trailing-character error with
+    // no "(line N column M)" suffix for compactMsg to strip.
+    const diag = describeToolMarkup('{"tool_call":{"name":"read","arguments":{"p":}}}');
+    assert.equal(diag.shape, 'json');
+    assert.ok(diag.parseError && diag.parseError.startsWith('json:'));
+    assert.equal(diag.parseError.includes('(line '), false);
+});
