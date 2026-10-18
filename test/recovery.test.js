@@ -1097,15 +1097,19 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
             if (!s.id) { s.id = 'sess-1'; s.messageCount = 0; }
             return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
         };
+        let reads = 0;
+        // Mimics readDSResponse: an accepted turn advances the session, which
+        // is what marks the remote session reusable on the next run.
+        const readStub = async () => {
+            const s = sessions.getOrCreateAgentSession('test-agent');
+            const result = { content: 'ok', reasoningContent: '', messageId: `m${++reads}`, finishReason: 'stop', modelError: null };
+            s.parentMessageId = result.messageId;
+            s.messageCount++;
+            return result;
+        };
         const ctx = baseCtx({
             askDSStream: accountStub,
-            // Every read returns a non-empty reply: the default sseOnce fallback
-            // is empty, which would trigger the empty-retry loop on the second
-            // run and make extra upstream calls.
-            readDSResponse: sseOnce(
-                [{ content: 'ok', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }],
-                { content: 'ok', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-            ),
+            readDSResponse: readStub,
         });
         // First run forwards the full conversation and marks it sent.
         await runWithRecovery(ctx);
@@ -1118,6 +1122,36 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
         assert.match(calls[0].prompt, /again/);
         assert.doesNotMatch(calls[0].prompt, /User: hi/);
         assert.equal(ctx.session.sentKeys.size, 2);
+    });
+});
+
+test('runWithRecovery: a session with no accepted turn is treated as fresh', async () => {
+    // Regression: a generation_err on a session's FIRST completion leaves
+    // session.id set while messageCount stays 0 — the remote session never
+    // accepted the system prompt (tool definitions ride with it). The
+    // transient retry must re-send the full prompt; a delta-only one would
+    // leave the model without tool definitions for the rest of the session.
+    await withAccounts([makeAccount('a1')], async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([makeAccount('a1')], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err', modelError: { type: 'server_error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' } },
+                    { content: 'ok', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            // Seed the poisoned state after baseCtx: a remote session id exists
+            // but no turn was ever accepted into it.
+            ctx.session.id = 'sess-empty';
+            ctx.session.accountId = 'a1';
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(calls.length, 2, 'the initial attempt plus one same-session retry');
+            assert.match(calls[1].prompt, /SYS/, 'the retry must re-send the system prompt the empty session never saw');
+            assert.match(calls[1].prompt, /User: hi/);
+            assert.equal(out.reusingRemoteSession, false);
+        });
     });
 });
 
