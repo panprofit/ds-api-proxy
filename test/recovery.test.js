@@ -493,7 +493,6 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
             const results = [transient(), empty(), transient(), transient(), transient(), transient(), transient()];
             let i = 0;
             const ctx = baseCtx({
-                maxEmptyRetries: 0,
                 askDSStream: accountStub,
                 readDSResponse: async () => results[Math.min(i++, results.length - 1)],
             });

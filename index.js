@@ -85,8 +85,6 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
 
     const requestDeps = {
         askDSStream, readDSResponse,
-        maxEmptyRetries: config.maxEmptyRetries,
-        malformedCooldownMs: config.malformedToolCallCooldownMs,
         requestDeadlineMs: config.requestDeadlineMs,
     };
 
