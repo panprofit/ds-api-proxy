@@ -242,8 +242,8 @@ login helper.
 
 | Variable       | Default                   | Description                                                    |
 | -------------- | ------------------------- | -------------------------------------------------------------- |
-| `DS_PID_FILE`  | `./.run/ds-api-proxy.pid` | PID file written by `start.sh` / read by `stop.sh`.            |
-| `DS_LOG_FILE`  | `./.run/ds-api-proxy.log` | Log file the background server appends to (`npm run start:bg`). Restarts do not truncate it. |
+| `DS_PID_FILE`  | `./.run/.pid` | PID file written by `start.sh` / read by `stop.sh`.            |
+| `DS_LOG_FILE`  | `./.run/.log` | Log file the background server appends to (`npm run start:bg`). Restarts do not truncate it. |
 
 ## Security notes
 
@@ -292,6 +292,6 @@ vulnerability privately. The hardening below is what the proxy already does.
 | `Skipping auth config …: missing token and cookie` | Auth JSON lacks credentials. | Re-generate with `npm run auth`; the file needs both `token` and `cookie`. |
 
 Set `DS_DEBUG=1` for verbose SSE/parser diagnostics. `npm run start:bg` appends
-to `./.run/ds-api-proxy.log` (override with `DS_LOG_FILE`); the file is never
+to `./.run/.log` (override with `DS_LOG_FILE`); the file is never
 truncated on restart.
 

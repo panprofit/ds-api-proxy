@@ -55,11 +55,11 @@ tool-call markup) into the OpenAI Chat Completions format.
    survives closing the terminal:
 
    ```bash
-   npm run start:bg    # detaches; logs to ./.run/ds-api-proxy.log
+   npm run start:bg    # detaches; logs to ./.run/.log
    npm run stop:bg     # graceful SIGTERM shutdown
    ```
 
-   `start:bg` records the PID in `./.run/ds-api-proxy.pid`, so `stop:bg` targets
+   `start:bg` records the PID in `./.run/.pid`, so `stop:bg` targets
    exactly this instance. Override the paths with `DS_PID_FILE` / `DS_LOG_FILE`,
    or pass `--pid-file` / `--log` (`--force` for SIGKILL) to
    `sh scripts/start.sh` / `sh scripts/stop.sh`.

@@ -13,11 +13,11 @@
 # Usage:
 #   scripts/start.sh [--pid-file PATH] [--log PATH]
 #
-# Defaults: PID file ./.run/ds-api-proxy.pid, log ./.run/ds-api-proxy.log
+# Defaults: PID file ./.run/.pid, log ./.run/.log
 set -eu
 
-pid_file="${DS_PID_FILE:-./.run/ds-api-proxy.pid}"
-log_file="${DS_LOG_FILE:-./.run/ds-api-proxy.log}"
+pid_file="${DS_PID_FILE:-./.run/.pid}"
+log_file="${DS_LOG_FILE:-./.run/.log}"
 
 while [ $# -gt 0 ]; do
     case "$1" in

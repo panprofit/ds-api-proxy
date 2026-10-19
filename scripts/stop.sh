@@ -12,7 +12,7 @@
 # leftover FIFO name so the next start creates a fresh one.
 set -eu
 
-pid_file="${DS_PID_FILE:-./.run/ds-api-proxy.pid}"
+pid_file="${DS_PID_FILE:-./.run/.pid}"
 signal=TERM
 
 while [ $# -gt 0 ]; do
@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-fifo_file="${DS_LOG_FILE:-./.run/ds-api-proxy.log}.fifo"
+fifo_file="${DS_LOG_FILE:-./.run/.log}.fifo"
 
 if [ ! -f "$pid_file" ]; then
     echo "[stop] PID file not found: $pid_file" >&2
