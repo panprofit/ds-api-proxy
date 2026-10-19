@@ -52,9 +52,12 @@ tool call is never truncated.
 ### Tool-call parsing
 
 DS does not expose native function calling over its Web API; the proxy prompts
-for DeepSeek's own DSML grammar (the V4.x chat template's `｜DSML｜ calls` block
-built from `｜DSML｜ invoke` / `｜DSML｜ parameter name=… string=…` elements) and
-parses it back into OpenAI `tool_calls`. The parser accepts, in order:
+for DeepSeek's own DSML grammar (the V4.1 chat template's `｜DSML｜ calls` block
+built from `｜DSML｜ invoke` / `｜DSML｜ parameter name=… string=…` elements; the
+space before the tag name is part of the V4.1 format) and parses it back into
+OpenAI `tool_calls`. A tool declared with a `namespace` (or a qualified
+`namespace::name`) is advertised and invoked in the qualified form. The parser
+accepts, in order:
 
 1. **DSML/XML markup** — `｜DSML｜ calls` / `｜DSML｜ invoke` and the
 `<invoke>`/`<parameter>` grammar (the format the prompt asks for).
@@ -69,7 +72,9 @@ block.
 
 A tool call inside a markdown code fence is ignored (it is an illustration,
 not a request), except for a lone ```sh/```bash fence, which is treated as a
-`bash` call.
+`bash` call. Tag names quoted in inline code (`` `<tool_calls>` `` in a prose
+explanation of the format) are likewise ignored rather than mistaken for
+truncated markup.
 
 If the parsed call names a tool that is **not** in the request's `tools` list,
 the proxy does **not** treat it as broken markup (the JSON was valid — the model
@@ -93,6 +98,13 @@ side-channel mitigation. Usage-only and terminal chunks carry no padding.
   becomes the system prompt. `tools` use the flat Responses shape
   (`{type:"function", name, description, parameters}`) and are normalized
   internally. `stream` and `stream_options.include_usage` are honored.
+  `system` messages after the first non-system turn are kept in place as V4.1
+  mid-conversation system turns; leading ones form the system prompt.
+  `reasoning` items are re-attached to the following assistant turn as
+  `reasoning_content`. Prior-turn reasoning is re-rendered only when the request
+  declares `tools` (V4.1 disables `drop_thinking` for tool-calling); without
+  tools, reasoning from turns before the latest `user` message is dropped, while
+  reasoning inside the current turn survives across tool results.
 - **Response.** `output` is an array of typed items (`reasoning`, `message`,
   `function_call`); text is also mirrored in `output_text`. Usage uses
   `input_tokens` / `output_tokens` / `output_tokens_details.reasoning_tokens`.
@@ -163,6 +175,13 @@ requests rotate to another account:
   upstream `Retry-After`, whichever is longer);
 - a **recoverable failure** (malformed tool markup, empty response, unknown
   tool name) — rotated immediately, without parking the account;
+
+A transient upstream outage (`finish_reason=generation_err`) is not the account's
+fault: the same account is retried in place (`DS_MAX_UPSTREAM_RETRIES`) and only
+then recreated once in a fresh session. When such an error arrives after
+tool-intent reasoning on a thinking request that carries tools, DS is aborting
+the turn exactly as it starts emitting the tool call; the proxy spends one extra
+attempt with thinking disabled before entering that retry path.
 
 When every account is parked the request returns HTTP 429 with a
 `retry_in`-style hint until the earliest window opens.

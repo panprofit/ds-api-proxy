@@ -64,6 +64,46 @@ test('formatToolDefinitions: skips non-function entries', () => {
     assert.equal(prompt.formatToolDefinitions([{ type: 'function', function: { description: 'no name' } }]), '');
 });
 
+test('formatToolDefinitions: emits the V4.1 leading-space DSML tag names', () => {
+    const out = prompt.formatToolDefinitions([{
+        type: 'function',
+        function: { name: 'read' },
+    }]);
+    assert.ok(out.includes(`<${'\uFF5CDSML\uFF5C'} calls>`));
+    assert.ok(out.includes(`<${'\uFF5CDSML\uFF5C'} invoke name="$TOOL_NAME">`));
+    assert.ok(out.includes(`<${'\uFF5CDSML\uFF5C'} parameter name="$PARAMETER_NAME"`));
+});
+
+test('formatToolDefinitions: renders namespaced tools with a qualified name', () => {
+    const out = prompt.formatToolDefinitions([{
+        type: 'function',
+        namespace: { name: 'search', description: 'Search tools.' },
+        function: { name: 'lookup', description: 'Look up a value' },
+    }]);
+    assert.ok(out.includes('"name":"search::lookup"'));
+    assert.ok(out.includes('Search tools.\\nLook up a value'));
+});
+
+test('formatToolDefinitions: accepts namespace inside function and qualified names', () => {
+    const nested = prompt.formatToolDefinitions([{
+        type: 'function',
+        function: { name: 'lookup', namespace: 'search' },
+    }]);
+    assert.ok(nested.includes('"name":"search::lookup"'));
+    const qualified = prompt.formatToolDefinitions([{
+        type: 'function',
+        function: { name: 'search::lookup' },
+    }]);
+    assert.ok(qualified.includes('"name":"search::lookup"'));
+});
+
+test('formatMessages: renders a namespaced assistant call with the qualified name', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', tool_calls: [{ namespace: 'search', function: { name: 'lookup', arguments: '{}' } }] },
+    ], []);
+    assert.ok(conversation.includes('invoke name="search::lookup"'));
+});
+
 test('formatToolDefinitions: truncates long descriptions', () => {
     const out = prompt.formatToolDefinitions([{
         type: 'function',
@@ -194,6 +234,42 @@ test('formatMessages: separates system prompt and conversation', () => {
     }
 });
 
+test('formatMessages: keeps mid-conversation system messages in place', () => {
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const { prompt: conversation, systemPrompt } = prompt.formatMessages([
+            { role: 'system', content: 'lead' },
+            { role: 'user', content: 'u1' },
+            { role: 'assistant', content: 'a1' },
+            { role: 'system', content: 'reminder' },
+            { role: 'user', content: 'u2' },
+        ], []);
+        assert.equal(systemPrompt, 'lead');
+        assert.equal(conversation.includes('lead'), false);
+        assert.equal(
+            conversation,
+            'User: u1\n\nAssistant: a1\n\nSystem: reminder\n\nUser: u2'
+        );
+    } finally {
+        config.reload({});
+    }
+});
+
+test('collectPendingTurns: forwards a mid-conversation system message, not the leading one', () => {
+    const session = { sentKeys: new Set() };
+    const leading = { role: 'system', content: 'lead' };
+    const mid = { role: 'system', content: 'reminder' };
+    const messages = [leading, { role: 'user', content: 'u1' }, mid, { role: 'user', content: 'u2' }];
+    assert.deepEqual(
+        prompt.collectPendingTurns(messages, session),
+        [messages[1], mid, messages[3]]
+    );
+    prompt.markTurnsSent(session, messages);
+    assert.equal(session.sentKeys.size, 3);
+    assert.deepEqual(prompt.collectPendingTurns(messages, session), []);
+});
+
+
 test('formatMessages: renders assistant tool_calls as native DSML invokes', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'user', content: 'go' },
@@ -202,6 +278,54 @@ test('formatMessages: renders assistant tool_calls as native DSML invokes', () =
     assert.ok(conversation.includes('invoke name="read"'));
     assert.ok(conversation.includes('parameter name="path" string="true">a</'));
     assert.ok(conversation.includes('\uFF5CDSML\uFF5C calls>'));
+});
+
+test('formatMessages: renders prior assistant reasoning before the answer', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', reasoning_content: 'weigh options', content: 'done' },
+    ], []);
+    assert.equal(conversation, 'Assistant: <think>\nweigh options\n</think>\ndone');
+});
+
+test('formatMessages: renders prior assistant reasoning before a tool call', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', reasoning_content: 'need the file', tool_calls: [{ function: { name: 'read', arguments: '{"path":"a"}' } }] },
+    ], []);
+    assert.ok(conversation.startsWith('Assistant: <think>\nneed the file\n</think>'));
+    assert.ok(conversation.includes('invoke name="read"'));
+});
+
+test('formatMessages: without tools drops reasoning before the latest user message', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', reasoning_content: 'old think', content: 'old answer' },
+        { role: 'user', content: 'next question' },
+        { role: 'assistant', reasoning_content: 'current think', content: 'current answer' },
+    ], []);
+    assert.ok(!conversation.includes('old think'));
+    assert.ok(conversation.includes('old answer'));
+    assert.ok(conversation.includes('current think'));
+    assert.ok(conversation.includes('current answer'));
+});
+
+test('formatMessages: without tools keeps reasoning inside the current turn across tool results', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'user', content: 'do it' },
+        { role: 'assistant', reasoning_content: 'turn think', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{}' } }] },
+        { role: 'tool', content: 'result' },
+        { role: 'assistant', reasoning_content: 'after tool', content: 'final' },
+    ], []);
+    assert.ok(conversation.includes('turn think'));
+    assert.ok(conversation.includes('after tool'));
+});
+
+test('formatMessages: a tools declaration keeps reasoning from earlier turns', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'assistant', reasoning_content: 'old think', content: 'old answer' },
+        { role: 'user', content: 'next question' },
+        { role: 'assistant', reasoning_content: 'current think', content: 'current answer' },
+    ], [{ type: 'function', function: { name: 'read' } }]);
+    assert.ok(conversation.includes('old think'));
+    assert.ok(conversation.includes('current think'));
 });
 
 test('formatMessages: non-string arguments are JSON-encoded with string="false"', () => {

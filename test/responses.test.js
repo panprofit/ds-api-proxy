@@ -464,6 +464,11 @@ test('normalizeInput: function_call with object arguments is stringified', () =>
     assert.equal(out[0].tool_calls[0].function.arguments, '{"a":1}');
 });
 
+test('normalizeInput: function_call preserves a namespace', () => {
+    const out = responses.normalizeInput([{ type: 'function_call', call_id: 'c1', namespace: 'search', name: 'lookup', arguments: '{}' }]);
+    assert.equal(out[0].tool_calls[0].namespace, 'search');
+});
+
 test('normalizeInput: function_call_output becomes a tool message', () => {
     const out = responses.normalizeInput([{ type: 'function_call_output', call_id: 'c1', output: 'ok' }]);
     assert.equal(out[0].role, 'tool');
@@ -471,7 +476,28 @@ test('normalizeInput: function_call_output becomes a tool message', () => {
     assert.equal(out[0].content, 'ok');
 });
 
-test('normalizeInput: reasoning items are dropped', () => {
+test('normalizeInput: reasoning is attached to the following assistant turn', () => {
+    const out = responses.normalizeInput([
+        { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: 'need a file' }] },
+        { type: 'function_call', call_id: 'c1', name: 'read', arguments: '{}' },
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].reasoning_content, 'need a file');
+    assert.equal(out[0].tool_calls[0].function.name, 'read');
+});
+
+test('normalizeInput: reasoning before a user turn is kept as an assistant turn', () => {
+    const out = responses.normalizeInput([
+        { type: 'reasoning', summary: [{ type: 'summary_text', text: 'prior thought' }] },
+        { role: 'user', content: 'hi' },
+    ]);
+    assert.equal(out.length, 2);
+    assert.equal(out[0].role, 'assistant');
+    assert.equal(out[0].reasoning_content, 'prior thought');
+    assert.equal(out[1].content, 'hi');
+});
+
+test('normalizeInput: reasoning without text is dropped', () => {
     const out = responses.normalizeInput([{ type: 'reasoning' }, { role: 'user', content: 'hi' }]);
     assert.equal(out.length, 1);
     assert.equal(out[0].content, 'hi');
@@ -581,6 +607,12 @@ test('normalizeTools: flattens a flat function tool into nested shape', () => {
 test('normalizeTools: already-nested tools pass through unchanged', () => {
     const tool = { type: 'function', function: { name: 'x' } };
     assert.deepEqual(responses.normalizeTools([tool]), [tool]);
+});
+
+test('normalizeTools: preserves a flat tool namespace', () => {
+    const out = responses.normalizeTools([{ type: 'function', namespace: 'search', name: 'lookup' }]);
+    assert.equal(out[0].namespace, 'search');
+    assert.equal(out[0].function.name, 'lookup');
 });
 
 test('normalizeTools: hosted/non-function tools are dropped', () => {
