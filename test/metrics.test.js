@@ -16,6 +16,7 @@ test('createMetrics: starts at zero for every documented counter', () => {
         toolCalls: 0,
         rotations: 0,
         upstreamTransient: 0,
+        thinkingFallbacks: 0,
         emptyResponses: 0,
         malformedToolCalls: 0,
         unknownTool: 0,

@@ -249,6 +249,60 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
     });
 });
 
+test('runWithRecovery: generation_err after tool-intent reasoning retries with thinking disabled', async () => {
+    // DS aborts a tool-calling turn in thinking mode right before the call is
+    // emitted. The same settings reproduce it, so the loop spends one attempt
+    // with thinking off while still sending the tools.
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'bash' } }],
+                thinkingEnabled: true,
+                askDSStream: askStub([a1, a1], calls),
+                readDSResponse: sseOnce([
+                    {
+                        content: '', reasoningContent: 'I should use bash.', messageId: 'm1', finishReason: 'generation_err',
+                        modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+                    },
+                    { content: 'done', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'done');
+            assert.equal(calls.length, 2);
+            assert.equal(calls[0].thinkingEnabled, true);
+            assert.equal(calls[1].thinkingEnabled, false);
+        });
+    });
+});
+
+test('runWithRecovery: no thinking fallback without reasoning or tools', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                tools: [],
+                thinkingEnabled: true,
+                deadlineHit: () => true,
+                askDSStream: askStub([a1], calls),
+                readDSResponse: async () => ({
+                    content: '', reasoningContent: 'I should use bash.', messageId: 'm1', finishReason: 'generation_err',
+                    modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+                }),
+            });
+            await runWithRecovery(ctx);
+            // Without tools the error goes straight to the transient path; no
+            // thinking-off retry is attempted.
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0].thinkingEnabled, true);
+        });
+    });
+});
+
 test('runWithRecovery: DS generation_err retries the last turn in the SAME remote session', async () => {
     // A transient DS outage must NOT recreate the remote session during the
     // same-session retries: the session is still valid, so those retries re-send
@@ -715,6 +769,26 @@ test('runWithRecovery: malformed markup rotates the account immediately', async 
         accountsArr.length = 0;
         accountsArr.push(...saved);
     }
+});
+
+// A prose answer that merely quotes the DSML tag names in inline code (e.g. a
+// model explaining the format) must be delivered as text, not mistaken for
+// truncated markup and rotated through every account into an eventual 503.
+test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not rotated', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const content = 'Вызовы оборачиваются в `<tool_calls>` с тегами `<invoke>` / `<parameter>`.';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([a1], calls),
+            readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.fullContent, content);
+        assert.equal(calls.length, 1);
+    });
 });
 
 // Regression: "Auth may be expired, captcha may be required, or DS changed
