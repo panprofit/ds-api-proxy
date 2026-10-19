@@ -103,6 +103,18 @@ test('dsFetch: attaches an AbortSignal timeout by default', async () => {
     assert.equal(seenSignal.constructor.name, 'AbortSignal');
 });
 
+// A caller-supplied signal must not disable the fetch timeout: both are live.
+test('dsFetch: keeps the fetch timeout when the caller passes a signal', async () => {
+    const caller = new AbortController();
+    let seenSignal = null;
+    await withFetch(async (url, opts) => { seenSignal = opts.signal; return jsonResponse({}); }, async () => {
+        await upstream.dsFetch('/chat/x', { signal: caller.signal });
+    });
+    assert.ok(seenSignal);
+    caller.abort();
+    assert.equal(seenSignal.aborted, true);
+});
+
 // --- dsChatCompletionWithPow ------------------------------------------------
 
 test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {

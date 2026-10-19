@@ -140,9 +140,9 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
 - **PoW is time/nonce-bound.** `X-DS-PoW-Response` must be solved immediately
   before the request goes out. Any wait (e.g. the completion throttle) must
   happen BEFORE `solvePowForPath`, never after.
-- Every upstream call goes through `dsFetch`. Only completions pass
-  `quotaAccount` (that is what counts against the hourly cap); ancillary calls
-  (PoW, session create/delete, uploads, fetch_files) must NOT.
+- Every upstream call goes through `dsFetch`. Only completions take a
+  per-account throttle slot (`accounts.waitForCompletionSlot`); ancillary calls
+  (PoW, session create/delete, uploads, fetch_files) must NOT reserve one.
 - Long waits must honor `deadlineHit()` and `clientGone()`; otherwise an aborted
   client holds resources until `fetchTimeoutMs`.
 - Errors crossing the recovery boundary must be typed via `createTypedError` /
