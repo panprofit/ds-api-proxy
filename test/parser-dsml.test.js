@@ -20,6 +20,20 @@ test('canonicalizeToolMarkupTag: maps the `calls` short wrapper to tool_calls', 
     assert.equal(d.canonicalizeToolMarkupTag('/calls'), '</tool_calls>');
 });
 
+test('canonicalizeToolMarkupTag: accepts the V4.1 leading-space tag names', () => {
+    const t = '\uFF5CDSML\uFF5C';
+    assert.equal(d.canonicalizeToolMarkupTag(`${t} calls`), '<tool_calls>');
+    assert.equal(d.canonicalizeToolMarkupTag(`${t} invoke name="f"`), '<invoke name="f">');
+    assert.equal(d.canonicalizeToolMarkupTag(`${t} parameter name="a" string="true"`), '<parameter name="a" string="true">');
+});
+
+test('parseDsmlToolCall: parses a V4.1 namespaced leading-space block', () => {
+    const t = '\uFF5CDSML\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="search::lookup">\n<${t} parameter name="q" string="true">cats</${t} parameter>\n</${t} invoke>\n</${t} calls>`;
+    const call = d.parseDsmlToolCall(text, () => {});
+    assert.deepEqual(call, { name: 'search::lookup', arguments: '{"q":"cats"}' });
+});
+
 test('canonicalizeToolMarkupTag: smart quotes / fullwidth are folded to ASCII', () => {
     assert.match(d.canonicalizeToolMarkupTag('invoke name=“f”'), /^<invoke name="f">$/);
 });
@@ -232,3 +246,18 @@ test('looksLikeToolCallMarkup: false for prose that merely mentions DSML', () =>
     assert.equal(d.looksLikeToolCallMarkup('plain text'), false);
     assert.equal(d.looksLikeToolCallMarkup(''), false);
 });
+
+test('looksLikeToolCallMarkup: ignores tag names quoted in inline code', () => {
+    // A model explaining the DSML format writes the tags in backticks. Those are
+    // illustrative, not a (truncated) call, so recovery must not rotate.
+    assert.equal(d.looksLikeToolCallMarkup('оборачиваются в `<tool_calls>` с тегами `<invoke>` / `<parameter>`'), false);
+    assert.equal(d.looksLikeToolCallMarkup('use `<invoke name="read">` for a read'), false);
+    // A raw call next to illustrative inline code is still detected.
+    assert.equal(d.looksLikeToolCallMarkup('<tool_calls>\n<invoke name="bash">\nsee `<invoke>` above'), true);
+});
+
+test('blankInlineCodeSpans: blanks single-backtick spans but not ``` fences', () => {
+    assert.equal(d.blankInlineCodeSpans('a `b` c'), 'a     c');
+    assert.equal(d.blankInlineCodeSpans('a ```json\n{}\n``` b'), 'a ```json\n{}\n``` b');
+});
+
