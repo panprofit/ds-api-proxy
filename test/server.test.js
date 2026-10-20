@@ -155,6 +155,7 @@ test('createServer: an oversized body is 413', async () => {
         const res = fakeRes();
         await dispatch(srv, fakeReq({ chunks: ['x'.repeat(80), 'x'.repeat(80)] }), res);
         assert.equal(res.statusCode, 413);
+        assert.equal(res.headers.Connection, 'close');
         assert.equal(JSON.parse(res.body()).error.type, 'payload_too_large');
         srv.server.close();
     } finally {
