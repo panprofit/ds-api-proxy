@@ -46,8 +46,10 @@ there are no maintained release branches. Run the latest `master`.
 - **`/health` minimization** (`lib/health.js`): the full readiness report
   (upstream host, account counts, concurrency) is returned **only to a loopback
   peer**; any non-loopback caller gets just `{ status, shutting_down }`.
-- **Upload cache keying**: cache keys include a hash of the account
-  token+cookie, so a cached `file_id` is never reused after credentials rotate.
+- **Upload cache keying**: keys are scoped to the stable account id (email
+  hash, or the legacy token+cookie hash) plus a content hash, so cached
+  `file_id`s are never shared between accounts. A token refresh keeps the same
+  account id and does not evict entries.
 - **Attachment paths** (`lib/prompt.js`): screenshot paths are extracted only
   from structured `tool` result fields, never from free text.
 - **Non-fatal runtime errors**: after `listen()`, server errors are logged, not
