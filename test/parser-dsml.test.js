@@ -27,6 +27,34 @@ test('canonicalizeToolMarkupTag: accepts the V4.1 leading-space tag names', () =
     assert.equal(d.canonicalizeToolMarkupTag(`${t} parameter name="a" string="true"`), '<parameter name="a" string="true">');
 });
 
+// The model mangles the delimiter run in production: zero, one or two pipes on
+// either side of DSML, with the closing slash possibly inside the run. Every
+// spelling must fold to the same tag.
+test('canonicalizeToolMarkupTag: accepts one-sided and bare DSML markers', () => {
+    const fw = '\uFF5C';
+    assert.equal(d.canonicalizeToolMarkupTag(`${fw}DSML invoke name="f"`), '<invoke name="f">');
+    assert.equal(d.canonicalizeToolMarkupTag(`DSML${fw} invoke name="f"`), '<invoke name="f">');
+    assert.equal(d.canonicalizeToolMarkupTag('DSML invoke name="f"'), '<invoke name="f">');
+    assert.equal(d.canonicalizeToolMarkupTag(`/${fw}DSML invoke`), '</invoke>');
+    assert.equal(d.canonicalizeToolMarkupTag(`${fw}DSML${fw}/ invoke`), '</invoke>');
+    assert.equal(d.canonicalizeToolMarkupTag(`${fw}DSML${fw} calls`), '<tool_calls>');
+});
+
+test('parseDsmlToolCall: every DSML delimiter variant parses', () => {
+    const variants = ['\uFF5CDSML\uFF5C', '\uFF5CDSML', 'DSML\uFF5C', 'DSML', '|DSML|', '|DSML', 'DSML|'];
+    for (const v of variants) {
+        const text = `<${v} calls>\n<${v} invoke name="f">\n<${v} parameter name="a" string="true">1</${v} parameter>\n</${v} invoke>\n</${v} calls>`;
+        const call = d.parseDsmlToolCall(text, () => {});
+        assert.ok(call, `variant ${JSON.stringify(v)} should parse`);
+        assert.deepEqual(JSON.parse(call.arguments), { a: '1' }, `variant ${JSON.stringify(v)} args`);
+    }
+});
+
+test('readDsmlTagAt: reads a one-sided marker tag', () => {
+    assert.equal(d.readDsmlTagAt('<\uFF5CDSML invoke name="f">', 0).name, 'invoke');
+    assert.equal(d.readDsmlTagAt('<DSML\uFF5C invoke name="f">', 0).name, 'invoke');
+});
+
 test('parseDsmlToolCall: parses a V4.1 namespaced leading-space block', () => {
     const t = '\uFF5CDSML\uFF5C';
     const text = `<${t} calls>\n<${t} invoke name="search::lookup">\n<${t} parameter name="q" string="true">cats</${t} parameter>\n</${t} invoke>\n</${t} calls>`;
@@ -230,12 +258,54 @@ test('parseDsmlToolCall: text outside the <tool_calls> wrapper is ignored', () =
     assert.equal(tc.name, 'f');
 });
 
+// --- malformed-shape tolerance ---------------------------------------------
+
+const P = '\uFF5C';
+
+test('parseDsmlToolCall: duplicate wrapper openings are skipped', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="a">1</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.equal(tc.name, 'f');
+    assert.deepEqual(JSON.parse(tc.arguments), { a: '1' });
+});
+
+test('parseDsmlToolCall: a repeated closing parameter tag is ignored', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="a">1</${P}DSML${P} parameter>\n</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.deepEqual(JSON.parse(tc.arguments), { a: '1' });
+});
+
+test('parseDsmlToolCall: a nameless closing tag closes the parameter', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="code" string="true">x</${P}DSML${P}>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.deepEqual(JSON.parse(tc.arguments), { code: 'x' });
+});
+
+test('parseDsmlToolCall: literal tags inside a code argument are raw text', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="code" string="true">see <${P}DSML${P} invoke name="g"> and </${P}DSML${P}> here</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.equal(tc.name, 'f');
+    assert.deepEqual(JSON.parse(tc.arguments), { code: `see <invoke name="g"> and </${P}DSML${P}> here` });
+});
+
+test('parseDsmlToolCall: recovers a tool name from a leading name parameter', () => {
+    // A malformed call that drops <invoke> and puts the tool name in a
+    // parameter named "name" is recovered; the normal shape is unaffected.
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} parameter name="name" string="true">f</${P}DSML${P} parameter>\n<${P}DSML${P} parameter name="a">1</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.equal(tc.name, 'f');
+    assert.deepEqual(JSON.parse(tc.arguments), { a: '1' });
+});
+
 // --- looksLikeToolCallMarkup -----------------------------------------------
 
 test('looksLikeToolCallMarkup: true for real tag forms', () => {
     assert.equal(d.looksLikeToolCallMarkup('<tool_call>...'), true);
     assert.equal(d.looksLikeToolCallMarkup('<invoke name="f">'), true);
     assert.equal(d.looksLikeToolCallMarkup('<|DSML| invoke name="f">'), true);
+    assert.equal(d.looksLikeToolCallMarkup('<\uFF5CDSML invoke name="f">'), true);
+    assert.equal(d.looksLikeToolCallMarkup('<DSML\uFF5C invoke name="f">'), true);
+    assert.equal(d.looksLikeToolCallMarkup('<DSML invoke name="f">'), true);
     assert.equal(d.looksLikeToolCallMarkup('{"tool_call":{"name":"read"}}'), true);
 });
 

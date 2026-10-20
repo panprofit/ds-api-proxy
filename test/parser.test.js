@@ -478,11 +478,13 @@ test('extractToolCallScope: no wrapper -> null', () => {
   assert.equal(parser.extractToolCallScope('<invoke name="f"></invoke>'), null);
 });
 
-test('extractToolCallScope: two opening wrappers -> null', () => {
-  assert.equal(
-    parser.extractToolCallScope('<tool_calls><tool_calls></tool_calls></tool_calls>'),
-    null,
+test('extractToolCallScope: duplicate opening wrappers are tolerated', () => {
+  // The model sometimes emits the wrapper twice; the outer opening anchors the
+  // scope and the inner duplicate is skipped by parseDsmlToolCall.
+  const scope = parser.extractToolCallScope(
+    '<tool_calls><tool_calls><invoke name="f"></invoke></tool_calls></tool_calls>',
   );
+  assert.equal(scope, '<tool_calls><invoke name="f"></invoke></tool_calls>');
 });
 
 // ---------------------------------------------------------------------------
