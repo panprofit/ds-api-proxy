@@ -255,6 +255,41 @@ test('askDSStream: forwards fileIds and thinkingEnabled together', async () => {
     assert.equal(calls.completions[0].thinkingEnabled, true);
 });
 
+test('askDSStream: re-resolves fileIds when the selected account differs', async () => {
+    const { deps, calls } = makeDeps();
+    const seen = [];
+    const ask = createUpstreamSession(deps);
+    const out = await ask({
+        prompt: 'hi', agentId: 'agent1',
+        fileIds: ['old'],
+        fileIdsAccountId: 'a0',
+        resolveFileIds: async (account, opts) => {
+            seen.push({ id: account.id, canAbort: typeof opts.shouldAbort === 'function' });
+            return ['new'];
+        },
+    });
+    assert.deepEqual(calls.completions[0].fileIds, ['new']);
+    assert.deepEqual(out.fileIds, ['new']);
+    assert.equal(out.fileIdsAccountId, 'a1');
+    assert.deepEqual(seen, [{ id: 'a1', canAbort: true }]);
+});
+
+test('askDSStream: keeps fileIds when the account did not change', async () => {
+    const { deps, calls } = makeDeps();
+    let resolved = false;
+    const ask = createUpstreamSession(deps);
+    const out = await ask({
+        prompt: 'hi', agentId: 'agent1',
+        fileIds: ['f1'],
+        fileIdsAccountId: 'a1',
+        resolveFileIds: async () => { resolved = true; return ['other']; },
+    });
+    assert.equal(resolved, false);
+    assert.deepEqual(calls.completions[0].fileIds, ['f1']);
+    assert.deepEqual(out.fileIds, ['f1']);
+    assert.equal(out.fileIdsAccountId, 'a1');
+});
+
 test('askDSStream: tags the session log line when thinking mode is enabled', async () => {
     // Thinking is no longer a standalone line; it is tagged onto the
     // "Created new session" line so the log stays one line per completion.

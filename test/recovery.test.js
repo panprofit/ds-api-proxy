@@ -1147,6 +1147,47 @@ test('runWithRecovery: auto-continuation appends the continuation and updates fi
     });
 });
 
+test('runWithRecovery: rotation re-uploads attachments and the continuation uses the new ids', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_MAX_CONTINUATION: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                fileIds: ['f1'],
+                fileIdsAccountId: 'a1',
+                resolveFileIds: async () => ['f2'],
+                askDSStream: async (args) => {
+                    calls.push(args);
+                    const first = calls.length === 1;
+                    return {
+                        resp: { body: {} }, account: first ? a1 : a2,
+                        promptUsed: args.prompt, freshSessionReset: false,
+                        fileIds: first ? ['f1'] : ['f2'],
+                        fileIdsAccountId: first ? 'a1' : 'a2',
+                    };
+                },
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null },
+                    { content: 'part1', reasoningContent: '', messageId: 'm1', finishReason: 'length', modelError: null },
+                    { content: 'part2', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'part1\npart2');
+            assert.equal(calls.length, 3);
+            // The rotation attempt still carries a1's ids and asks recovery to
+            // resolve a2's; the continuation then reuses the resolved ids.
+            assert.deepEqual(calls[1].fileIds, ['f1']);
+            assert.equal(calls[1].fileIdsAccountId, 'a1');
+            assert.deepEqual(calls[2].fileIds, ['f2']);
+            assert.equal(calls[2].fileIdsAccountId, 'a2');
+        });
+    });
+});
+
 test('runWithRecovery: a refusal continuation is not appended', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         await withConfig({ DS_MAX_CONTINUATION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {

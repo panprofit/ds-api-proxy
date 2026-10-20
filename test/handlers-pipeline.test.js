@@ -342,6 +342,40 @@ test('handleChatCompletions: uploads are reported and forwarded to recovery', as
     });
 });
 
+test('handleChatCompletions: an account change re-uploads the full attachment history', async () => {
+    await withAccounts([makeAccount('a1'), makeAccount('a2')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const resolveCalls = [];
+        let captured = null;
+        const deps = withDeps({
+            resolveMessageAttachments: async (msgs, account) => {
+                resolveCalls.push({ count: msgs.length, accountId: account.id });
+                return { fileIds: resolveCalls.length === 1 ? ['f1'] : ['f2'], uploads: [], failures: [] };
+            },
+            askDSStream: async (args) => {
+                captured = args;
+                return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+            },
+        });
+        const messages = [
+            { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] },
+            { role: 'assistant', content: 'seen' },
+            { role: 'user', content: 'follow-up' },
+        ];
+        await handlers.handleChatCompletions(req, res, JSON.stringify({ messages }), deps);
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(captured.fileIds, ['f1']);
+        assert.equal(captured.fileIdsAccountId, 'a1');
+        assert.equal(typeof captured.resolveFileIds, 'function');
+        assert.deepEqual(await captured.resolveFileIds(makeAccount('a2'), {}), ['f2']);
+        assert.deepEqual(resolveCalls, [
+            { count: 3, accountId: 'a1' },
+            { count: 3, accountId: 'a2' },
+        ]);
+    });
+});
+
 test('handleChatCompletions: attachment failures are logged but do not fail the request', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();

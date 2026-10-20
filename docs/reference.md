@@ -294,7 +294,9 @@ vulnerability privately. The hardening below is what the proxy already does.
   `MEDIA:` / path strings cannot leak into the model response.
 - **Upload cache**: cache keys include the account id (email hash) plus a content
   hash, so a cached `file_id` is never reused for a different account while a
-  token refresh does not evict it.
+  token refresh does not evict it. When recovery switches accounts, the images
+  in the full history are re-uploaded under the new account, because its fresh
+  remote session cannot use the previous account's file ids.
 - **CORS policy** (`DS_ALLOWED_ORIGINS` + `HOST`): when the allowlist is set,
   only listed origins get an `Access-Control-Allow-Origin` header. When it is
   empty, the request Origin is reflected **only on a loopback bind**; on any
