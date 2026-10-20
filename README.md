@@ -194,7 +194,8 @@ Each auth JSON file looks like:
 
 `token` is the DS bearer token and `cookie` is the `Cookie` header value (the
 helper writes the `ds_session_id` and `smidV2` cookies). Both values come from a
-logged-in DS web session. `email` is the login identifier; the proxy hashes it
+logged-in DS web session. `email` is the login identifier (from `--email`, the
+captured login request, or the `/users/current` profile); the proxy hashes it
 (lower-cased) to derive the stable account id, so refreshing the token/cookie
 does not change the account's cooldowns, LRU position or sticky sessions.
 Legacy files without `email` keep the old token+cookie hash.
