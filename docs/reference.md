@@ -210,7 +210,7 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_AUTH_DIR`                        | `./.auth`                 | Directory scanned for `*.json` auth configs (sorted). Defaults to `./.auth`; when the directory is missing or holds no valid configs, no accounts load and every completion returns 503. Audited at startup (missing dir, no `*.json` files, or none loading all produce a clear log line).                 |
 | `DS_ACCOUNT_COOLDOWN_MS`             | `300000` (5 min)            | Cooldown after an HTTP 401/403/429 account failure.                                                                                                                                                                                                                |
 | `DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS` | `6000`                    | Minimum spacing (ms) between consecutive completions on the same account, so a burst spreads across the pool instead of hammering one account. `0` disables the throttle.                                                                                            |
-| `DS_TOKEN_REFRESH_INTERVAL_MS`       | `3000000` (50 min)          | At most once per interval, refresh an account's bearer token via `GET /api/v0/users/current` and keep it in memory for subsequent calls (DS rotates web tokens hourly). Never persisted. `0` disables the refresh.                                                |
+| `DS_TOKEN_REFRESH_INTERVAL_MS`       | `3000000` (50 min)          | At most once per interval, refresh an account's bearer token via `GET /api/v0/users/current` for subsequent calls (DS rotates web tokens hourly). For email-keyed accounts the rotated token is written back to the auth file; legacy token+cookie-keyed files are updated in memory only. `0` disables the refresh.                                                |
 | `DS_ACCOUNT_STATE_FLUSH_MS`          | `60000`                     | How often (ms) the persisted per-account runtime state (`$DS_AUTH_DIR/.account-state.json`: cooldowns, LRU) is flushed to disk. `0` disables persistence.                                                                                          |
 | `DS_CLIENT_LOCALE`                   | `en`                        | Default `x-client-locale` sent upstream; per-account `locale` overrides it.                                                                                                                                                                                        |
 | `DS_CLIENT_TIMEZONE_OFFSET`          | `0`                         | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it.                                                                                                                                                                      |
@@ -288,8 +288,9 @@ vulnerability privately. The hardening below is what the proxy already does.
 - **Attachment paths** (`lib/prompt.js`): screenshot paths are extracted only
   from structured `tool` result fields, never from free text, so injected
   `MEDIA:` / path strings cannot leak into the model response.
-- **Upload cache**: cache keys include a hash of the account token+cookie, so a
-  cached `file_id` is never reused after credentials rotate.
+- **Upload cache**: cache keys include the account id (email hash) plus a content
+  hash, so a cached `file_id` is never reused for a different account while a
+  token refresh does not evict it.
 - **CORS policy** (`DS_ALLOWED_ORIGINS` + `HOST`): when the allowlist is set,
   only listed origins get an `Access-Control-Allow-Origin` header. When it is
   empty, the request Origin is reflected **only on a loopback bind**; on any

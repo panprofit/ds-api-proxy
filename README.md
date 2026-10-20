@@ -157,18 +157,17 @@ loop treats as *auth expired / captcha*) is offered a **headless re-login**:
 
 ```bash
 npm run auth:repair                    # check all accounts, prompt to repair each
-npm run auth:repair -- --account <id>  # only one account (16-char content hash)
+npm run auth:repair -- --account <id>  # only one account (16-char email hash)
 npm run auth:repair -- --email me@example.com  # reuse this email for the re-login
 npm run auth:repair -- --yes           # no per-account confirmation prompt
 npm run auth:repair -- --help
 ```
 
 The probe is read-only: it never creates or deletes a remote session. Re-login
-always runs headless (repair is unattended) and asks for the account password on
-the terminal. Since the helper names auth files after the login email, the
-re-login prompt offers that address as the default (just press ENTER to accept);
-`--email` overrides it. Interactive logins that fell back to the content-hash
-file name have no email to recover, so the address is prompted for in full. After a successful re-login the fresh credentials are probed again,
+always runs headless (repair is unattended) and asks only for the account
+password on the terminal. The email is read from the auth config (`email`), or
+from an email-shaped file name for legacy files; `--email` overrides it. A legacy
+file with neither is skipped with a hint to add `email` to the file. After a successful re-login the fresh credentials are probed again,
 and only then is the old auth file removed if the new one landed under a different
 name. Accounts that merely failed to respond (network/upstream error) are
 reported but never re-logged in. The script exits non-zero if any account could
@@ -180,6 +179,7 @@ Each auth JSON file looks like:
 
 ```json
 {
+  "email": "<login email>",
   "token": "<bearer token>",
   "cookie": "<cookie header>",
   "wasmUrl": "<PoW WASM module URL>",
@@ -194,9 +194,14 @@ Each auth JSON file looks like:
 
 `token` is the DS bearer token and `cookie` is the `Cookie` header value (the
 helper writes the `ds_session_id` and `smidV2` cookies). Both values come from a
-logged-in DS web session. The file is named after a content hash of
-token+cookie, so re-running `npm run auth` after the credentials change writes a
-new file — remove the old one to avoid keeping a stale account around.
+logged-in DS web session. `email` is the login identifier; the proxy hashes it
+(lower-cased) to derive the stable account id, so refreshing the token/cookie
+does not change the account's cooldowns, LRU position or sticky sessions.
+Legacy files without `email` keep the old token+cookie hash.
+
+The helper names the file after that same account id (the email hash, otherwise
+the token+cookie hash), so re-authenticating the same account overwrites its
+file: `$DS_AUTH_DIR/<16-char id>.json`.
 
 The PoW WASM URL is stored per account in its auth config as `wasmUrl` (written
 by `npm run auth`), so accounts from different regions can pin their own copy of
@@ -217,10 +222,11 @@ origin, user-agent, request ids) are deliberately not captured: replaying a
 stale value would break the request. `x-device-id` is the important one —
 upstream treats a missing browser device fingerprint as a suspicious device.
 
-The proxy refreshes an account's bearer token in memory every
+The proxy refreshes an account's bearer token every
 `DS_TOKEN_REFRESH_INTERVAL_MS` (50 min by default) via `GET /users/current`.
-The refreshed value is never written back to the auth file, so a restart uses
-the token captured at login.
+For email-keyed accounts the rotated value is written back to the auth file
+(atomically, mode `0600`), so a restart reuses it. Legacy files without `email`
+keep their in-memory token only, because their id is derived from token+cookie.
 
 
 ## Client integration (pi agent)

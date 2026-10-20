@@ -50,16 +50,6 @@ const profileDir = path.join(runDir, '.chrome-auth-profile');
 function baseUrl() { return `https://${config.get().remoteHost}`; }
 function signInUrl() { return `${baseUrl()}/sign_in`; }
 
-// Name the saved auth file after the login email when it is known (headless /
-// autofill), so files are human-readable and re-authenticating the same
-// account overwrites its file instead of accumulating content-hash names.
-// Falls back to the token+cookie hash for interactive logins where no email is
-// available. The loader keys accounts by that content hash (not the file name),
-// so this naming is purely cosmetic and safe to change.
-function emailSlug(email) {
-    return String(email || '').trim().replace(/[^a-zA-Z0-9._@-]/g, '_').slice(0, 64);
-}
-
 // Recover the login identifier from the captured POST /api/v0/users/login
 // request. Interactive (visible) logins have no --email, and the form value is
 // destroyed once the SPA navigates away, so the request body is the only place
@@ -80,18 +70,19 @@ function emailFromLoginPost(events) {
     return '';
 }
 
+// Name the saved auth file after the account id: the email hash when the login
+// email is known, otherwise the legacy token+cookie hash. Re-authenticating the
+// same account therefore overwrites its file, and the file name matches the id
+// used in logs, --account and the persisted state.
 function authFileName(email, auth, capturedEmail) {
-    const slug = emailSlug(email || capturedEmail || '');
-    if (slug) return slug;
+    const accountEmail = String(email || capturedEmail || auth?.email || '').trim();
+    if (accountEmail) return accounts.accountIdFromEmail(accountEmail);
     return accounts.accountIdFromCredentials(auth);
 }
 
-// Best-effort recovery of the login email from an auth file name. The helper
-// names files after the email slug (see authFileName), so for a normal address
-// (letters/digits/._@-) the basename IS the email and needs no re-typing. The
-// slug is lossy (other chars -> '_', truncated to 64) and interactive logins
-// fall back to the content hash, so this is only a suggestion the operator can
-// override at the prompt; anything not email-shaped yields ''.
+// Best-effort recovery of the login email from a legacy auth file name. Older
+// versions named files after the email slug, so an email-shaped basename still
+// yields the address; the current hashed names (and anything else) yield ''.
 function emailFromFileName(file) {
     const base = path.basename(String(file || ''), '.json');
     return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(base) ? base : '';
@@ -137,9 +128,9 @@ function usage() {
   npm run auth:repair                check every account; re-login broken ones
 
   --headless, -H    run the browser headless
-  --email, -e       account email to auto-fill (password prompted)
+  --email, -e       account email to auto-fill (with --repair: override it)
   --repair          probe all accounts and offer a headless re-login
-  --account <id>    with --repair: only this account (16-char content hash)
+  --account <id>    with --repair: only this account (16-char email hash)
   --yes, -y         with --repair: skip the per-account confirmation
   --help, -h        show this help
 
@@ -240,13 +231,6 @@ function ask(q) {
     return new Promise((resolve) => rl.question(q, (ans) => { rl.close(); activeRl = null; resolve(ans); }));
 }
 
-// Like ask(), but returns `def` when the operator just presses ENTER. Used so
-// an already-known value (e.g. the email recovered from the auth file name)
-// can be accepted without re-typing it.
-async function askDefault(q, def) {
-    const ans = (await ask(q)).trim();
-    return ans || def;
-}
 // Close the pending readline prompt. Without this, losing the Promise.race in
 // the ENTER prompt leaves readline attached to stdin and keeps the Node event
 // loop alive, so the process hangs after cleanup instead of exiting.
@@ -701,7 +685,11 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
         const capturedEmail = emailFromLoginPost(cdp.events);
-        const fileName = authFileName(email, auth, capturedEmail);
+        const accountEmail = String(email || capturedEmail || '').trim();
+        // Persist the login identifier so the loader can key the account by a
+        // stable email hash instead of the rotating token+cookie pair.
+        if (accountEmail) auth.email = accountEmail;
+        const fileName = authFileName(accountEmail, auth, capturedEmail);
         if (!email && capturedEmail) {
             console.log(`[auth] account email (from login request): ${capturedEmail}`);
         }
@@ -804,10 +792,14 @@ async function runRepair(opts) {
 
     for (const r of expired) {
         const label = `${path.basename(r.account.file)} (id=${r.account.id})`;
-        // The email is usually recoverable from the file name, so offer it as
-        // the default (ENTER accepts) instead of asking the operator to retype
-        // what the script already knows. --email overrides it entirely.
-        const suggested = email || emailFromFileName(r.account.file);
+        // The email is stored in the auth config (or, for legacy files, in the
+        // email-shaped file name). Never ask for what the script already knows;
+        // --email overrides it for a file saved under an unhelpful name.
+        const acctEmail = email || r.account.config?.email || emailFromFileName(r.account.file);
+        if (!acctEmail) {
+            console.error(`[auth:repair] ${label}: no email in the auth config; add 'email' to the file or pass --email. Skipping.`);
+            continue;
+        }
         if (!opts.yes) {
             const ans = (await ask(`[auth:repair] Re-login ${label} now? [y/N] `)).trim().toLowerCase();
             if (ans !== 'y' && ans !== 'yes') { console.log(`[auth:repair] skipping ${label}.`); continue; }
@@ -816,15 +808,6 @@ async function runRepair(opts) {
             console.error(`[auth:repair] ${label}: ${browserInstallHelp()}`);
             continue;
         }
-        let acctEmail;
-        if (email) {
-            acctEmail = email;
-        } else if (suggested) {
-            acctEmail = await askDefault(`[auth:repair] Email for account ${r.account.id} [${suggested}]: `, suggested);
-        } else {
-            acctEmail = (await ask(`[auth:repair] Email for account ${r.account.id}: `)).trim();
-        }
-        if (!acctEmail) { console.error(`[auth:repair] no email for ${label}; skipping.`); continue; }
         console.log(`[auth:repair] ${label}: using email ${acctEmail}`);
         const password = await askHidden(`[auth:repair] Password for ${acctEmail}: `);
         if (!password) { console.error(`[auth:repair] empty password for ${label}; skipping.`); continue; }
@@ -843,9 +826,9 @@ async function runRepair(opts) {
             continue;
         }
         // The new file may be written under a different name than the broken
-        // one (e.g. the email slug changed). Verify the freshly saved file
+        // one (e.g. the legacy file name was a hash). Verify the freshly saved file
         // itself, then remove the stale file if it is now a different path.
-        const fresh = { id: accounts.accountIdFromCredentials(login.auth), file: login.filePath, config: login.auth, headers: accounts.buildBaseHeaders(login.auth) };
+        const fresh = { id: accounts.accountIdForConfig(login.auth), file: login.filePath, config: login.auth, headers: accounts.buildBaseHeaders(login.auth) };
         process.stdout.write(`[auth:repair] ${label}: verifying new credentials... `);
         const verify = await probeAccount(fresh);
         if (verify.status !== 'ok') {

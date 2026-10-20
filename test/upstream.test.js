@@ -518,15 +518,15 @@ test('uploadCacheKey: different account slot splits the key', () => {
     assert.notEqual(a, b);
 });
 
-test('uploadCacheKey: rotated token/cookie splits the key', () => {
+test('uploadCacheKey: a token refresh does not evict cached uploads for the same account', () => {
     const buffer = Buffer.from('same-bytes');
     const before = upstream.uploadCacheKey({
         account: { id: 'acct1', config: { token: 't1', cookie: 'c1' } }, buffer, mime: 'image/png',
     });
     const after = upstream.uploadCacheKey({
-        account: { id: 'acct1', config: { token: 't2', cookie: 'c1' } }, buffer, mime: 'image/png',
+        account: { id: 'acct1', config: { token: 't2', cookie: 'c2' } }, buffer, mime: 'image/png',
     });
-    assert.notEqual(before, after);
+    assert.equal(before, after);
 });
 
 // --- uploadFileToDS size guard ----------------------------------------------

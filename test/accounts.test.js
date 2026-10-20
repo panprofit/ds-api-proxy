@@ -17,7 +17,7 @@ const { getAccounts, buildBaseHeaders, pickFingerprintHeaders, setAccountToken, 
         markAccountBroken, hasAvailableAccount, waitForAvailableAccount,
         resetAccountState, accountStatePath, loadAccountState, serializeAccountState,
         persistAccountState, flushAccountState,
-        getAccountById, accountIdFromCredentials } = accounts;
+        getAccountById, accountIdFromCredentials, accountIdFromEmail, accountIdForConfig, persistAccountToken } = accounts;
 
 // --- helpers ----------------------------------------------------------------
 
@@ -148,6 +148,33 @@ test('setAccountToken: updates token and header, keeps the credential-derived id
     assert.equal(setAccountToken(a, ''), false);
 });
 
+test('persistAccountToken: writes the rotated token back for email-keyed accounts', () => {
+    withTempAuthDir({ 'a.json': { email: 'u@e.com', token: 'OLD', cookie: 'c=1', wasmUrl: 'w' } }, (dir) => {
+        const file = path.join(dir, 'a.json');
+        const account = { id: 'x', file, config: JSON.parse(fs.readFileSync(file, 'utf8')) };
+        setAccountToken(account, 'NEW');
+        assert.equal(persistAccountToken(account), true);
+        const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+        assert.equal(saved.token, 'NEW');
+        assert.equal(saved.email, 'u@e.com');
+        assert.equal(saved.cookie, 'c=1');
+        assert.equal(saved.wasmUrl, 'w');
+    });
+});
+
+test('persistAccountToken: legacy token+cookie-keyed accounts stay in memory only', () => {
+    withTempAuthDir({ 'a.json': { token: 'OLD', cookie: 'c=1' } }, (dir) => {
+        const account = { id: 'x', file: path.join(dir, 'a.json'), config: { token: 'NEW', cookie: 'c=1' } };
+        assert.equal(persistAccountToken(account), false);
+        assert.equal(JSON.parse(fs.readFileSync(account.file, 'utf8')).token, 'OLD');
+    });
+});
+
+test('persistAccountToken: a write failure is reported, not thrown', () => {
+    const account = { id: 'x', file: '/nonexistent-dir/a.json', config: { email: 'u@e.com', token: 'T', cookie: 'c' } };
+    assert.equal(persistAccountToken(account), false);
+});
+
 test('buildBaseHeaders: returns an empty-config header set when called without an argument', () => {
     // Regression: the argument used to default to the first loaded account,
     // so a bare buildBaseHeaders() silently produced another account's headers.
@@ -194,6 +221,43 @@ test('loadDSConfig: loads accounts, assigns credential-hash ids, and sets header
         assert.equal(arr[0].cooldownUntil, 0);
         assert.equal(arr[0].failures, 0);
     });
+});
+
+test('loadDSConfig: keys accounts by the email hash when the file records one', () => {
+    withTempAuthDir({
+        'one.json': { email: 'User@Example.com', token: 'T1', cookie: 'C1' },
+        'two.json': { email: 'other@example.com', token: 'T2', cookie: 'C2' },
+    }, () => {
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        assert.deepEqual(getAccounts().map(a => a.id), [
+            accountIdFromEmail('User@Example.com'),
+            accountIdFromEmail('other@example.com'),
+        ]);
+    });
+});
+
+test('loadDSConfig: two files with the same email collapse to one account', () => {
+    withTempAuthDir({
+        'one.json': { email: 'user@example.com', token: 'T1', cookie: 'C1' },
+        'dup.json': { email: ' USER@example.com ', token: 'T2', cookie: 'C2' },
+    }, () => {
+        assert.equal(loadDSConfig({ fatal: false }), true);
+        assert.equal(getAccounts().length, 1);
+    });
+});
+
+test('accountIdFromEmail: stable across token changes and case/whitespace', () => {
+    const a = accountIdFromEmail('User@Example.com');
+    assert.equal(a, accountIdFromEmail(' user@example.COM '));
+    assert.match(a, /^[0-9a-f]{16}$/);
+    assert.equal(accountIdFromEmail(''), '');
+    assert.notEqual(a, accountIdFromEmail('other@example.com'));
+});
+
+test('accountIdForConfig: prefers email and falls back to credentials', () => {
+    assert.equal(accountIdForConfig({ email: 'u@e.com', token: 'T', cookie: 'C' }), accountIdFromEmail('u@e.com'));
+    assert.equal(accountIdForConfig({ token: 'T', cookie: 'C' }), accountIdFromCredentials({ token: 'T', cookie: 'C' }));
+    assert.equal(accountIdForConfig({ email: '   ', token: 'T', cookie: 'C' }), accountIdFromCredentials({ token: 'T', cookie: 'C' }));
 });
 
 test('loadDSConfig: skips a file whose credentials duplicate an already-loaded account', () => {
