@@ -62,11 +62,14 @@ for DeepSeek's own DSML grammar (the V4.1 chat template's `｜DSML｜ calls` blo
 built from `｜DSML｜ invoke` / `｜DSML｜ parameter name=… string=…` elements; the
 space before the tag name is part of the V4.1 format) and parses it back into
 OpenAI `tool_calls`. A tool declared with a `namespace` (or a qualified
-`namespace::name`) is advertised and invoked in the qualified form. The parser
-accepts, in order:
+`namespace::name`) is advertised and invoked in the qualified form. Requests
+with thinking enabled and tools instead ask for a plain
+`<tool_call>{"name","arguments"}</tool_call>` JSON block: native DSML makes DS
+enter its tool-call decoder, which the Web endpoint aborts in thinking mode.
+The parser accepts, in order:
 
 1. **DSML/XML markup** — `｜DSML｜ calls` / `｜DSML｜ invoke` and the
-`<invoke>`/`<parameter>` grammar (the format the prompt asks for).
+`<tool_call>{"name","arguments"}</tool_call>` / `<invoke>`/`<parameter>` grammar.
 2. **Strict / fenced JSON** — `{"tool_call":{"name","arguments"}}` inline or in
 a ```json fence (with the usual JSON repair heuristics for truncated or
 mis-escaped output); kept as a fallback for older upstream behavior.

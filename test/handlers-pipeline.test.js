@@ -137,6 +137,77 @@ test('handleChatCompletions: tool-call result is serialized as tool_calls', asyn
     });
 });
 
+function askCapture() {
+    let captured = null;
+    return {
+        get args() { return captured; },
+        askDSStream: async (args) => {
+            captured = args;
+            return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+        },
+    };
+}
+
+test('handleChatCompletions: thinking + tools prompts plain JSON tool calls', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const capture = askCapture();
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: 'hi' }],
+            reasoning_effort: 'high',
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), withDeps({ askDSStream: capture.askDSStream }));
+        assert.equal(res.statusCode, 200);
+        assert.ok(capture.args.prompt.includes('<tool_call>\n{"name":"$TOOL_NAME"'));
+        assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C'));
+    });
+});
+
+test('handleChatCompletions: non-thinking tools keep the native DSML prompt', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const capture = askCapture();
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: 'hi' }],
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), withDeps({ askDSStream: capture.askDSStream }));
+        assert.equal(res.statusCode, 200);
+        assert.ok(capture.args.prompt.includes('\uFF5CDSML\uFF5C calls'));
+        assert.ok(!capture.args.prompt.includes('<tool_call>\n{"name":"$TOOL_NAME"'));
+    });
+});
+
+test('handleChatCompletions: toggling thinking resets the session for the new tool format', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const prompts = [];
+        const askDSStream = async (args) => {
+            prompts.push(args.prompt);
+            const session = sessions.getOrCreateAgentSession(args.agentId);
+            if (!session.id) {
+                session.id = `sess-${prompts.length}`;
+                session.messageCount = 1;
+            }
+            return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+        };
+        const send = (body, headers = { 'x-agent-session': 'agent-x' }) => {
+            const req = fakeReq({ headers });
+            const res = fakeRes();
+            return handlers.handleChatCompletions(req, res, JSON.stringify(body), withDeps({ askDSStream }))
+                .then(() => res);
+        };
+        const tools = [{ type: 'function', function: { name: 'read' } }];
+        await send({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'high', tools });
+        await send({ messages: [{ role: 'user', content: 'again' }], tools });
+        assert.equal(prompts.length, 2);
+        assert.ok(prompts[0].includes('<tool_call>'));
+        assert.ok(!prompts[0].includes('\uFF5CDSML\uFF5C'));
+        assert.ok(prompts[1].includes('\uFF5CDSML\uFF5C calls'));
+        assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-2');
+    });
+});
+
 // --- chat completions: failure paths ---------------------------------------
 
 test('handleChatCompletions: invalid params are 400 before any upstream call', async () => {
