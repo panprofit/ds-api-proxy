@@ -443,6 +443,8 @@ test('runWithRecovery: a muted body on all accounts returns 429 with mute_until'
             askDSStream: async (args) => {
                 const session = sessions.getOrCreateAgentSession(args.agentId);
                 session.accountId = a1.id;
+                session.id = 'sess-muted';
+                session.messageCount = 3;
                 return { resp: { body: {} }, account: a1, promptUsed: args?.prompt || 'p', freshSessionReset: false };
             },
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted }),
@@ -452,6 +454,11 @@ test('runWithRecovery: a muted body on all accounts returns 429 with mute_until'
         assert.equal(out.error.status, 429);
         assert.equal(out.error.body.type, 'rate_limit_error');
         assert.equal(out.error.body.mute_until, muteUntilSec);
+        // The failure snapshot must survive the rotation reset: the terminal
+        // error still identifies the remote session the muted turn belonged to.
+        assert.equal(out.error.body.failed_session_id, 'sess-muted');
+        assert.equal(out.error.body.message_count, 3);
+        assert.equal(out.error.body.account, a1.id);
         // The only account is parked until mute_until, so no account is
         // available: the terminal message is the all-cooling one.
         assert.equal(out.error.body.message, 'All auth accounts are muted or cooling down. Retry later.');
