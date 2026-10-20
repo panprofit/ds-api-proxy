@@ -129,6 +129,68 @@ test('runWithRecovery: empty response rotates the account instead of retrying it
     });
 });
 
+test('runWithRecovery: a single account retries an empty response in a fresh session', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null },
+                    { content: 'recovered', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'recovered');
+            assert.equal(calls.length, 2, 'the sole account gets one same-account retry');
+            assert.equal(a1.failures, 0);
+            assert.equal(a1.cooldownUntil, 0);
+        });
+    });
+});
+
+test('runWithRecovery: a single account retries a reasoning-only response in a fresh session', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: 'stop', modelError: null },
+                    { content: 'final answer', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'final answer');
+            assert.equal(calls.length, 2, 'the sole account gets one same-account retry');
+            assert.equal(a1.failures, 0);
+        });
+    });
+});
+
+test('runWithRecovery: same-account retries are bounded by DS_MAX_SAME_ACCOUNT_RETRIES', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(calls.length, 2, 'initial attempt + exactly one retry');
+        });
+    });
+});
+
 test('runWithRecovery: reasoning-only response rotates the account without cooling it', async () => {
     // Reasoning present but no final content is not a broken account: the model
     // thought but emitted no visible answer. The account is rotated but neither

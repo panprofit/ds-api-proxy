@@ -33,6 +33,7 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_REQUEST_DEADLINE_MS: 'requestDeadlineMs',
     DS_ROTATION_BUDGET_MS: 'rotationBudgetMs',
     DS_MAX_UPSTREAM_RETRIES: 'maxUpstreamRetries',
+    DS_MAX_SAME_ACCOUNT_RETRIES: 'maxSameAccountRetries',
     DS_MAX_CONTINUATION: 'maxContinuation',
     DS_ACTION_PROMISE_MAX_CHARS: 'actionPromiseMaxChars',
     DS_TOKEN_RATE_LIMIT_PER_MIN: 'tokenRateLimitPerMin',

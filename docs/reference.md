@@ -180,7 +180,10 @@ requests rotate to another account:
 - an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
   upstream `Retry-After`, whichever is longer);
 - a **recoverable failure** (malformed tool markup, empty response, unknown
-  tool name) — rotated immediately, without parking the account;
+  tool name) — rotated immediately, without parking the account. With exactly
+  one configured account, an empty or reasoning-only response first gets
+  `DS_MAX_SAME_ACCOUNT_RETRIES` attempt(s) in a fresh remote session instead of
+  ending the request immediately;
 
 A transient upstream outage (`finish_reason=generation_err`) is not the account's
 fault: the same account is retried in place (`DS_MAX_UPSTREAM_RETRIES`) and only
@@ -218,6 +221,7 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_REQUEST_DEADLINE_MS`             | `120000`                    | Per-request deadline before recovery gives up.                                                                                                                                                                                                                     |
 | `DS_ROTATION_BUDGET_MS`              | `60000`                     | Wall-clock budget for cycling through accounts after failures, so a request does not spend its whole deadline waiting out cooldowns on every account.                                                                                                               |
 | `DS_MAX_UPSTREAM_RETRIES`            | `3`                         | Same-account retries when DS itself reports a transient outage (`finish_reason=generation_err` / "Server temporarily unavailable."). Rotating accounts cannot help here (all share the same upstream), so the current account is retried instead of parked (0–10). |
+| `DS_MAX_SAME_ACCOUNT_RETRIES`        | `1`                         | Same-account retries for a recoverable empty / reasoning-only response when exactly one account is configured. The retry uses a fresh remote session and does not consume the multi-account rotation budget (0–10). |
 | `DS_MAX_CONTINUATION`                | `2`                         | Max auto-continuation rounds for long/length-finished responses (0–10).                                                                                                                                                                                            |
 | `DS_ACTION_PROMISE_MAX_CHARS`        | `600`                       | Max content length (chars) for the action-promise phase: a longer body is a real answer, not a promise to act.                                                                                                                                                     |
 | `DS_TOKEN_RATE_LIMIT_PER_MIN`        | `0` (off)                   | Adaptive completion throttle by burn rate. Above this tokens/min the interval between completions on one account is stretched, so a long continuation burst self-spaces instead of tripping the upstream 429. `0` disables the adaptive part (the fixed `DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS` still applies).                                                                    |

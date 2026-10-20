@@ -12,15 +12,9 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.host, '127.0.0.1');
     assert.equal(c.maxConcurrent, 10);
     assert.equal(c.authDir, './.auth');
-
-
-test('load: DS_MAX_CONCURRENT is capped at 256', () => {
-    assert.equal(config.load({ DS_MAX_CONCURRENT: '100000' }).maxConcurrent, 256);
-    assert.equal(config.load({ DS_MAX_CONCURRENT: '256' }).maxConcurrent, 256);
-    assert.equal(config.load({ DS_MAX_CONCURRENT: '0' }).maxConcurrent, 1);
-});
     assert.equal(c.requestDeadlineMs, 120000);
     assert.equal(c.maxUpstreamRetries, 3);
+    assert.equal(c.maxSameAccountRetries, 1);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
     assert.equal(c.tokenRefreshIntervalMs, 50 * 60 * 1000);
     assert.equal(c.accountMinCompletionIntervalMs, 6000);
@@ -31,6 +25,21 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.maxUploadBytes, 25 * 1024 * 1024);
     assert.equal(c.maxToolResultBytes, 64 * 1024);
     assert.equal(c.shutdownGraceMs, 15000);
+});
+
+test('load: DS_MAX_CONCURRENT is capped at 256', () => {
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '100000' }).maxConcurrent, 256);
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '256' }).maxConcurrent, 256);
+    assert.equal(config.load({ DS_MAX_CONCURRENT: '0' }).maxConcurrent, 1);
+});
+
+test('config.load: DS_MAX_SAME_ACCOUNT_RETRIES default, override and clamp', () => {
+    assert.equal(config.load({}).maxSameAccountRetries, 1);
+    assert.equal(config.load({ DS_MAX_SAME_ACCOUNT_RETRIES: '0' }).maxSameAccountRetries, 0);
+    assert.equal(config.load({ DS_MAX_SAME_ACCOUNT_RETRIES: '4' }).maxSameAccountRetries, 4);
+    assert.equal(config.load({ DS_MAX_SAME_ACCOUNT_RETRIES: '99' }).maxSameAccountRetries, 10);
+    assert.equal(config.load({ DS_MAX_SAME_ACCOUNT_RETRIES: '-1' }).maxSameAccountRetries, 0);
+    assert.equal(config.load({ DS_MAX_SAME_ACCOUNT_RETRIES: 'nope' }).maxSameAccountRetries, 1);
 });
 
 test('config.load: parses and overrides from env', () => {
