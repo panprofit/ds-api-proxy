@@ -57,6 +57,28 @@ test('readDSResponse: accumulates response/content fragments and message id', as
     assert.equal(session.messageCount, 1);
 });
 
+test('readDSResponse: strips [citation:N] markers from the answer', async () => {
+    const session = SESSION();
+    const body = sse(
+        { p: 'response/fragments', v: { type: 'RESPONSE', content: 'A [citation:1] B' } },
+        { p: 'response/fragments', v: { type: 'RESPONSE', content: ' [citation:22]C' } },
+        { response_message_id: 'm' },
+    );
+    const out = await readDSResponse(streamOf(body), session, '[t]', { log: () => {} });
+    assert.equal(out.content, 'A  B C');
+});
+
+test('readDSResponse: SEARCH fragments are not answer content', async () => {
+    const session = SESSION();
+    const body = sse(
+        { p: 'response/fragments', v: { type: 'SEARCH', content: 'query text' } },
+        { p: 'response/fragments', v: { type: 'RESPONSE', content: 'answer' } },
+        { response_message_id: 'm' },
+    );
+    const out = await readDSResponse(streamOf(body), session, '[t]', { log: () => {} });
+    assert.equal(out.content, 'answer');
+});
+
 test('readDSResponse: response/fragments rebuilds content + reasoning', async () => {
     const session = SESSION();
     const body = sse(

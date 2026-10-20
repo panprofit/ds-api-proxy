@@ -184,7 +184,11 @@ Each auth JSON file looks like:
   "cookie": "<cookie header>",
   "wasmUrl": "<PoW WASM module URL>",
   "hifDliq": "<x-hif-dliq header>",
-  "hifLeim": "<x-hif-leim header>"
+  "hifLeim": "<x-hif-leim header>",
+  "extraHeaders": {
+    "x-device-id": "<browser device fingerprint>",
+    "sec-ch-ua": "<client hints>"
+  }
 }
 ```
 
@@ -201,9 +205,22 @@ the solver.
 `hifDliq` / `hifLeim` are optional client-identity values captured from the
 browser's outgoing requests during `npm run auth`. When present they are
 forwarded upstream as the `x-hif-dliq` / `x-hif-leim` headers; when absent the
-proxy sends empty values, which is the normal case today. They exist so the
-exact browser identity of an account can be replayed if DeepSeek ever hardens
-its client checks.
+proxy sends empty values. `x-hif-leim` is refreshed at runtime from
+`hif-leim.deepseek.com/query` and cached for the advertised TTL (about 10
+minutes), because the login value goes stale long before a completion runs.
+`x-hif-dliq` has no equivalent refresh endpoint and stays as captured.
+
+`extraHeaders` is optional and holds the stable browser fingerprint headers
+captured during login (`x-device-id`, `sec-ch-ua*`, `sec-fetch-*`, `priority`,
+`accept*`). Per-request headers (authorization, cookies, PoW, content length,
+origin, user-agent, request ids) are deliberately not captured: replaying a
+stale value would break the request. `x-device-id` is the important one —
+upstream treats a missing browser device fingerprint as a suspicious device.
+
+The proxy refreshes an account's bearer token in memory every
+`DS_TOKEN_REFRESH_INTERVAL_MS` (50 min by default) via `GET /users/current`.
+The refreshed value is never written back to the auth file, so a restart uses
+the token captured at login.
 
 
 ## Client integration (pi agent)

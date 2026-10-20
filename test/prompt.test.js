@@ -29,6 +29,31 @@ test('normalizeMessageContent: renders tool_result parts recursively', () => {
     assert.equal(prompt.normalizeMessageContent(content), '<tool_result>\ninner\n</tool_result>');
 });
 
+test('tool results: a literal </tool_result> is escaped so it cannot close the envelope', () => {
+    const rendered = prompt.renderTurn({
+        role: 'tool',
+        content: 'before </tool_result> after',
+        tool_call_id: 'c1',
+    });
+    assert.equal(rendered, '<tool_result>\nbefore <\\/tool_result> after\n</tool_result>\n\n');
+    assert.equal(
+        prompt.normalizeMessageContent([{ type: 'tool_result', content: 'x </TOOL_RESULT> y' }]),
+        '<tool_result>\nx <\\/tool_result> y\n</tool_result>'
+    );
+});
+
+test('tool results: oversized content is truncated on a UTF-8 boundary', () => {
+    config.reload({ DS_MAX_TOOL_RESULT_BYTES: '4' });
+    try {
+        const rendered = prompt.renderTurn({ role: 'tool', content: 'ab😀cd' });
+        // 😀 occupies bytes 2-5; a 4-byte cut would split it, so back off to 2.
+        assert.ok(rendered.includes('ab\n\n[tool result truncated: 8 bytes -> 2 bytes]'));
+        assert.ok(!rendered.includes('\uFFFD'));
+    } finally {
+        config.reload({});
+    }
+});
+
 test('composePrompt: joins system + conversation, trims, omits empty system', () => {
     assert.equal(prompt.composePrompt('sys', 'conv'), 'sys\n\nconv');
     assert.equal(prompt.composePrompt('', 'conv'), 'conv');
@@ -102,6 +127,26 @@ test('formatMessages: renders a namespaced assistant call with the qualified nam
         { role: 'assistant', tool_calls: [{ namespace: 'search', function: { name: 'lookup', arguments: '{}' } }] },
     ], []);
     assert.ok(conversation.includes('invoke name="search::lookup"'));
+});
+
+test('formatToolDefinitions: tool_choice=none omits all tool instructions', () => {
+    const tools = [{ type: 'function', function: { name: 'read' } }];
+    assert.equal(prompt.formatToolDefinitions(tools, 'none'), '');
+});
+
+test('formatToolDefinitions: required and named tool_choice add a mandatory instruction', () => {
+    const tools = [{ type: 'function', function: { name: 'read' } }];
+    assert.ok(prompt.formatToolDefinitions(tools, 'required').includes('MUST invoke one of the available tools'));
+    assert.ok(prompt.formatToolDefinitions(tools, { name: 'read' }).includes('MUST invoke the tool "read"'));
+    assert.ok(!prompt.formatToolDefinitions(tools, 'auto').includes('MUST invoke'));
+});
+
+test('formatMessages: forwards tool_choice into the system prompt', () => {
+    const tools = [{ type: 'function', function: { name: 'read' } }];
+    const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, { name: 'read' });
+    assert.ok(systemPrompt.includes('MUST invoke the tool "read"'));
+    const none = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, 'none');
+    assert.equal(none.systemPrompt.includes('### Available Tool Schemas'), false);
 });
 
 test('formatToolDefinitions: truncates long descriptions', () => {

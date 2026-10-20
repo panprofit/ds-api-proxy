@@ -434,3 +434,43 @@ test('askDSStream: throttles a reused session too (not only the first call)', as
     assert.equal(rec.calls.length, 1);
     assert.equal(calls.completions.length, 1);
 });
+
+test('askDSStream: refreshes the account token before creating a session', async () => {
+    const order = [];
+    const { deps, calls } = makeDeps({
+        refreshAccountToken: async () => { order.push('refresh'); return true; },
+        createRemoteSession: async () => { order.push('create'); calls.created++; return 'sess-' + calls.created; },
+    });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hello', agentId: 'agent1' });
+    assert.deepEqual(order, ['refresh', 'create']);
+});
+
+test('askDSStream: skips the token refresh when the deadline is hit or the client is gone', async () => {
+    for (const opts of [{ deadlineHit: () => true }, { clientGone: () => true }]) {
+        let refreshed = false;
+        const { deps } = makeDeps({
+            refreshAccountToken: async () => { refreshed = true; return true; },
+        });
+        const ask = createUpstreamSession(deps);
+        await ask({ prompt: 'hello', agentId: 'agent1', ...opts });
+        assert.equal(refreshed, false);
+    }
+});
+
+test('askDSStream: refreshes client headers before creating a session and can be skipped', async () => {
+    const order = [];
+    const { deps, calls } = makeDeps({
+        refreshClientHeaders: async () => { order.push('headers'); },
+        createRemoteSession: async () => { order.push('create'); calls.created++; return 'sess-' + calls.created; },
+    });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hello', agentId: 'agent1' });
+    assert.deepEqual(order, ['headers', 'create']);
+
+    let refreshed = false;
+    const skipped = makeDeps({ refreshClientHeaders: async () => { refreshed = true; } });
+    const askSkipped = createUpstreamSession(skipped.deps);
+    await askSkipped({ prompt: 'hello', agentId: 'agent1', deadlineHit: () => true });
+    assert.equal(refreshed, false);
+});

@@ -570,3 +570,35 @@ test('normalizeStop: absent / invalid -> []', () => {
     assert.deepEqual(handlers.normalizeStop(null), []);
     assert.deepEqual(handlers.normalizeStop(42), []);
 });
+
+// --- resolveTools / resolveToolChoice ---------------------------------------
+
+test('resolveTools: keeps the tools array and maps legacy functions', () => {
+    const tools = [{ type: 'function', function: { name: 'a' } }];
+    assert.deepEqual(handlers.resolveTools({ tools }), tools);
+    assert.deepEqual(
+        handlers.resolveTools({ functions: [{ name: 'legacy', parameters: {} }, { description: 'no name' }] }),
+        [{ type: 'function', function: { name: 'legacy', parameters: {} } }]
+    );
+    assert.deepEqual(handlers.resolveTools({}), []);
+});
+
+test('resolveToolChoice: normalizes strings, named objects and legacy function_call', () => {
+    assert.equal(handlers.resolveToolChoice({}), 'auto');
+    assert.equal(handlers.resolveToolChoice({ tool_choice: 'auto' }), 'auto');
+    assert.equal(handlers.resolveToolChoice({ tool_choice: 'none' }), 'none');
+    assert.equal(handlers.resolveToolChoice({ tool_choice: 'required' }), 'required');
+    assert.deepEqual(
+        handlers.resolveToolChoice({ tool_choice: { type: 'function', function: { name: 'read' } } }),
+        { name: 'read' }
+    );
+    assert.deepEqual(handlers.resolveToolChoice({ function_call: { name: 'write' } }), { name: 'write' });
+    assert.equal(handlers.resolveToolChoice({ function_call: 'none' }), 'none');
+    assert.equal(handlers.resolveToolChoice({ tool_choice: 'bogus' }), 'auto');
+});
+
+test('parseChatRequest: validates functions and tool_choice types', () => {
+    assert.match(handlers.parseChatRequest(JSON.stringify({ functions: {} })).error.message, /functions must be an array/);
+    assert.match(handlers.parseChatRequest(JSON.stringify({ tool_choice: 3 })).error.message, /tool_choice must be/);
+    assert.equal(handlers.parseChatRequest(JSON.stringify({ functions: [], tool_choice: 'none' })).ok, true);
+});

@@ -22,12 +22,14 @@ test('load: DS_MAX_CONCURRENT is capped at 256', () => {
     assert.equal(c.requestDeadlineMs, 120000);
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
+    assert.equal(c.tokenRefreshIntervalMs, 50 * 60 * 1000);
     assert.equal(c.accountMinCompletionIntervalMs, 6000);
     assert.equal(c.accountStateFlushMs, 60 * 1000);
     assert.equal(c.sessionTtlMs, 2 * 60 * 60 * 1000);
     assert.equal(c.maxSessions, 1000);
     assert.equal(c.fetchTimeoutMs, 60000);
     assert.equal(c.maxUploadBytes, 25 * 1024 * 1024);
+    assert.equal(c.maxToolResultBytes, 64 * 1024);
     assert.equal(c.shutdownGraceMs, 15000);
 });
 
@@ -46,6 +48,22 @@ test('config.load: parses and overrides from env', () => {
     assert.equal(c.requestDeadlineMs, 1000);
     assert.equal(c.sessionTtlMs, 1234);
     assert.equal(c.authDir, '/auth');
+});
+
+test('config.load: DS_TOKEN_REFRESH_INTERVAL_MS default, override and clamp', () => {
+    assert.equal(config.load({}).tokenRefreshIntervalMs, 3000000);
+    assert.equal(config.load({ DS_TOKEN_REFRESH_INTERVAL_MS: '1000' }).tokenRefreshIntervalMs, 1000);
+    assert.equal(config.load({ DS_TOKEN_REFRESH_INTERVAL_MS: '0' }).tokenRefreshIntervalMs, 0);
+    assert.equal(config.load({ DS_TOKEN_REFRESH_INTERVAL_MS: '-1' }).tokenRefreshIntervalMs, 0);
+    assert.equal(config.load({ DS_TOKEN_REFRESH_INTERVAL_MS: 'nope' }).tokenRefreshIntervalMs, 3000000);
+});
+
+test('config.load: DS_MAX_TOOL_RESULT_BYTES default, override and clamp', () => {
+    assert.equal(config.load({}).maxToolResultBytes, 65536);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_BYTES: '1024' }).maxToolResultBytes, 1024);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_BYTES: '0' }).maxToolResultBytes, 0);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_BYTES: '-1' }).maxToolResultBytes, 0);
+    assert.equal(config.load({ DS_MAX_TOOL_RESULT_BYTES: 'nope' }).maxToolResultBytes, 65536);
 });
 
 test('config.load: DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS default, override and clamp', () => {

@@ -70,6 +70,7 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 | `lib/upstream-session.js` | one completion attempt + expired-session recreation |
 | `lib/upstream.js` | DS network layer (uploads, chat, session delete) |
 | `lib/upstream-fetch.js` | SSRF guard + size-capped remote file download |
+| `lib/hif.js` | short-lived `x-hif-leim` fetch + TTL cache |
 | `lib/upstream-pow.js` | PoW WASM loader + solver (per-URL module cache) |
 | `lib/accounts.js` | account pool, LRU selection, sticky selection, cooldown, per-account completion throttle |
 | `lib/sessions.js` | agent session registry + TTL rollover; deletes the remote session on reset and on shutdown |

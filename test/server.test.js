@@ -99,6 +99,27 @@ test('createServer: a non-GET request to /health is 405', async () => {
     srv.server.close();
 });
 
+test('createServer: GET /v1/models lists the accepted model names', async () => {
+    const { srv } = build();
+    const res = fakeRes();
+    await dispatch(srv, fakeReq({ method: 'GET', url: '/v1/models' }), res);
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body());
+    assert.equal(body.object, 'list');
+    assert.deepEqual(body.data.map(m => m.id), ['deepseek', 'deepseek-chat', 'deepseek-reasoner']);
+    assert.ok(body.data.every(m => m.object === 'model'));
+    srv.server.close();
+});
+
+test('createServer: POST /v1/models is 405', async () => {
+    const { srv } = build();
+    const res = fakeRes();
+    await dispatch(srv, fakeReq({ method: 'POST', url: '/v1/models' }), res);
+    assert.equal(res.statusCode, 405);
+    assert.equal(res.headers.Allow, 'GET');
+    srv.server.close();
+});
+
 test('createServer: a malformed request URL is 400 instead of a hung socket', async () => {
     const { srv } = build();
     const res = fakeRes();

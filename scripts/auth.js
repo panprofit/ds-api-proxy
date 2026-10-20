@@ -453,6 +453,22 @@ async function submitLogin(cdp) {
     return r.result?.value;
 }
 
+// Request headers the page itself sent, in capture order. CDP exposes them on
+// `requestWillBeSent` (request.headers) and on `requestWillBeSentExtraInfo`
+// (headers); response events must not contribute, or the last-seen value for a
+// fingerprint header would come from the response.
+function capturedRequestHeaderSets(events) {
+    const out = [];
+    for (const ev of events || []) {
+        if (ev.method === 'Network.requestWillBeSent' && ev.params?.request?.headers) {
+            out.push(ev.params.request.headers);
+        } else if (ev.method === 'Network.requestWillBeSentExtraInfo' && ev.params?.headers) {
+            out.push(ev.params.headers);
+        }
+    }
+    return out;
+}
+
 async function readPageAuth(cdp) {
     const evalRes = await cdp.send('Runtime.evaluate', {
         expression: `(() => {
@@ -519,7 +535,10 @@ async function readPageAuth(cdp) {
         (pageState.resources || []).find((u) => /sha3.*\.wasm/.test(u)) ||
         'https://fe-static.deepseek.com/chat/static/sha3_wasm_bg.7b9ca65ddd.wasm';
 
-    return { token, cookie, wasmUrl, hifDliq, hifLeim };
+    const auth = { token, cookie, wasmUrl, hifDliq, hifLeim };
+    const extraHeaders = accounts.pickFingerprintHeaders(capturedRequestHeaderSets(cdp.events));
+    if (Object.keys(extraHeaders).length > 0) auth.extraHeaders = extraHeaders;
+    return auth;
 }
 
 // Open the disposable browser and capture credentials. Returns

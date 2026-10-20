@@ -11,10 +11,11 @@ threat model see [SECURITY.md](SECURITY.md); for contribution workflow see
 |--------|--------------------------|----------------------------------------------|
 | POST   | `/v1/chat/completions`   | OpenAI Chat Completions (`stream: true|false`) |
 | POST   | `/v1/responses`          | OpenAI Responses API (`stream: true|false`)    |
+| GET    | `/v1/models`             | OpenAI model list (informational; any model name is accepted). |
 | GET    | `/health`                | Liveness/readiness JSON report (see below).    |
 
-The proxy is meant to run on loopback; `/health` is its only non-completion
-endpoint. The primary consumer is the pi coding agent, which uses
+The proxy is meant to run on loopback; `/v1/models` and `/health` are its
+only non-completion endpoints. The primary consumer is the pi coding agent, which uses
 `/v1/responses` — see [Client integration (pi agent)](#client-integration-pi-agent).
 
 ### `GET /health`
@@ -48,6 +49,11 @@ no-op. This is a prompt-level nudge, not enforced grammar.
 - **`stop`** (a string or array of strings) is applied locally to the assembled
 answer: the response is truncated at the earliest matching sequence. A parsed
 tool call is never truncated.
+- **`tool_choice`** is a prompt instruction: `none` omits the tool schemas
+entirely, `required` and a named `{type:"function", function:{name}}` add a
+mandatory-call rule, and `auto` (the default) keeps the normal wording. The
+legacy `functions` / `function_call` fields are translated to the current
+`tools` / `tool_choice` shape.
 
 ### Tool-call parsing
 
@@ -204,6 +210,7 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_AUTH_DIR`                        | `./.auth`                 | Directory scanned for `*.json` auth configs (sorted). Defaults to `./.auth`; when the directory is missing or holds no valid configs, no accounts load and every completion returns 503. Audited at startup (missing dir, no `*.json` files, or none loading all produce a clear log line).                 |
 | `DS_ACCOUNT_COOLDOWN_MS`             | `300000` (5 min)            | Cooldown after an HTTP 401/403/429 account failure.                                                                                                                                                                                                                |
 | `DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS` | `6000`                    | Minimum spacing (ms) between consecutive completions on the same account, so a burst spreads across the pool instead of hammering one account. `0` disables the throttle.                                                                                            |
+| `DS_TOKEN_REFRESH_INTERVAL_MS`       | `3000000` (50 min)          | At most once per interval, refresh an account's bearer token via `GET /api/v0/users/current` and keep it in memory for subsequent calls (DS rotates web tokens hourly). Never persisted. `0` disables the refresh.                                                |
 | `DS_ACCOUNT_STATE_FLUSH_MS`          | `60000`                     | How often (ms) the persisted per-account runtime state (`$DS_AUTH_DIR/.account-state.json`: cooldowns, LRU) is flushed to disk. `0` disables persistence.                                                                                          |
 | `DS_CLIENT_LOCALE`                   | `en`                        | Default `x-client-locale` sent upstream; per-account `locale` overrides it.                                                                                                                                                                                        |
 | `DS_CLIENT_TIMEZONE_OFFSET`          | `0`                         | Default `x-client-timezone-offset` sent upstream; per-account `timezone_offset` overrides it.                                                                                                                                                                      |
@@ -225,6 +232,7 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_UPLOAD_CACHE_TTL_MS`             | `21600000` (6 h)            | Upload cache TTL.                                                                                                                                                                                                                                                  |
 | `DS_MAX_UPLOAD_BYTES`                | `26214400` (25 MB)          | Max size of a single uploaded attachment.                                                                                                                                                                                                                          |
 | `DS_MAX_BODY_BYTES`                  | `10485760` (10 MB)          | Max size of an incoming request body.                                                                                                                                                                                                                              |
+| `DS_MAX_TOOL_RESULT_BYTES`           | `65536` (64 KB)             | Max size of one tool result before it enters the upstream prompt. Larger results are truncated on a UTF-8 boundary with a marker. `0` disables truncation.                                                                                                         |
 | `DS_BODY_READ_TIMEOUT_MS`            | `30000`                     | Max time to receive a full body before `408`.                                                                                                                                                                                                                      |
 | `DS_HEADERS_TIMEOUT_MS`              | `60000`                     | Socket cap on sending request headers.                                                                                                                                                                                                                             |
 | `DS_REQUEST_TIMEOUT_MS`              | `300000`                    | Socket cap on the whole request.                                                                                                                                                                                                                                   |

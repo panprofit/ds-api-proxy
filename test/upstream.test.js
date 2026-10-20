@@ -721,3 +721,62 @@ test('buildCompletionPayload: searchEnabled overrides the default', () => {
         true
     );
 });
+
+// --- refreshAccountToken ----------------------------------------------------
+
+test('refreshAccountToken: stores the rotated token in memory for later calls', async () => {
+    config.reload({ DS_TOKEN_REFRESH_INTERVAL_MS: '60000' });
+    try {
+        const account = { id: 'a1', headers: { Authorization: 'Bearer OLD' }, config: { token: 'OLD' } };
+        const calls = [];
+        await withFetch(async (url, opts) => {
+            calls.push({ url, auth: opts.headers.Authorization });
+            return { ok: true, status: 200, json: async () => ({ data: { biz_data: { token: 'NEW' } } }) };
+        }, async () => {
+            assert.equal(await upstream.refreshAccountToken(account), true);
+        });
+        assert.equal(account.config.token, 'NEW');
+        assert.equal(account.headers.Authorization, 'Bearer NEW');
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].url, `${DS_BASE}/users/current`);
+        assert.equal(calls[0].auth, 'Bearer OLD');
+
+        await withFetch(async () => { throw new Error('must not fetch inside the interval'); }, async () => {
+            assert.equal(await upstream.refreshAccountToken(account), false);
+        });
+    } finally {
+        config.reload({});
+    }
+});
+
+test('refreshAccountToken: non-OK and malformed responses leave the token alone', async () => {
+    config.reload({ DS_TOKEN_REFRESH_INTERVAL_MS: '60000' });
+    try {
+        const account = { id: 'a1', headers: { Authorization: 'Bearer OLD' }, config: { token: 'OLD' } };
+        await withFetch(async () => ({ ok: false, status: 401, json: async () => ({}) }), async () => {
+            assert.equal(await upstream.refreshAccountToken(account), false);
+        });
+        assert.equal(account.config.token, 'OLD');
+        assert.equal(account.headers.Authorization, 'Bearer OLD');
+
+        const another = { id: 'a2', headers: { Authorization: 'Bearer OLD2' }, config: { token: 'OLD2' } };
+        await withFetch(async () => ({ ok: true, status: 200, json: async () => ({ data: {} }) }), async () => {
+            assert.equal(await upstream.refreshAccountToken(another), false);
+        });
+        assert.equal(another.config.token, 'OLD2');
+    } finally {
+        config.reload({});
+    }
+});
+
+test('refreshAccountToken: a zero interval disables the refresh', async () => {
+    config.reload({ DS_TOKEN_REFRESH_INTERVAL_MS: '0' });
+    try {
+        const account = { id: 'a1', headers: {}, config: { token: 'OLD' } };
+        await withFetch(async () => { throw new Error('must not fetch'); }, async () => {
+            assert.equal(await upstream.refreshAccountToken(account), false);
+        });
+    } finally {
+        config.reload({});
+    }
+});

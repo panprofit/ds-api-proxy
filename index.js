@@ -17,11 +17,12 @@ const {
 } = require('./lib/accounts');
 const {
     dsChatCompletionWithPow, solvePowForPath,
-    createRemoteSession, deleteRemoteSession,
+    createRemoteSession, deleteRemoteSession, refreshAccountToken,
 } = require('./lib/upstream');
 const { readDSResponse } = require('./lib/sse');
 const { createUpstreamHttpError } = require('./lib/http');
 const { createUpstreamSession } = require('./lib/upstream-session');
+const hif = require('./lib/hif');
 const { createSemaphore } = require('./lib/semaphore');
 const { createServer } = require('./lib/server');
 const configModule = require('./lib/config');
@@ -77,6 +78,8 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         dsChatCompletionWithPow,
         createUpstreamHttpError,
         waitForCompletionSlot,
+        refreshAccountToken,
+        refreshClientHeaders: hif.refreshHifHeaders,
     });
 
     // In-flight concurrency limiter. The release function is idempotent, so the
