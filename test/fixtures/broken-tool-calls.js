@@ -47,6 +47,16 @@ module.exports = [
         input: '<tool_calls><invoke name="read"><parameter name="path">/d</parameter></invoke></tool_calls>',
         call: { name: 'read', args: { path: '/d' } },
     },
+    {
+        name: 'DSML parameter closed by </invoke> (dropped </parameter>)',
+        input: '<tool_calls>\n<invoke name="bash">\n<parameter name="command" string="true">echo hi</invoke>\n</invoke>\n</tool_calls>',
+        call: { name: 'bash', args: { command: 'echo hi' } },
+    },
+    {
+        name: 'DSML double-pipe marker with </invoke>-closed value',
+        input: '<tool_calls>\n<invoke name="bash">\n<parameter name="command" string="true">cd x; echo "a"</invoke>\n</invoke>\n</tool_calls>',
+        call: { name: 'bash', args: { command: 'cd x; echo "a"' } },
+    },
 
     // --- JSON repairs ------------------------------------------------------
     {
@@ -119,6 +129,11 @@ module.exports = [
     {
         name: 'empty tool name is rejected',
         input: '{"tool_call":{"name":"","arguments":{}}}',
+        call: null,
+    },
+    {
+        name: 'truncated DSML invoke (recovery repairs)',
+        input: '<tool_calls>\n<invoke name="f">\n<parameter name="a" string="true">1',
         call: null,
     },
     {
