@@ -216,7 +216,6 @@ test('fuzz: parseToolCall does not throw on random strings with DSML garbage', (
     for (let j = 0; j < n; j++) s += pick(rng, pieces);
     assert.doesNotThrow(() => parser.parseToolCall(s, silentLog), `threw on: ${JSON.stringify(s)}`);
     assert.doesNotThrow(() => parser.parseDsmlToolCall(s, silentLog));
-    assert.doesNotThrow(() => parser.hasUnclosedToolMarkup(s));
     assert.doesNotThrow(() => parser.looksLikeToolCallMarkup(s));
     assert.doesNotThrow(() => parser.normalizeToolMarkupTags(s));
     assert.doesNotThrow(() => parser.scanDsmlStructuralTags(s));
@@ -290,20 +289,7 @@ test('fuzz: mutations of valid calls do not break the parser', () => {
 });
 
 // ===========================================================================
-// 6. Consistency between looksLikeToolCallMarkup and hasUnclosedToolMarkup
-// ===========================================================================
-test('fuzz: hasUnclosedToolMarkup => looksLikeToolCallMarkup', () => {
-  const rng = makeRng(14);
-  for (let i = 0; i < 1000; i++) {
-    const s = randomString(rng, 200);
-    if (parser.hasUnclosedToolMarkup(s)) {
-      assert.ok(parser.looksLikeToolCallMarkup(s), `inconsistency: ${JSON.stringify(s)}`);
-    }
-  }
-});
-
-// ===========================================================================
-// 7. Normalization monotonicity: normalize(normalize(x)) == normalize(x)
+// 6. Normalization monotonicity: normalize(normalize(x)) == normalize(x)
 // ===========================================================================
 test('fuzz: normalizeToolMarkupTags is idempotent', () => {
   const rng = makeRng(15);
@@ -316,7 +302,7 @@ test('fuzz: normalizeToolMarkupTags is idempotent', () => {
 });
 
 // ===========================================================================
-// 8. decodeDsmlValue: does not increase length
+// 7. decodeDsmlValue: does not increase length
 // ===========================================================================
 test('fuzz: decodeDsmlValue does not grow in length', () => {
   const rng = makeRng(16);
@@ -328,39 +314,7 @@ test('fuzz: decodeDsmlValue does not grow in length', () => {
 });
 
 // ===========================================================================
-// 9. extractBalancedJsonAt is consistent with extractBalancedJsonObjects
-//
-// extractBalancedJsonObjects returns substrings whose braces balance (taking
-// strings and escape sequences into account). This does NOT guarantee valid
-// JSON — e.g. "{sL}" is balanced but not JSON. So we check extraction
-// consistency instead: for every object found, extractBalancedJsonAt at its
-// start position must return exactly the same substring.
-// ===========================================================================
-test('fuzz: extractBalancedJsonAt and extractBalancedJsonObjects are consistent', () => {
-  const rng = makeRng(17);
-  for (let i = 0; i < 1000; i++) {
-    const s = randomString(rng, 200);
-    const objs = parser.extractBalancedJsonObjects(s);
-    let searchFrom = 0;
-    for (const obj of objs) {
-      assert.ok(obj.startsWith('{') && obj.endsWith('}'));
-      const start = s.indexOf(obj, searchFrom);
-      assert.ok(start >= 0, `not found in the source string: ${JSON.stringify(obj)}`);
-      searchFrom = start + 1;
-      const viaAt = parser.extractBalancedJsonAt(s, start);
-      assert.equal(viaAt, obj, `mismatch: ${JSON.stringify(obj)} vs ${JSON.stringify(viaAt)}`);
-      // If the substring is valid JSON, it must be an object.
-      try {
-        const parsed = JSON.parse(obj);
-        assert.equal(typeof parsed, 'object');
-        assert.ok(parsed !== null && !Array.isArray(parsed));
-      } catch (_) { /* a balanced substring need not be valid JSON */ }
-    }
-  }
-});
-
-// ===========================================================================
-// 10. parseToolCall: the returned object always has only name and arguments
+// 8. parseToolCall: the returned object always has only name and arguments
 // ===========================================================================
 test('fuzz: parseToolCall returns only {name, arguments}', () => {
   const rng = makeRng(18);

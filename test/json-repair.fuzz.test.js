@@ -9,8 +9,7 @@
 //   - the repairs are idempotent (repair(repair(x)) === repair(x));
 //   - a repair never invents a parseable call from an unrelated string;
 //   - whatever parseJsonToolCandidate returns is a valid tool call;
-//   - extractBalancedJsonObjects only yields balanced substrings, consistent
-//     with extractBalancedJsonAt.
+//   - extractBalancedJsonObjects only yields balanced substrings.
 //
 // The PRNG (mulberry32) is seeded so a failure is reproducible. This file does
 // not chase full branch coverage of the parser's recovery fall-throughs; it
@@ -106,7 +105,6 @@ const PUBLIC_FNS = [
     'completeJsonClosers',
     'splitConcatenatedToolCalls',
     'extractBalancedJsonObjects',
-    'extractBalancedJsonAt',
 ];
 
 test('fuzz: json-repair functions do not throw on random strings', () => {
@@ -114,11 +112,7 @@ test('fuzz: json-repair functions do not throw on random strings', () => {
     for (let i = 0; i < 2000; i++) {
         const s = randomString(rng, 300);
         for (const fn of PUBLIC_FNS) {
-            if (fn === 'extractBalancedJsonAt') {
-                assert.doesNotThrow(() => jr[fn](s, randInt(rng, 0, Math.max(0, s.length - 1))), `${fn} threw on ${JSON.stringify(s)}`);
-            } else {
-                assert.doesNotThrow(() => jr[fn](s), `${fn} threw on ${JSON.stringify(s)}`);
-            }
+            assert.doesNotThrow(() => jr[fn](s), `${fn} threw on ${JSON.stringify(s)}`);
         }
     }
 });

@@ -122,7 +122,6 @@ test('unicode: parseToolCall does not throw on each evil char', () => {
         `threw on ${JSON.stringify(s)}`,
       );
       assert.doesNotThrow(() => parser.normalizeToolMarkupTags(s));
-      assert.doesNotThrow(() => parser.hasUnclosedToolMarkup(s));
       assert.doesNotThrow(() => parser.looksLikeToolCallMarkup(s));
     }
   }

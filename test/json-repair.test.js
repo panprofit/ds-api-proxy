@@ -9,26 +9,6 @@ const assert = require('node:assert/strict');
 const jr = require('../lib/json-repair');
 const { MAX_TOOL_ARGUMENT_CHARS, MAX_TOOL_JSON_CANDIDATES } = require('../lib/parser-limits');
 
-// --- extractBalancedJsonAt -------------------------------------------------
-
-test('extractBalancedJsonAt: returns the balanced object at the index', () => {
-    const text = 'xx{"a":1}yy';
-    assert.equal(jr.extractBalancedJsonAt(text, 2), '{"a":1}');
-});
-
-test('extractBalancedJsonAt: null when the char is not an opening brace', () => {
-    assert.equal(jr.extractBalancedJsonAt('x{a:1}', 0), null);
-});
-
-test('extractBalancedJsonAt: null when the object never closes', () => {
-    assert.equal(jr.extractBalancedJsonAt('{"a":1', 0), null);
-});
-
-test('extractBalancedJsonAt: braces inside strings do not affect the match', () => {
-    const text = '{"a":"}{","b":2}';
-    assert.equal(jr.extractBalancedJsonAt(text, 0), text);
-});
-
 // --- extractBalancedJsonObjects --------------------------------------------
 
 test('extractBalancedJsonObjects: finds multiple objects in order', () => {

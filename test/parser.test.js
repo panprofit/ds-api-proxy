@@ -7,9 +7,6 @@ const parser = require('../lib/parser.js');
 
 const silentLog = () => {};
 
-// ---------------------------------------------------------------------------
-// extractBalancedJsonAt
-// ---------------------------------------------------------------------------
 // --- regression corpus ------------------------------------------------------
 
 const CORPUS = require('./fixtures/broken-tool-calls');
@@ -31,35 +28,6 @@ for (const entry of CORPUS) {
         }
     });
 }
-
-test('extractBalancedJsonAt: simple object', () => {
-  const text = 'prefix {"a":1} suffix';
-  assert.equal(parser.extractBalancedJsonAt(text, text.indexOf('{')), '{"a":1}');
-});
-
-test('extractBalancedJsonAt: nested objects', () => {
-  const text = '{"a":{"b":{"c":1}}}';
-  assert.equal(parser.extractBalancedJsonAt(text, 0), text);
-});
-
-test('extractBalancedJsonAt: braces inside strings are ignored', () => {
-  const text = '{"a":"}{}{","b":1}';
-  assert.equal(parser.extractBalancedJsonAt(text, 0), text);
-});
-
-test('extractBalancedJsonAt: escaped quotes', () => {
-  const text = '{"a":"\\"}{\\""}';
-  assert.equal(parser.extractBalancedJsonAt(text, 0), text);
-});
-
-test('extractBalancedJsonAt: unclosed object -> null', () => {
-  const text = '{"a":1';
-  assert.equal(parser.extractBalancedJsonAt(text, 0), null);
-});
-
-test('extractBalancedJsonAt: does not start with { -> null', () => {
-  assert.equal(parser.extractBalancedJsonAt('abc', 0), null);
-});
 
 // ---------------------------------------------------------------------------
 // extractBalancedJsonObjects
@@ -117,11 +85,6 @@ test('extractBalancedJsonObjects: escaped backslash inside a string', () => {
   const text = '{"s":"a\\\\b","n":1}';
   assert.deepEqual(parser.extractBalancedJsonObjects(text), [text]);
   assert.doesNotThrow(() => JSON.parse(text));
-});
-
-test('findJsonObjectEnd: no closing brace found -> -1', () => {
-  assert.equal(parser.extractBalancedJsonAt('{"a":', 0), null);
-  assert.equal(parser.extractBalancedJsonAt('{"a":1}', 0), '{"a":1}');
 });
 
 // ---------------------------------------------------------------------------
@@ -549,26 +512,6 @@ test('looksLikeToolCallMarkup: plain text -> false', () => {
 });
 
 // ---------------------------------------------------------------------------
-// hasUnclosedToolMarkup
-// ---------------------------------------------------------------------------
-test('hasUnclosedToolMarkup: legacy TOOL_CALL -> false', () => {
-  assert.equal(parser.hasUnclosedToolMarkup('TOOL_CALL:f {"a":1'), false);
-});
-
-test('hasUnclosedToolMarkup: unclosed DSML tag', () => {
-  assert.equal(parser.hasUnclosedToolMarkup('<|DSML|invoke name="f"'), true);
-});
-
-test('hasUnclosedToolMarkup: balanced DSML', () => {
-  const text = '<invoke name="f"></invoke>';
-  assert.equal(parser.hasUnclosedToolMarkup(text), false);
-});
-
-test('hasUnclosedToolMarkup: not markup -> false', () => {
-  assert.equal(parser.hasUnclosedToolMarkup('обычный текст'), false);
-});
-
-// ---------------------------------------------------------------------------
 // parseToolCall (integration)
 // ---------------------------------------------------------------------------
 test('parseToolCall: strict JSON tool_call', () => {
@@ -859,62 +802,6 @@ test('parseToolCall: escaped quotes inside a value still parse', () => {
 });
 
 // ---------------------------------------------------------------------------
-// hasUnclosedToolMarkup: JSON branch
-// ---------------------------------------------------------------------------
-//
-// Before the fix the JSON branch did not exist and the function always
-// returned false for JSON, so recovery.js skipped completion/retry and
-// immediately reset the session / rotated the account on "balanced but invalid" JSON.
-
-test('hasUnclosedToolMarkup: balanced valid JSON -> false', () => {
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_call":{"name":"f","arguments":{"a":1}}}'),
-    false,
-  );
-});
-
-test('hasUnclosedToolMarkup: repairable trailing comma -> false', () => {
-  // repairJsonText fixes it, parseToolCall succeeds => not "broken"
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_call":{"name":"f","arguments":{"a":1,},}}'),
-    false,
-  );
-});
-
-test('hasUnclosedToolMarkup: repairable raw newline -> false', () => {
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_call":{"name":"f","arguments":{"s":"a\nb"}}}'),
-    false,
-  );
-});
-
-test('hasUnclosedToolMarkup: repairable unescaped quotes -> false', () => {
-  // repairUnescapedQuotes fixes it, parseToolCall succeeds => not "broken"
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_call":{"name":"f","arguments":{"s":"a "b" c"}}}'),
-    false,
-  );
-});
-
-test('hasUnclosedToolMarkup: unrepairable JSON with a tool_call key -> true', () => {
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_call":{"name":"f","arguments":{"a":1}'),
-    true,
-  );
-});
-
-test('hasUnclosedToolMarkup: unrepairable JSON tool_calls array -> true', () => {
-  assert.equal(
-    parser.hasUnclosedToolMarkup('{"tool_calls":[{"function":{"name":"f"'),
-    true,
-  );
-});
-
-test('hasUnclosedToolMarkup: not markup -> false', () => {
-  assert.equal(parser.hasUnclosedToolMarkup('обычный текст'), false);
-});
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 test('exported constants are defined and positive', () => {
@@ -1038,8 +925,6 @@ test('parseToolCall: stray-quote shape with surrounding prose (log dump len=248)
   assert.equal(args.path, '/home/user/Projects/ds/test/parser.test.js');
   assert.equal(args.offset, 730);
   assert.equal(args.limit, 35);
-  assert.equal(parser.hasUnclosedToolMarkup(input), false,
-    'a recoverable stray quote must not trigger a completion round');
 });
 // ---------------------------------------------------------------------------
 // Fence guard: a tool marker inside a ``` block surrounded by prose is an
@@ -1076,12 +961,6 @@ test('parseToolCall: bare JSON tool_call next to (but outside) a fence still par
   assert.equal(tc.name, 'read');
 });
 
-test('hasUnclosedToolMarkup: fenced markup with prose is not "unclosed"', () => {
-  const input = 'Example:\n```json\n{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n```\ndone';
-  assert.equal(parser.hasUnclosedToolMarkup(input), false,
-    'an illustrative fenced example must not trigger a completion round');
-});
-
 test('blankFencedBlocks: replaces a fence with equal-length spaces', () => {
   const input = 'a\n```json\nx\n```\nb';
   const out = parser.blankFencedBlocks(input);
@@ -1097,52 +976,3 @@ test('hasProseOutsideFences: false for a whole-message fence, true otherwise', (
   assert.equal(parser.hasProseOutsideFences('no fence at all'), false);
 });
 
-// ---------------------------------------------------------------------------
-// parseRepairContent: the completion/strict-retry model returns bare JSON
-// (an array or object), not wrapped markup. It must be understood, an empty
-// repair ([] / {}) must be reported as "no call", and text that already looks
-// like markup but does not parse must NOT be wrapped-and-retried (that would
-// mask a genuinely broken call).
-// ---------------------------------------------------------------------------
-
-test('parseRepairContent: bare JSON array is parsed', () => {
-  const tc = parser.parseRepairContent('[{"name":"f","arguments":{"a":1}}]', silentLog);
-  assert.ok(tc);
-  assert.equal(tc.name, 'f');
-  assert.deepEqual(JSON.parse(tc.arguments), { a: 1 });
-});
-
-test('parseRepairContent: bare JSON object is parsed', () => {
-  const tc = parser.parseRepairContent('{"name":"f","arguments":{"a":1}}', silentLog);
-  assert.ok(tc);
-  assert.equal(tc.name, 'f');
-});
-
-test('parseRepairContent: already-wrapped markup is parsed directly', () => {
-  const M = '<|tool\u2581calls\u2581begin|>';
-  const E = '<|tool\u2581calls\u2581end|>';
-  const tc = parser.parseRepairContent(M + '[{"name":"f","arguments":{}}]' + E, silentLog);
-  assert.ok(tc);
-  assert.equal(tc.name, 'f');
-});
-
-test('parseRepairContent: empty array/object -> null (useless repair)', () => {
-  assert.equal(parser.parseRepairContent('[]', silentLog), null);
-  assert.equal(parser.parseRepairContent('{}', silentLog), null);
-  assert.equal(parser.parseRepairContent('  []  ', silentLog), null);
-});
-
-test('parseRepairContent: blank / prose-only -> null', () => {
-  assert.equal(parser.parseRepairContent('', silentLog), null);
-  assert.equal(parser.parseRepairContent('   ', silentLog), null);
-  assert.equal(parser.parseRepairContent('no call here', silentLog), null);
-});
-
-test('parseRepairContent: broken markup is NOT wrapped and retried', () => {
-  // Looks like markup and the JSON body never balances: must stay null rather
-  // than being wrapped and accidentally parsed. (A balanced body with a
-  // missing end marker is deliberately tolerated by parseToolCall, so it is
-  // NOT used here.)
-  const broken = '<|tool\u2581calls\u2581begin|>[{"name":"f","argu';
-  assert.equal(parser.parseRepairContent(broken, silentLog), null);
-});

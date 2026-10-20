@@ -11,7 +11,6 @@ const {
     isRefusalContent,
     isToolResultEcho,
     stripToolResultEchoes,
-    normalizeRetryResponse,
     classifyRecoveryFailure,
     isUpstreamTransientError,
     isAuthExpiredError,
@@ -101,27 +100,6 @@ test('isContextTooLongError: accepts strings and error objects', () => {
 test('isContextTooLongError: false for unrelated errors', () => {
     assert.equal(isContextTooLongError('rate limited'), false);
     assert.equal(isContextTooLongError(null), false);
-});
-
-test('normalizeRetryResponse: sanitizes and defaults fields', () => {
-    const out = normalizeRetryResponse({
-        content: 'hi\ud800',
-        reasoningContent: 'think\ud800',
-        finishReason: 'stop',
-        modelError: { type: 'error' },
-    });
-    assert.equal(out.content, 'hi');
-    assert.equal(out.reasoningContent, 'think');
-    assert.equal(out.finishReason, 'stop');
-    assert.deepEqual(out.modelError, { type: 'error' });
-});
-
-test('normalizeRetryResponse: empty/missing -> defaults', () => {
-    const out = normalizeRetryResponse(null);
-    assert.equal(out.content, '');
-    assert.equal(out.reasoningContent, '');
-    assert.equal(out.finishReason, null);
-    assert.equal(out.modelError, null);
 });
 
 test('classifyRecoveryFailure: context-too-long -> 400', () => {

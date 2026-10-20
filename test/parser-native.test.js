@@ -110,14 +110,3 @@ test('looksLikeToolCallMarkup: native marker counts as tool markup', () => {
     assert.equal(looksLikeToolCallMarkup(M), true);
 });
 
-test('hasUnclosedToolMarkup: truncated native markup is reported as unclosed', () => {
-    const { hasUnclosedToolMarkup } = require('../lib/parser');
-    const body = JSON.stringify([{ name: 'f', arguments: { a: 1 } }]);
-    assert.equal(hasUnclosedToolMarkup(M + body.slice(0, body.length - 3)), true);
-});
-
-test('hasUnclosedToolMarkup: a complete native call is not unclosed', () => {
-    const { hasUnclosedToolMarkup } = require('../lib/parser');
-    const body = JSON.stringify([{ name: 'f', arguments: { a: 1 } }]);
-    assert.equal(hasUnclosedToolMarkup(M + body + E), false);
-});

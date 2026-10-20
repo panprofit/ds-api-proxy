@@ -97,7 +97,7 @@ test('lib/server.js: rejects new requests while draining', () => {
 });
 
 test('index.js: does not import parser helpers it no longer uses', () => {
-    for (const name of ['parseToolCall', 'looksLikeToolCallMarkup', 'hasUnclosedToolMarkup']) {
+    for (const name of ['parseToolCall', 'looksLikeToolCallMarkup']) {
         assert.ok(
             !new RegExp(`\\b${name}\\b`).test(INDEX_SRC),
             `${name} is imported but never used in index.js`
