@@ -115,6 +115,20 @@ test('dsFetch: keeps the fetch timeout when the caller passes a signal', async (
     assert.equal(seenSignal.aborted, true);
 });
 
+test('dsFetch: an explicit timeoutMs replaces the ancillary default', async () => {
+    const originalTimeout = AbortSignal.timeout;
+    const observed = [];
+    AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };
+    try {
+        await withFetch(async () => jsonResponse({}), async () => {
+            await upstream.dsFetch('/chat/x', { timeoutMs: 7777 });
+        });
+    } finally {
+        AbortSignal.timeout = originalTimeout;
+    }
+    assert.deepEqual(observed, [7777]);
+});
+
 // --- dsChatCompletionWithPow ------------------------------------------------
 
 test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
@@ -130,13 +144,16 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
-    // The completion carries its own signal (see the next test), so it never
-    // falls back to dsFetch's shorter generic timeout.
+    // dsFetch attaches the signal (combining the caller signal and the
+    // timeout) rather than letting the completion run unbounded.
     assert.equal(seenOpts.opts.signal.constructor.name, 'AbortSignal');
 });
 
 test('dsChatCompletionWithPow: bounds the call by the request deadline, not the fetch timeout', async () => {
     config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_FETCH_TIMEOUT_MS: '1000' });
+    const originalTimeout = AbortSignal.timeout;
+    const observed = [];
+    AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };
     try {
         assert.equal(upstream.completionTimeoutMs(), 123456);
         let seenSignal = null;
@@ -147,7 +164,11 @@ test('dsChatCompletionWithPow: bounds the call by the request deadline, not the 
         });
         assert.ok(seenSignal);
         assert.equal(seenSignal.constructor.name, 'AbortSignal');
+        // The generic DS_FETCH_TIMEOUT_MS must not be applied on top of the
+        // completion's own deadline.
+        assert.deepEqual(observed, [123456]);
     } finally {
+        AbortSignal.timeout = originalTimeout;
         config.reload({});
     }
 });
