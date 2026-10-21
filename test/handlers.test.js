@@ -60,9 +60,38 @@ test('resolveThinkingEnabled: absent reasoning_effort -> disabled', () => {
     assert.equal(handlers.resolveThinkingEnabled({ messages: [] }), false);
 });
 
-test('resolveThinkingEnabled: any present reasoning_effort -> enabled', () => {
-    for (const effort of ['low', 'medium', 'high', 'none', '', null, false]) {
-        assert.equal(handlers.resolveThinkingEnabled({ reasoning_effort: effort }), true, String(effort));
+test('resolveThinkingEnabled: none and nullish efforts stay disabled', () => {
+    for (const effort of ['none', null, undefined]) {
+        assert.equal(handlers.resolveThinkingEnabled({ reasoning_effort: effort }), false, String(effort));
+    }
+});
+
+test('resolveThinkingEnabled: enabling efforts turn thinking on', () => {
+    for (const effort of ['minimal', 'low', 'medium', 'high', 'xhigh', 'ultra', 'max']) {
+        assert.equal(handlers.resolveThinkingEnabled({ reasoning_effort: effort }), true, effort);
+    }
+});
+
+test('resolveThinkingEnabled: explicit thinking overrides reasoning_effort', () => {
+    assert.equal(handlers.resolveThinkingEnabled({
+        thinking: { type: 'disabled' },
+        reasoning_effort: 'max',
+    }), false);
+    assert.equal(handlers.resolveThinkingEnabled({
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'none',
+    }), true);
+    assert.equal(handlers.resolveThinkingEnabled({ thinking: { type: 'adaptive' } }), true);
+});
+
+test('parseChatRequest: rejects unknown thinking and effort values', () => {
+    for (const body of [
+        { messages: [], reasoning_effort: 'urgent' },
+        { messages: [], reasoning_effort: '' },
+        { messages: [], thinking: 'enabled' },
+        { messages: [], thinking: { type: 'sometimes' } },
+    ]) {
+        assert.equal(handlers.parseChatRequest(JSON.stringify(body)).ok, false, JSON.stringify(body));
     }
 });
 

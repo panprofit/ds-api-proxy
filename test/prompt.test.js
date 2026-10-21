@@ -474,18 +474,21 @@ test('collectPendingTurns: after marking a fresh session, nothing is pending', (
 
 // --- response_format --------------------------------------------------------
 
-test('formatResponseFormat: json_object -> bare-JSON instruction', () => {
-    const out = prompt.formatResponseFormat({ type: 'json_object' });
-    assert.ok(out.includes('JSON'));
+test('formatResponseFormat: json_object uses the V4.1 response-format block', () => {
+    assert.equal(
+        prompt.formatResponseFormat({ type: 'json_object' }),
+        '## Response Format:\n\nYou MUST strictly adhere to the following schema to reply:\n{"type": "json_object"}',
+    );
 });
 
-test('formatResponseFormat: json_schema -> schema in a fenced block', () => {
+test('formatResponseFormat: json_schema renders only the schema, not the wrapper', () => {
     const out = prompt.formatResponseFormat({
         type: 'json_schema',
-        json_schema: { name: 'person', schema: { type: 'object' } },
+        json_schema: { name: 'person', strict: true, schema: { type: 'object' } },
     });
-    assert.ok(out.includes('~~~json'));
-    assert.ok(out.includes('"type":"object"'));
+    assert.ok(out.startsWith('## Response Format:'));
+    assert.ok(out.endsWith('{"type":"object"}'));
+    assert.ok(!out.includes('"strict"'));
 });
 
 test('formatResponseFormat: json_schema without a schema still asks for JSON', () => {
@@ -503,7 +506,22 @@ test('formatResponseFormat: text / unknown / nullish -> empty', () => {
 test('formatMessages: folds response_format into the system prompt', () => {
     const { systemPrompt } = prompt.formatMessages(
         [{ role: 'user', content: 'hi' }], [], { type: 'json_object' });
-    assert.ok(systemPrompt.includes('JSON'));
+    assert.ok(systemPrompt.includes('## Response Format:'));
+    assert.ok(systemPrompt.includes('{"type": "json_object"}'));
+});
+
+test('formatMessages: prepends the V4.1 reasoning-effort line', () => {
+    const { systemPrompt } = prompt.formatMessages(
+        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], [], null, 'auto', 'dsml', 75);
+    assert.ok(systemPrompt.startsWith(
+        'Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\nsys',
+    ));
+});
+
+test('formatMessages: omits the reasoning-effort line when the score is null', () => {
+    const { systemPrompt } = prompt.formatMessages(
+        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], []);
+    assert.ok(!systemPrompt.includes('Reasoning Effort:'));
 });
 
 test('formatMessages: no response_format leaves the system prompt free-form', () => {

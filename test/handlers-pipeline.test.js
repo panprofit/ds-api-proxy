@@ -164,6 +164,34 @@ test('handleChatCompletions: thinking + tools prompts plain JSON tool calls', as
     });
 });
 
+test('handleChatCompletions: forwards the reasoning effort as V4.1 prompt text', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const capture = askCapture();
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: 'hi' }],
+            reasoning_effort: 'max',
+        }), withDeps({ askDSStream: capture.askDSStream }));
+        assert.equal(res.statusCode, 200);
+        assert.match(capture.args.prompt, /^Reasoning Effort: 100 \(range 1-100/);
+    });
+});
+
+test('handleChatCompletions: reasoning_effort none adds no effort prompt', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const capture = askCapture();
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: 'hi' }],
+            reasoning_effort: 'none',
+        }), withDeps({ askDSStream: capture.askDSStream }));
+        assert.equal(res.statusCode, 200);
+        assert.ok(!capture.args.prompt.includes('Reasoning Effort:'));
+    });
+});
+
 test('handleChatCompletions: non-thinking tools keep the native DSML prompt', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();

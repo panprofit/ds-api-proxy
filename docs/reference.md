@@ -38,14 +38,39 @@ Both endpoints share the same upstream session, account rotation and recovery
 machinery, so an `x-agent-session` pinned conversation can move between them
 without losing context.
 
+### Thinking mode
+
+DeepSeek reasoning is opt-in. Chat Completions accepts an explicit
+`thinking: {"type": "enabled" | "disabled" | "adaptive"}` object (with
+`adaptive` treated as `enabled`), which overrides `reasoning_effort`. Without
+it, `reasoning_effort: "none"` disables thinking and any other supported effort
+(`minimal`, `low`, `medium`, `high`, `xhigh`, `ultra`, `max`) enables it. An
+absent setting keeps thinking off. Responses uses `reasoning.effort` and also
+accepts the top-level `reasoning_effort` for older clients; `thinking` is
+accepted there as a DeepSeek extension. Unknown types or effort values are
+rejected with `400 invalid_request_error`.
+
+The upstream Web API has no per-level reasoning control, so the level is
+forwarded as a `Reasoning Effort: N` line in the system prompt, mirroring the
+V4.1 template: `low`/`minimal` = 50, `high`/`medium`/`xhigh`/unset = 75, and
+`max`/`ultra` = 100.
+
 ### Structured output and stop sequences
 
 DS has no native equivalents, so two OpenAI request features are downgraded:
 
 - **`response_format`** (Chat Completions) and **`text.format`** (Responses API)
-are turned into a system-prompt instruction. `json_object` asks for a bare JSON
-object; `json_schema` embeds the schema in a fenced json block. `text` is a
-no-op. This is a prompt-level nudge, not enforced grammar.
+are turned into a system-prompt instruction. `json_object` and `json_schema`
+render the same V4.1 `## Response Format` section the DS template uses, with
+the schema as plain JSON. `text` is a no-op. This is a prompt-level nudge, not
+enforced grammar.
+- **Strict schemas** (`json_schema.strict: true` on a response format, or
+`strict: true` on a tool) are normalized before they reach the prompt: every
+object gets all of its properties in `required` and `additionalProperties:
+false`. Empty nested objects, inconsistent `required` lists, and
+`additionalProperties: true` are rejected with `400`. `$defs` / `definitions`
+are preserved so `$ref` targets remain valid. Non-strict schemas pass through
+unchanged.
 - **`stop`** (a string or array of strings) is applied locally to the assembled
 answer: the response is truncated at the earliest matching sequence. A parsed
 tool call is never truncated.

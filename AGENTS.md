@@ -80,6 +80,8 @@ in normal work; `npm run test:coverage` exists but is strict (95% lines).
 | `lib/parser-native.js` | native `<|tool▁calls▁begin|>`...`<|tool▁calls▁end|>` marker grammar (fuzzy `|`/`｜` and `_`/`▁` matching) |
 | `lib/parser-limits.js` | shared parser size limits |
 | `lib/prompt.js` | prompt building + structured screenshot extraction |
+| `lib/json-schema.js` | strict JSON Schema normalization for tools and structured output |
+| `lib/reasoning.js` | thinking-mode resolution and validation |
 | `lib/openai.js` | OpenAI response builders + token estimation |
 | `lib/responses.js` | Responses API translation (input/tools <-> internal, output/SSE) |
 | `lib/semaphore.js` | idempotent in-flight counter |
