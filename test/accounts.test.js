@@ -14,7 +14,7 @@ const config = require('../lib/config');
 
 const { getAccounts, buildBaseHeaders, pickFingerprintHeaders, setAccountToken, discoverAuthPaths, loadDSConfig,
         hasAuthConfig, auditAuthDir, selectAccountForSession, markAccountFailure,
-        markAccountBroken, hasAvailableAccount, waitForAvailableAccount,
+        markAccountBroken, markAccountAuthExpired, hasAvailableAccount, waitForAvailableAccount,
         resetAccountState, accountStatePath, loadAccountState, serializeAccountState,
         persistAccountState, flushAccountState,
         getAccountById, accountIdFromCredentials, accountIdFromEmail, accountIdForConfig, persistAccountToken } = accounts;
@@ -29,7 +29,7 @@ afterEach(() => {
     resetAccountState();
 });
 
-function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0, nextCompletionAt = 0 } = {}) {
+function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failures = 0, lastUsedAt = 0, nextCompletionAt = 0, authExpired = false } = {}) {
     return {
         id,
         file: `/tmp/${id}.json`,
@@ -39,6 +39,7 @@ function makeAccount(id, { token = 't', cookie = 'c', cooldownUntil = 0, failure
         failures,
         lastUsedAt,
         nextCompletionAt,
+        authExpired,
     };
 }
 
@@ -220,6 +221,7 @@ test('loadDSConfig: loads accounts, assigns credential-hash ids, and sets header
         assert.equal(arr[0].headers.Authorization, 'Bearer T1');
         assert.equal(arr[0].cooldownUntil, 0);
         assert.equal(arr[0].failures, 0);
+        assert.equal(arr[0].authExpired, false);
     });
 });
 
@@ -413,6 +415,12 @@ test('serializeAccountState: omits never-used accounts from lastUsedAt', () => {
     assert.deepEqual(parsed.lastUsedAt, {});
 });
 
+test('serializeAccountState: does not persist a cooldown for an auth-expired account', () => {
+    setAccounts([makeAccount('a1', { authExpired: true, cooldownUntil: Date.now() + 300000 })]);
+    const parsed = JSON.parse(serializeAccountState());
+    assert.deepEqual(parsed.cooldowns, {});
+});
+
 test('selectAccountForSession: a pick marks the account state dirty and a flush writes it', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-auth-'));
     fs.writeFileSync(path.join(dir, 'one.json'), JSON.stringify({ token: 'T1', cookie: 'C1' }));
@@ -593,6 +601,36 @@ test('selectAccountForSession: skips accounts that are cooling down', () => {
     }
 });
 
+test('selectAccountForSession: skips accounts disabled by an auth failure', () => {
+    const expired = makeAccount('a1', { authExpired: true });
+    const warm = makeAccount('a2');
+    setAccounts([expired, warm]);
+    for (let i = 0; i < 3; i++) {
+        assert.equal(selectAccountForSession({ accountId: null }), warm);
+    }
+});
+
+test('selectAccountForSession: drops a sticky auth-expired account and resets the session', () => {
+    const expired = makeAccount('a1', { authExpired: true });
+    const warm = makeAccount('a2');
+    setAccounts([expired, warm]);
+    let resetCalled = 0;
+    const session = { accountId: 'a1' };
+    const picked = selectAccountForSession(session, { resetRemoteSession: () => { resetCalled++; } });
+    assert.equal(picked, warm);
+    assert.equal(resetCalled, 1);
+    assert.equal(session.accountId, 'a2');
+});
+
+test('selectAccountForSession: throws 401 (not a cooling 429) when every account is auth-expired', () => {
+    setAccounts([makeAccount('a1', { authExpired: true }), makeAccount('a2', { authExpired: true })]);
+    assert.throws(() => selectAccountForSession({ accountId: null }), (err) => {
+        assert.equal(err.status, 401);
+        assert.equal(err.type, 'auth_expired');
+        return true;
+    });
+});
+
 test('selectAccountForSession: throws 429 when every account is cooling down', () => {
     setAccounts([
         makeAccount('a1', { cooldownUntil: Date.now() + 60000 }),
@@ -672,6 +710,31 @@ test('markAccountBroken: honors the requested cooldown window', () => {
     assert.ok(Math.abs(a.cooldownUntil - expected) < 500);
 });
 
+// --- markAccountAuthExpired -------------------------------------------------
+
+test('markAccountAuthExpired: disables the account and clears any timed cooldown', () => {
+    // HTTP 401/403 also goes through markAccountFailure(), which installs a
+    // 300s cooldown before the recovery loop classifies the error as auth.
+    const a = makeAccount('a1', { cooldownUntil: Date.now() + 300000 });
+    setAccounts([a]);
+    markAccountAuthExpired(a);
+    assert.equal(a.failures, 1);
+    assert.equal(a.authExpired, true);
+    assert.equal(a.cooldownUntil, 0, 'auth expiry must not be modelled as a cooldown');
+});
+
+test('markAccountAuthExpired: is a no-op for a missing account', () => {
+    assert.doesNotThrow(() => markAccountAuthExpired(null));
+    assert.doesNotThrow(() => markAccountAuthExpired(undefined));
+});
+
+test('setAccountToken: a refreshed token re-enables an auth-expired account', () => {
+    const a = makeAccount('a1', { authExpired: true });
+    setAccounts([a]);
+    assert.equal(setAccountToken(a, 'fresh'), true);
+    assert.equal(a.authExpired, false);
+});
+
 // --- hasAvailableAccount ----------------------------------------------------
 
 test('hasAvailableAccount: true only for ready accounts that are not cooling down', () => {
@@ -680,6 +743,8 @@ test('hasAvailableAccount: true only for ready accounts that are not cooling dow
     setAccounts([makeAccount('a1'), makeAccount('a2', { cooldownUntil: Date.now() + 60000 })]);
     assert.equal(hasAvailableAccount(), true);
     setAccounts([makeAccount('a1', { token: '', cookie: '' })]);
+    assert.equal(hasAvailableAccount(), false);
+    setAccounts([makeAccount('a1', { authExpired: true })]);
     assert.equal(hasAvailableAccount(), false);
     setAccounts([]);
     assert.equal(hasAvailableAccount(), false);
@@ -724,21 +789,24 @@ test('waitForAvailableAccount: stops early when the client is gone', async () =>
 
 // --- resetAccountState ------------------------------------------------------
 
-test('resetAccountState: clears cooldowns, failures and lastUsedAt', () => {
+test('resetAccountState: clears cooldowns, failures, auth expiry and lastUsedAt', () => {
     const a1 = makeAccount('a1', { failures: 3 });
     const a2 = makeAccount('a2', { failures: 1 });
     setAccounts([a1, a2]);
     // Use both accounts so each gets a non-zero lastUsedAt to observe resetting.
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a2');
-    // Now cool both down and reset: everything should come back to a clean slate.
+    // Now cool both down, disable one and reset: everything should come back to
+    // a clean slate.
     a1.cooldownUntil = Date.now() + 60000;
     a2.cooldownUntil = Date.now() + 60000;
+    a2.authExpired = true;
     resetAccountState();
     assert.equal(a1.cooldownUntil, 0);
     assert.equal(a2.cooldownUntil, 0);
     assert.equal(a1.failures, 0);
     assert.equal(a2.failures, 0);
+    assert.equal(a2.authExpired, false);
     // After reset the first pick is a1 again.
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
 });

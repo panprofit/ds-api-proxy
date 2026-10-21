@@ -7,8 +7,8 @@ const assert = require('node:assert/strict');
 
 const health = require('../lib/health');
 
-function acct({ token = 't', cookie = 'c', cooldownUntil = 0 } = {}) {
-    return { config: { token, cookie }, cooldownUntil };
+function acct({ token = 't', cookie = 'c', cooldownUntil = 0, authExpired = false } = {}) {
+    return { config: { token, cookie }, cooldownUntil, authExpired };
 }
 
 function sem(inFlight, limit) {
@@ -46,7 +46,20 @@ test('buildHealthReport: counts usable vs available vs cooling accounts', () => 
         ],
         now,
     });
-    assert.deepEqual(report.accounts, { total: 3, usable: 2, available: 1, cooling: 1 });
+    assert.deepEqual(report.accounts, { total: 3, usable: 2, available: 1, cooling: 1, expired: 0 });
+});
+
+test('buildHealthReport: auth-expired accounts are counted separately from cooling', () => {
+    const now = 1_000_000;
+    const report = health.buildHealthReport({
+        accounts: [
+            acct({ cooldownUntil: 0 }),
+            acct({ authExpired: true }),
+            acct({ cooldownUntil: now + 5000 }),
+        ],
+        now,
+    });
+    assert.deepEqual(report.accounts, { total: 3, usable: 3, available: 1, cooling: 1, expired: 1 });
 });
 
 test('buildHealthReport: an account is available exactly at its cooldown boundary', () => {
@@ -159,7 +172,7 @@ test('handleHealth: a loopback peer receives the metrics block', () => {
 });
 test('buildHealthReport: a null accounts list is treated as empty', () => {
     const report = health.buildHealthReport({ accounts: null, sessionCount: 2 });
-    assert.deepEqual(report.accounts, { total: 0, usable: 0, available: 0, cooling: 0 });
+    assert.deepEqual(report.accounts, { total: 0, usable: 0, available: 0, cooling: 0, expired: 0 });
     assert.equal(report.sessions, 2);
 });
 

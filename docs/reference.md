@@ -209,6 +209,11 @@ requests rotate to another account:
 
 - an HTTP **401/403/429** failure — parked for `DS_ACCOUNT_COOLDOWN_MS` (or the
   upstream `Retry-After`, whichever is longer);
+- an **auth-expired / captcha** response (a missing PoW challenge or session id)
+  — the account is disabled until the proxy is restarted with repaired
+  credentials. It is not parked on a timed cooldown: waiting cannot make expired
+  credentials valid, and a freshly re-authenticated account must not disappear
+  behind "all accounts cooling down";
 - a **recoverable failure** (malformed tool markup, empty response, unknown
   tool name) — rotated immediately, without parking the account. With exactly
   one configured account, an empty or reasoning-only response first gets
@@ -223,7 +228,9 @@ the turn exactly as it starts emitting the tool call; the proxy spends one extra
 attempt with thinking disabled before entering that retry path.
 
 When every account is parked the request returns HTTP 429 with a
-`retry_in`-style hint until the earliest window opens.
+`retry_in`-style hint until the earliest window opens. When every account's
+credentials are expired instead, the request fails immediately with HTTP 401
+`auth_expired` and a hint to re-run `npm run auth`; no timeout is spent waiting.
 
 Cooldown deadlines and the LRU `lastUsedAt` are persisted to
 `$DS_AUTH_DIR/.account-state.json` and restored on startup, so restarting the
@@ -348,6 +355,7 @@ vulnerability privately. The hardening below is what the proxy already does.
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `All auth accounts are cooling down. Retry in ~Ns` (HTTP 429) | Every account hit a 401/403/429 or a recoverable failure (`DS_ACCOUNT_COOLDOWN_MS`), so none is available. | Wait, add another `*.json` account in `DS_AUTH_DIR`, or lower `DS_ACCOUNT_COOLDOWN_MS`. |
+| `All auth accounts have expired credentials…` (HTTP 401 `auth_expired`) | Every account was disabled by an auth-expired / captcha response. | Re-run `npm run auth` (or `npm run auth:repair`) and restart the proxy. |
 | `No valid auth accounts.` (HTTP 503) | `DS_AUTH_DIR` is empty/unreadable, or every config is missing `token`/`cookie`. | Check the startup log — the `DS_AUTH_DIR` audit line plus per-file messages report the cause. Re-run `npm run auth`. |
 | `Server busy (N/N requests in flight)` (HTTP 503) | Hit `DS_MAX_CONCURRENT`. | Retry shortly, raise `DS_MAX_CONCURRENT`, or add accounts. |
 | HTTP 408 `Request body read timed out` | Body took longer than `DS_BODY_READ_TIMEOUT_MS` to arrive. | Raise the timeout or send a smaller body. |

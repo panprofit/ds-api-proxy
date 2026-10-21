@@ -926,7 +926,7 @@ test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not 
 
 // Regression: "Auth may be expired, captcha may be required, or DS changed
 // Web API" must NOT be retried on the same account. runWithRecovery has to
-// cool the dead account down and rotate to the next healthy one.
+// disable the dead account and rotate to the next healthy one.
 test('runWithRecovery: auth_expired rotates to the next account and succeeds', async () => {
     // Manual accounts management: the live array must stay populated for the
     // whole async run (withAccounts restores it as soon as the callback returns
@@ -967,9 +967,11 @@ test('runWithRecovery: auth_expired rotates to the next account and succeeds', a
         assert.equal(out.fullContent, 'ok from a2');
         // a1 failed with the auth error, then rotated to a2 for the retry.
         assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
-        // The dead account must be cooling down afterwards.
+        // The dead account is disabled, not parked on a timed cooldown: waiting
+        // cannot repair expired credentials.
         const a1 = accountsArr.find(a => a.id === 'a1');
-        assert.ok(a1.cooldownUntil > Date.now(), 'a1 should be in cooldown after the auth error');
+        assert.equal(a1.authExpired, true, 'a1 should be disabled after the auth error');
+        assert.equal(a1.cooldownUntil, 0, 'auth expiry must not create a cooldown');
     } finally {
         accountsArr.length = 0;
         accountsArr.push(...saved);
@@ -999,10 +1001,10 @@ test('runWithRecovery: auth_expired on the only account returns a terminal error
         });
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, false);
-        // No healthy account is left, so the terminal error is the rate-limit
-        // body rather than a bare 401.
-        assert.equal(out.error.status, 429);
-        assert.equal(out.error.body.type, 'rate_limit_error');
+        // Auth expiry is not a timeout: report the 401 immediately instead of
+        // pretending the account is merely cooling down and a retry may help.
+        assert.equal(out.error.status, 401);
+        assert.equal(out.error.body.type, 'auth_expired');
         assert.equal(out.error.body.account, 'a1');
     } finally {
         accountsArr.length = 0;
