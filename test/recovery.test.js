@@ -717,6 +717,70 @@ test('runWithRecovery: unknown tool rotates the account immediately', async () =
     }
 });
 
+test('runWithRecovery: tool_choice required rotates then accepts a call', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            toolChoice: 'required',
+            askDSStream: askStub([a1, a2], calls),
+            readDSResponse: sseOnce([
+                { content: 'I cannot call a tool.', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: '{"tool_call":{"name":"read","arguments":{"path":"a"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.toolCall.name, 'read');
+        assert.equal(calls.length, 2);
+    });
+});
+
+test('runWithRecovery: a named tool_choice mismatch is a terminal 502', async () => {
+    const real = metrics.inc;
+    const counted = [];
+    metrics.inc = (name) => counted.push(name);
+    try {
+        await withAccounts([makeAccount('a1')], async () => {
+            const call = '{"tool_call":{"name":"write","arguments":{}}}';
+            const ctx = baseCtx({
+                tools: [
+                    { type: 'function', function: { name: 'read' } },
+                    { type: 'function', function: { name: 'write' } },
+                ],
+                toolChoice: { name: 'read' },
+                clientGone: () => true,
+                askDSStream: askStub([makeAccount('a1')]),
+                readDSResponse: async () => ({ content: call, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'tool_choice_unmet');
+            assert.equal(out.error.body.actual_tool, 'write');
+            assert.equal(counted.filter(n => n === 'toolChoiceUnmet').length, 1);
+        });
+    } finally {
+        metrics.inc = real;
+    }
+});
+
+test('runWithRecovery: tool_choice auto does not enforce a call', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            toolChoice: 'auto',
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: async () => ({ content: 'plain answer', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.fullContent, 'plain answer');
+        assert.equal(out.toolCall, null);
+    });
+});
+
 test('runWithRecovery: terminal unknown tool increments the unknownTool metric', async () => {
     // The metric is the operational signal for the give-up path, so it must be
     // counted exactly once. request-path code calls the re-exported metrics.inc,

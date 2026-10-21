@@ -20,6 +20,7 @@ test('createMetrics: starts at zero for every documented counter', () => {
         emptyResponses: 0,
         malformedToolCalls: 0,
         unknownTool: 0,
+        toolChoiceUnmet: 0,
         toolResultEcho: 0,
     });
 });

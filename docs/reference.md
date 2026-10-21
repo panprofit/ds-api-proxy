@@ -77,8 +77,10 @@ tool call is never truncated.
 - **`tool_choice`** is a prompt instruction: `none` omits the tool schemas
 entirely, `required` and a named `{type:"function", function:{name}}` add a
 mandatory-call rule, and `auto` (the default) keeps the normal wording. The
-legacy `functions` / `function_call` fields are translated to the current
-`tools` / `tool_choice` shape.
+proxy also verifies the parsed result: an unmet `required`/named choice rotates
+the account and, if every account fails, returns `502 tool_choice_unmet` instead
+of silently returning text. The legacy `functions` / `function_call` fields are
+translated to the current `tools` / `tool_choice` shape.
 
 ### Tool-call parsing
 
