@@ -150,12 +150,12 @@ test('handleChatCompletions: thinking + tools prompts plain JSON tool calls', as
             tools: [{ type: 'function', function: { name: 'read' } }],
         }), withDeps({ askDSStream: capture.askDSStream }));
         assert.equal(res.statusCode, 200);
-        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"$TOOL_NAME"'));
+        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"<function_name>"'));
         assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C'));
     });
 });
 
-test('handleChatCompletions: forwards the reasoning effort as V4.1 prompt text', async () => {
+test('handleChatCompletions: reasoning effort is not rendered into the prompt', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -165,7 +165,7 @@ test('handleChatCompletions: forwards the reasoning effort as V4.1 prompt text',
             reasoning_effort: 'max',
         }), withDeps({ askDSStream: capture.askDSStream }));
         assert.equal(res.statusCode, 200);
-        assert.match(capture.args.prompt, /^Reasoning Effort: 100 \(range 1-100/);
+        assert.ok(!capture.args.prompt.includes('Reasoning Effort:'));
     });
 });
 
@@ -194,7 +194,7 @@ test('handleChatCompletions: non-thinking tools also use the JSON tool-call prom
         }), withDeps({ askDSStream: capture.askDSStream }));
         assert.equal(res.statusCode, 200);
         assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C calls'));
-        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"$TOOL_NAME"'));
+        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"<function_name>"'));
     });
 });
 

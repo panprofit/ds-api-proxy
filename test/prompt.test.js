@@ -93,8 +93,9 @@ test('formatToolDefinitions: json format requests an inline tool_call JSON objec
         type: 'function',
         function: { name: 'read', parameters: { type: 'object' } },
     }], 'auto', 'json');
-    assert.ok(out.includes('{"tool_call":{"name":"$TOOL_NAME","arguments":{"$PARAMETER_NAME":"$PARAMETER_VALUE"}}}'));
-    assert.ok(out.includes('REMEMBER: Request tools only with the {"tool_call":...} JSON format'));
+    assert.ok(out.includes('{"tool_call":{"name":"<function_name>","arguments":{...}}}'));
+    assert.ok(out.includes('REMEMBER: Request tools only with strict JSON format'));
+    assert.ok(out.includes('## read'));
     assert.ok(!out.includes('<tool_call>'));
     assert.ok(!out.includes('\uFF5CDSML\uFF5C'));
 });
@@ -130,7 +131,7 @@ test('formatToolDefinitions: renders namespaced tools with a qualified name', ()
         namespace: { name: 'search', description: 'Search tools.' },
         function: { name: 'lookup', description: 'Look up a value' },
     }]);
-    assert.ok(out.includes('"name":"search::lookup"'));
+    assert.ok(out.includes('## search::lookup'));
     assert.ok(!out.includes('"description"'));
 });
 
@@ -139,12 +140,12 @@ test('formatToolDefinitions: accepts namespace inside function and qualified nam
         type: 'function',
         function: { name: 'lookup', namespace: 'search' },
     }]);
-    assert.ok(nested.includes('"name":"search::lookup"'));
+    assert.ok(nested.includes('## search::lookup'));
     const qualified = prompt.formatToolDefinitions([{
         type: 'function',
         function: { name: 'search::lookup' },
     }]);
-    assert.ok(qualified.includes('"name":"search::lookup"'));
+    assert.ok(qualified.includes('## search::lookup'));
 });
 
 test('formatMessages: renders a namespaced assistant call with the qualified name', () => {
@@ -424,8 +425,8 @@ test('formatMessages: includes tool definitions in the system prompt', () => {
     const { systemPrompt } = prompt.formatMessages([], [
         { type: 'function', function: { name: 'read', description: 'Read' } },
     ]);
-    assert.ok(systemPrompt.includes('"name":"read"'));
-    assert.ok(systemPrompt.includes('<tool_schemas>'));
+    assert.ok(systemPrompt.includes('## read'));
+    assert.ok(systemPrompt.includes('--- TOOL REQUEST SYSTEM ---'));
 });
 
 test('extractScreenshotPaths: collects structured screenshot_path JSON fields', () => {
@@ -516,12 +517,10 @@ test('formatMessages: folds response_format into the system prompt', () => {
     assert.ok(systemPrompt.includes('{"type": "json_object"}'));
 });
 
-test('formatMessages: prepends the V4.1 reasoning-effort line', () => {
+test('formatMessages: does not render a reasoning-effort line', () => {
     const { systemPrompt } = prompt.formatMessages(
-        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], [], null, 'auto', 'dsml', 75);
-    assert.ok(systemPrompt.startsWith(
-        'Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\nsys',
-    ));
+        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], [], null, 'auto', 'json', 75);
+    assert.ok(!systemPrompt.includes('Reasoning Effort:'));
 });
 
 test('formatMessages: omits the reasoning-effort line when the score is null', () => {
