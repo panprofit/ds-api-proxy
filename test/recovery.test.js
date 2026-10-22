@@ -1367,65 +1367,7 @@ test('runWithRecovery: stop does not truncate a tool call', async () => {
     });
 });
 
-test('runWithRecovery: short action-promise rotates to the next account and yields the tool call', async () => {
-    const a1 = makeAccount('a1');
-    const a2 = makeAccount('a2');
-    await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const calls = [];
-            const promise = 'Let me check the tests.';
-            const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                askDSStream: askStub([a1, a2], calls),
-                readDSResponse: sseOnce([
-                    { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.ok(out.toolCall, 'the promised action must become a real tool call');
-            assert.equal(out.toolCall.name, 'read');
-            assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
-
-            assert.equal(calls[1].prompt, calls[0].prompt);
-            assert.equal(a1.cooldownUntil, 0);
-            assert.equal(a1.failures, 0);
-        });
-    });
-});
-
-test('runWithRecovery: an action-promise with no finish_reason still rotates and yields the tool call', async () => {
-
-    const a1 = makeAccount('a1');
-    const a2 = makeAccount('a2');
-    await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const calls = [];
-            const promise = 'Let me check the tests.';
-            const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'read' } }],
-                askDSStream: askStub([a1, a2], calls),
-                readDSResponse: sseOnce([
-                    { content: promise, reasoningContent: 'I should look at the tests first.', messageId: 'm1', finishReason: null, modelError: null },
-                    { content: toolJson, reasoningContent: '', messageId: 'm2', finishReason: null, modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.ok(out.toolCall, 'the promised action must become a real tool call');
-            assert.equal(out.toolCall.name, 'read');
-            assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
-            assert.equal(calls[1].prompt, calls[0].prompt);
-            assert.equal(a1.cooldownUntil, 0);
-            assert.equal(a1.failures, 0);
-        });
-    });
-});
-
-test('runWithRecovery: short real answer (no promise marker) does NOT continue', async () => {
+test('runWithRecovery: short real answer is returned as-is (no re-prompt)', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const calls = [];
         const ctx = baseCtx({
@@ -1439,23 +1381,6 @@ test('runWithRecovery: short real answer (no promise marker) does NOT continue',
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'Done.');
         assert.equal(calls.length, 1, 'a real short answer must not be re-prompted');
-    });
-});
-
-test('runWithRecovery: promise marker on a LONG body does not continue', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const calls = [];
-        const long = 'Let me walk through the whole approach. '.repeat(30);
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-            askDSStream: askStub([makeAccount('a1')], calls),
-            readDSResponse: sseOnce([
-                { content: long, reasoningContent: 'reasoning here', messageId: 'm1', finishReason: 'stop', modelError: null },
-            ]),
-        });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(calls.length, 1, 'a body over actionPromiseMaxChars is not a promise');
     });
 });
 
@@ -1504,28 +1429,6 @@ test('runWithRecovery: context-too-long stops empty-retries before burning one',
         assert.equal(out.ok, false);
         assert.equal(out.error.body.type, 'context_length_exceeded');
         assert.equal(calls.length, 1, 'no retry must be issued for a deterministic context-too-long');
-    });
-});
-
-test('runWithRecovery: action-promise gives up with a terminal 502 when rotation is impossible', async () => {
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        const calls = [];
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-
-            clientGone: () => true,
-            askDSStream: askStub([a1], calls),
-            readDSResponse: sseOnce([
-                { content: 'Let me check the tests.', reasoningContent: 'I should look at the tests.', messageId: 'm1', finishReason: 'stop', modelError: null },
-            ]),
-        });
-        const out = await runWithRecovery(ctx);
-        assert.equal(calls.length, 1);
-        assert.equal(out.ok, false);
-        assert.equal(out.error.status, 502);
-        assert.equal(out.error.body.type, 'action_promise');
-        assert.equal(a1.cooldownUntil, 0);
     });
 });
 

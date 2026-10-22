@@ -13,7 +13,6 @@ const {
     classifyRecoveryFailure,
     isUpstreamTransientError,
     isAuthExpiredError,
-    looksLikeActionPromise,
 } = require('../lib/recovery-classify');
 
 test('sanitizeContent: strips lone surrogates but keeps valid pairs', () => {
@@ -159,33 +158,6 @@ test('isAuthExpiredError: false for unrelated errors', () => {
     assert.equal(isAuthExpiredError(null), false);
     assert.equal(isAuthExpiredError(undefined), false);
     assert.equal(isAuthExpiredError({ type: 'rate_limit' }), false);
-});
-
-test('looksLikeActionPromise: true for English promises to act', () => {
-    assert.equal(looksLikeActionPromise('Let me check the tests.'), true);
-    assert.equal(looksLikeActionPromise("I'll run the linter now."), true);
-    assert.equal(looksLikeActionPromise('Now I will inspect the diff.'), true);
-    assert.equal(looksLikeActionPromise("Let's verify the build."), true);
-});
-
-test('looksLikeActionPromise: true for Russian/Chinese promises', () => {
-    assert.equal(looksLikeActionPromise('Проверю, что патч не сломал тесты, и посмотрю итоговый diff.'), true);
-    assert.equal(looksLikeActionPromise('Сейчас проверю сборку.'), true);
-    assert.equal(looksLikeActionPromise('我来检查一下测试。'), true);
-});
-
-test('looksLikeActionPromise: false for a real final answer', () => {
-    assert.equal(looksLikeActionPromise('Done.'), false);
-    assert.equal(looksLikeActionPromise('Готово. Все тесты зелёные.'), false);
-    assert.equal(looksLikeActionPromise('The fix is committed as 808b335.'), false);
-    assert.equal(looksLikeActionPromise(''), false);
-});
-
-test('looksLikeActionPromise: only the tail matters (long answer wins)', () => {
-
-    const long = 'First let me explain the approach. ' + 'filler '.repeat(40) + 'In conclusion, the fix is complete.';
-    assert.ok(long.length > 200);
-    assert.equal(looksLikeActionPromise(long), false);
 });
 
 test('stripToolResultEchoes: removes native envelopes and keeps surrounding prose', () => {
