@@ -219,6 +219,7 @@ test('runWithRecovery: reasoning-only response continues in the same session wit
 
             assert.equal(calls.length, 2);
             assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[1].thinkingEnabled, false, 'reasoning-only continuation disables thinking');
             assert.match(calls[1].freshSessionPrompt, /provide the final answer now/i);
             assert.equal(ctx.session.id, 'remote-1', 'the remote session is kept');
             assert.equal(a1.cooldownUntil, 0);
@@ -247,6 +248,7 @@ test('runWithRecovery: reasoning-only continuation still runs after the request 
             assert.equal(out.fullContent, 'Final answer.');
             assert.equal(calls.length, 2);
             assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[1].thinkingEnabled, false);
             assert.equal(ctx.session.id, 'remote-1');
         });
     });
