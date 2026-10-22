@@ -326,3 +326,118 @@ test('parseResponsesRequest: rejects an invalid strict schema with 400', () => {
     assert.equal(parsed.error.status, 400);
     assert.match(parsed.error.message, /Invalid json schema/);
 });
+
+test('normalizeStrictSchema: rejects malformed subschema containers', () => {
+    const cases = [
+        [{ type: 'object', properties: 'nope' }, /properties: expected an object/],
+        [{ type: 'object', properties: { x: 1 } }, /properties\.x: expected an object/],
+        [{ type: 'object', properties: { x: { anyOf: 'nope' } } }, /properties\.x\.anyOf: expected an array/],
+        [{ type: 'object', properties: { x: { anyOf: [1] } } }, /properties\.x\.anyOf\[0\]: expected an object/],
+        [{ type: 'object', properties: { x: { oneOf: [1] } } }, /properties\.x\.oneOf\[0\]: expected an object/],
+        [{ type: 'object', properties: { x: { not: 1 } } }, /properties\.x\.not: expected an object/],
+        [{ type: 'object', properties: { x: { patternProperties: [] } } }, /properties\.x\.patternProperties: expected an object/],
+        [{ type: 'object', properties: { x: { patternProperties: { '^a': 1 } } } }, /properties\.x\.patternProperties\.\^a: expected an object/],
+        [{ type: 'object', properties: { x: { type: 'array', items: [1] } } }, /properties\.x\.items\[0\]: expected an object/],
+        [{ type: 'object', properties: { x: { type: 'array', items: 1 } } }, /properties\.x\.items: expected an object/],
+        [{ type: 'object', properties: { x: { type: 'array', prefixItems: {} } } }, /properties\.x\.prefixItems: expected an array/],
+        [{ type: 'object', properties: { x: { type: 'array', prefixItems: [1] } } }, /properties\.x\.prefixItems\[0\]: expected an object/],
+        [{ type: 'object', $defs: [] }, /\$defs: expected an object/],
+        [{ type: 'object', $defs: { a: 1 } }, /\$defs\.a: expected an object/],
+        [{ type: 'object', definitions: 'nope' }, /definitions: expected an object/],
+        [{ type: 'object', properties: { x: { type: 'object', properties: { y: { $def: [] } } } } }, /properties\.x\.properties\.y\.\$def: expected an object/],
+    ];
+    for (const [schema, pattern] of cases) {
+        const result = strict(schema);
+        assert.equal(result.ok, false, JSON.stringify(schema));
+        assert.match(result.error, pattern);
+    }
+});
+
+test('normalizeStrictSchema: rejects malformed required lists', () => {
+    const base = { type: 'object', properties: { a: { type: 'string' } } };
+    for (const required of ['a', [1]]) {
+        const result = strict({ ...base, required });
+        assert.equal(result.ok, false);
+        assert.match(result.error, /required: expected an array of strings/);
+    }
+});
+
+test('normalizeStrictSchema: normalizes tuple items and prefixItems', () => {
+    const result = strict({
+        type: 'object',
+        properties: {
+            pair: {
+                type: 'array',
+                items: [
+                    { type: 'object', properties: { a: { type: 'string' } } },
+                    { type: 'string' },
+                ],
+                prefixItems: [{ type: 'object', properties: { b: { type: 'string' } } }],
+            },
+        },
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.schema.properties.pair.items[0].required, ['a']);
+    assert.deepEqual(result.schema.properties.pair.prefixItems[0].required, ['b']);
+});
+
+test('normalizeStrictSchema: normalizes every subschema keyword', () => {
+    const result = strict({
+        type: 'object',
+        properties: {
+            value: {
+                anyOf: [{ type: 'string' }],
+                oneOf: [{ type: 'string' }],
+                allOf: [{ type: 'string' }],
+                not: { type: 'string' },
+                if: { type: 'object', properties: { a: { type: 'string' } } },
+                then: { type: 'object', properties: { b: { type: 'string' } } },
+                else: { type: 'object', properties: { c: { type: 'string' } } },
+                contains: { type: 'string' },
+                propertyNames: { type: 'string' },
+                patternProperties: { '^a': { type: 'object', properties: { d: { type: 'string' } } } },
+                dependentSchemas: { foo: { type: 'object', properties: { e: { type: 'string' } } } },
+            },
+        },
+    });
+    assert.equal(result.ok, true);
+    const value = result.schema.properties.value;
+    assert.deepEqual(value.if.required, ['a']);
+    assert.deepEqual(value.then.required, ['b']);
+    assert.deepEqual(value.else.required, ['c']);
+    assert.deepEqual(value.patternProperties['^a'].required, ['d']);
+    assert.deepEqual(value.dependentSchemas.foo.required, ['e']);
+});
+
+test('normalizeChatRequestSchemas: skips non-object tools and names unknown schemas', () => {
+    const error = normalizeChatRequestSchemas({
+        tools: [1, null, { type: 'function', function: { strict: true, parameters: { type: 'string' } } }],
+    });
+    assert.match(error, /Invalid schema for function 'unknown'/);
+});
+
+test('normalizeChatRequestSchemas: rejects a non-object json_schema container', () => {
+    assert.equal(normalizeChatRequestSchemas({
+        response_format: { type: 'json_schema', json_schema: [] },
+    }), 'Invalid json schema: json_schema is required');
+});
+
+test('normalizeChatRequestSchemas: reports an invalid strict response schema', () => {
+    assert.match(normalizeChatRequestSchemas({
+        response_format: {
+            type: 'json_schema',
+            json_schema: { strict: true, schema: { type: 'object' } },
+        },
+    }), /Invalid json schema/);
+});
+
+test('normalizeResponsesRequestSchemas: reports an invalid strict response schema', () => {
+    assert.match(normalizeResponsesRequestSchemas({
+        text: { format: { type: 'json_schema', strict: true, schema: { type: 'object' } } },
+    }), /Invalid json schema/);
+});
+
+test('normalizeResponsesRequestSchemas: tolerates missing tools and text', () => {
+    assert.equal(normalizeResponsesRequestSchemas({}), null);
+    assert.equal(normalizeResponsesRequestSchemas({ text: 'nope', tools: 'nope' }), null);
+});

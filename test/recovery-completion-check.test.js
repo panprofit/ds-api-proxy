@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { parseVerdict, shouldCheckCompletion } = require('../lib/recovery-completion-check');
+const { parseVerdict, shouldCheckCompletion, runCompletionCheck } = require('../lib/recovery-completion-check');
 const { runWithRecovery } = require('../lib/recovery');
 const accounts = require('../lib/accounts');
 const sessions = require('../lib/sessions');
@@ -201,5 +201,199 @@ test('runWithRecovery: a long answer is not checked', async () => {
             assert.equal(out.ok, true);
             assert.equal(calls.length, 1, 'no classification call for a long answer');
         });
+    });
+});
+
+function checkState(overrides = {}) {
+    return {
+        completionChecked: false,
+        allowedToolNames: new Set(['read']),
+        toolCall: null,
+        modelError: null,
+        finishReason: 'stop',
+        fullContent: 'Let me check.',
+        freshPrompt: 'do it',
+        fileIds: ['f1'],
+        fileIdsAccountId: 'a1',
+        ...overrides,
+    };
+}
+
+function checkDeps(overrides = {}) {
+    return {
+        agentId: 'completion-check-agent',
+        agentTag: '[test]',
+        session: { accountId: 'a1' },
+        resolveFileIds: null,
+        thinkingEnabled: false,
+        searchEnabled: false,
+        abortSignal: null,
+        clientGone: () => false,
+        deadlineHit: () => false,
+        log: () => {},
+        askDSStream: async () => ({ resp: { body: {} } }),
+        readDSResponse: async () => ({ content: 'DONE' }),
+        ...overrides,
+    };
+}
+
+test('shouldCheckCompletion: guards every disqualifying state', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_COMPLETION_CHECK_MAX_CHARS: '50' }, async () => {
+        assert.equal(shouldCheckCompletion(checkState()), true);
+        assert.equal(shouldCheckCompletion(checkState({ completionChecked: true })), false);
+        assert.equal(shouldCheckCompletion(checkState({ allowedToolNames: new Set() })), false);
+        assert.equal(shouldCheckCompletion(checkState({ toolCall: { name: 'read' } })), false);
+        assert.equal(shouldCheckCompletion(checkState({ modelError: { type: 'x' } })), false);
+        assert.equal(shouldCheckCompletion(checkState({ finishReason: 'length' })), false);
+        assert.equal(shouldCheckCompletion(checkState({ finishReason: null })), true);
+        assert.equal(shouldCheckCompletion(checkState({ fullContent: '   ' })), false);
+        assert.equal(shouldCheckCompletion(checkState({ fullContent: 'x'.repeat(51) })), false);
+        assert.equal(shouldCheckCompletion(checkState({ fullContent: 'As an AI I cannot continue.' })), false);
+        assert.equal(shouldCheckCompletion(checkState({ fullContent: '<tool_result>{"a":1}</tool_result>' })), false);
+    });
+    assert.equal(shouldCheckCompletion(checkState()), false);
+});
+
+test('runCompletionCheck: skips work when the request is already gone', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        let calls = 0;
+        const state = checkState();
+        const deps = checkDeps({ askDSStream: async () => { calls++; return { resp: { body: {} } }; } });
+        assert.equal(await runCompletionCheck(state, checkDeps({ clientGone: () => true, askDSStream: deps.askDSStream })), null);
+        assert.equal(calls, 0);
+        assert.equal(state.completionChecked, true);
+
+        const deadlineState = checkState();
+        assert.equal(await runCompletionCheck(deadlineState, checkDeps({ deadlineHit: () => true, askDSStream: deps.askDSStream })), null);
+        assert.equal(calls, 0);
+    });
+});
+
+test('runCompletionCheck: forwards refreshed file ids from the verdict call', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const state = checkState();
+        const deps = checkDeps({
+            askDSStream: async () => ({ resp: { body: {} }, fileIds: ['f2'], fileIdsAccountId: 'a2' }),
+            readDSResponse: async () => ({ content: 'DONE' }),
+        });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.deepEqual(state.fileIds, ['f2']);
+        assert.equal(state.fileIdsAccountId, 'a2');
+    });
+});
+
+test('runCompletionCheck: keeps the old file-id account when the call omits one', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const state = checkState();
+        const deps = checkDeps({
+            askDSStream: async () => ({ resp: { body: {} }, fileIds: ['f2'] }),
+            readDSResponse: async () => ({ content: 'DONE' }),
+        });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.deepEqual(state.fileIds, ['f2']);
+        assert.equal(state.fileIdsAccountId, 'a1');
+    });
+});
+
+test('runCompletionCheck: skips the verdict read after account rotation', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const logs = [];
+        const state = checkState();
+        const deps = checkDeps({
+            session: { accountId: 'a1' },
+            askDSStream: async () => {
+                deps.session.accountId = 'a2';
+                return { resp: { body: {} } };
+            },
+            readDSResponse: async () => { throw new Error('must not read'); },
+            log: message => logs.push(message),
+        });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.ok(logs.some(message => /rotated account/.test(message)));
+    });
+});
+
+test('runCompletionCheck: an empty verdict response keeps the answer', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => null });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall, null);
+    });
+});
+
+test('runCompletionCheck: a failing verdict call fails open', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const logs = [];
+        const state = checkState();
+        const deps = checkDeps({
+            askDSStream: async () => { throw new Error('upstream down'); },
+            log: message => logs.push(message),
+        });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall, null);
+        assert.ok(logs.some(message => /completion check failed \(upstream down\)/.test(message)));
+    });
+});
+
+test('runCompletionCheck: CONTINUE with an empty follow-up keeps the answer', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            null,
+        ];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift() });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall, null);
+    });
+});
+
+test('runCompletionCheck: CONTINUE with non-tool text keeps the answer', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            { content: 'I would read the file next.' },
+        ];
+        const logs = [];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift(), log: message => logs.push(message) });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall, null);
+        assert.ok(logs.some(message => /no usable tool call/.test(message)));
+    });
+});
+
+test('runCompletionCheck: CONTINUE with a disallowed tool keeps the answer', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            { content: '{"tool_call":{"name":"write","arguments":{}}}' },
+        ];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift() });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall, null);
+    });
+});
+
+test('runCompletionCheck: CONTINUE adopts the follow-up tool call and reasoning', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            {
+                content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}',
+                reasoningContent: 'thinking',
+                finishReason: 'tool_calls',
+                modelError: 'transient',
+            },
+        ];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift() });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(state.toolCall.name, 'read');
+        assert.equal(state.reasoningContent, 'thinking');
+        assert.equal(state.finishReason, 'tool_calls');
+        assert.equal(state.modelError, 'transient');
     });
 });
