@@ -221,12 +221,20 @@ test('runWithRecovery: reasoning-only response continues in the same session wit
     await withAccounts([a1], async () => {
         await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
+            const deltas = [];
+            let reads = 0;
             const ctx = baseCtx({
+                thinkingEnabled: true,
+                onReasoningDelta: (delta) => deltas.push(delta),
                 askDSStream: askStub([a1], calls),
-                readDSResponse: sseOnce([
-                    { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
+                readDSResponse: async (body, session, agentTag, options) => {
+                    const index = reads++;
+                    if (index === 1) options.onReasoningDelta('continued reasoning');
+                    return [
+                        { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                        { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    ][index];
+                },
             });
             ctx.session.accountId = a1.id;
             ctx.session.id = 'remote-1';
@@ -236,7 +244,8 @@ test('runWithRecovery: reasoning-only response continues in the same session wit
 
             assert.equal(calls.length, 2);
             assert.equal(calls[1].prompt, 'continue');
-            assert.equal(calls[1].thinkingEnabled, false, 'reasoning-only continuation disables thinking');
+            assert.equal(calls[1].thinkingEnabled, true, 'reasoning-only continuation keeps thinking');
+            assert.deepEqual(deltas, ['continued reasoning'], 'continuation reasoning is streamed live');
             assert.match(calls[1].freshSessionPrompt, /provide the final answer now/i);
             assert.equal(ctx.session.id, 'remote-1', 'the remote session is kept');
             assert.equal(a1.cooldownUntil, 0);
@@ -252,6 +261,7 @@ test('runWithRecovery: reasoning-only continuation still runs after the request 
             const calls = [];
             const ctx = baseCtx({
                 deadlineHit: () => true,
+                thinkingEnabled: true,
                 askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
                     { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
@@ -265,7 +275,7 @@ test('runWithRecovery: reasoning-only continuation still runs after the request 
             assert.equal(out.fullContent, 'Final answer.');
             assert.equal(calls.length, 2);
             assert.equal(calls[1].prompt, 'continue');
-            assert.equal(calls[1].thinkingEnabled, false);
+            assert.equal(calls[1].thinkingEnabled, true);
             assert.equal(ctx.session.id, 'remote-1');
         });
     });
