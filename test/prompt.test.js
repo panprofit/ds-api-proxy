@@ -88,22 +88,24 @@ test('formatToolDefinitions: renders the native DSML instruction and schemas', (
     assert.ok(!out.includes('strict JSON'));
 });
 
-test('formatToolDefinitions: json format requests a plain <tool_call> JSON block', () => {
+test('formatToolDefinitions: json format requests an inline tool_call JSON object', () => {
     const out = prompt.formatToolDefinitions([{
         type: 'function',
         function: { name: 'read', parameters: { type: 'object' } },
     }], 'auto', 'json');
-    assert.ok(out.includes('<tool_call>\n{"name":"$TOOL_NAME","arguments":{"$PARAMETER_NAME":"$PARAMETER_VALUE"}}\n</tool_call>'));
-    assert.ok(out.includes('REMEMBER: Request tools only inside a <tool_call> JSON block'));
+    assert.ok(out.includes('{"tool_call":{"name":"$TOOL_NAME","arguments":{"$PARAMETER_NAME":"$PARAMETER_VALUE"}}}'));
+    assert.ok(out.includes('REMEMBER: Request tools only with the {"tool_call":...} JSON format'));
+    assert.ok(!out.includes('<tool_call>'));
     assert.ok(!out.includes('\uFF5CDSML\uFF5C'));
 });
 
-test('formatMessages: json format renders historical calls as JSON blocks', () => {
+test('formatMessages: json format renders historical calls as inline tool_call JSON', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ function: { name: 'read', arguments: '{"path":"/x"}' } }] },
         { role: 'tool', content: 'ok' },
     ], [], null, 'auto', 'json');
-    assert.ok(conversation.includes('<tool_call>\n{"name":"read","arguments":{"path":"/x"}}\n</tool_call>'));
+    assert.ok(conversation.includes('{"tool_call":{"name":"read","arguments":{"path":"/x"}}}'));
+    assert.ok(!conversation.includes('<tool_call>'));
     assert.ok(!conversation.includes('\uFF5CDSML\uFF5C'));
 });
 
