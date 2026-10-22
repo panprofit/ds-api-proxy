@@ -297,3 +297,17 @@ test('blankInlineCodeSpans: blanks single-backtick spans but not ``` fences', ()
     assert.equal(d.blankInlineCodeSpans('a ```json\n{}\n``` b'), 'a ```json\n{}\n``` b');
 });
 
+test('parseDsmlToolCall: invoke body re-wrapped in <tool_calls> is unwrapped', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="bash">\n<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="bash">\n<${P}DSML${P} parameter name="command" string="true">echo hi</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'echo hi' });
+});
+
+test('parseDsmlToolCall: unwrapping does not apply when the wrapper is inside a parameter', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="code" string="true">x <${P}DSML${P} calls> y</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.deepEqual(JSON.parse(tc.arguments), { code: 'x <tool_calls> y' });
+});
