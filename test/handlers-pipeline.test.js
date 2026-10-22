@@ -183,7 +183,7 @@ test('handleChatCompletions: reasoning_effort none adds no effort prompt', async
     });
 });
 
-test('handleChatCompletions: non-thinking tools keep the native DSML prompt', async () => {
+test('handleChatCompletions: non-thinking tools also use the JSON tool-call prompt', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -193,12 +193,12 @@ test('handleChatCompletions: non-thinking tools keep the native DSML prompt', as
             tools: [{ type: 'function', function: { name: 'read' } }],
         }), withDeps({ askDSStream: capture.askDSStream }));
         assert.equal(res.statusCode, 200);
-        assert.ok(capture.args.prompt.includes('\uFF5CDSML\uFF5C calls'));
-        assert.ok(!capture.args.prompt.includes('<tool_call>\n{"name":"$TOOL_NAME"'));
+        assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C calls'));
+        assert.ok(capture.args.prompt.includes('<tool_call>\n{"name":"$TOOL_NAME"'));
     });
 });
 
-test('handleChatCompletions: toggling thinking resets the session for the new tool format', async () => {
+test('handleChatCompletions: toggling thinking keeps the session and the JSON tool format', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const prompts = [];
         const askDSStream = async (args) => {
@@ -222,8 +222,8 @@ test('handleChatCompletions: toggling thinking resets the session for the new to
         assert.equal(prompts.length, 2);
         assert.ok(prompts[0].includes('<tool_call>'));
         assert.ok(!prompts[0].includes('\uFF5CDSML\uFF5C'));
-        assert.ok(prompts[1].includes('\uFF5CDSML\uFF5C calls'));
-        assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-2');
+        assert.ok(!prompts[1].includes('\uFF5CDSML\uFF5C'));
+        assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-1');
     });
 });
 
