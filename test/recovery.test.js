@@ -632,7 +632,7 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
     });
 });
 
-test('runWithRecovery: a successful reasoning-only SSE resets the upstream-retry counter', async () => {
+test('runWithRecovery: reasoning received before a generation_err resets the upstream-retry counter', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         await withConfig({
@@ -654,9 +654,10 @@ test('runWithRecovery: a successful reasoning-only SSE resets the upstream-retry
                 modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
             });
             const reasoningOnly = () => ({
-                content: '', reasoningContent: 'thinking', messageId: 'm2', finishReason: 'stop', modelError: null,
+                content: '', reasoningContent: 'thinking', messageId: 'm2', finishReason: 'generation_err',
+                modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
             });
-            const results = [transient(), reasoningOnly(), transient(), transient(), transient(), transient()];
+            const results = [transient(), reasoningOnly(), transient(), transient(), transient()];
             let i = 0;
             const ctx = baseCtx({
                 askDSStream: accountStub,
@@ -666,7 +667,7 @@ test('runWithRecovery: a successful reasoning-only SSE resets the upstream-retry
             assert.equal(out.ok, false);
             assert.equal(out.error.body.type, 'upstream_unavailable');
             assert.equal(out.error.body.upstream_retries, 1);
-            assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-2', 'sess-2', 'sess-3']);
+            assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-2']);
         });
     });
 });
