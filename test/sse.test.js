@@ -494,7 +494,7 @@ test('readDSResponse: logs received chars periodically while the stream is activ
     });
     const progress = lines.filter(l => l.includes('[SSE] progress'));
     assert.equal(progress.length, 2);
-    assert.ok(progress[0].includes('receivedChars='));
+    assert.ok(progress[0].includes('rawChars='));
     assert.ok(progress[1].includes('contentChars=9'));
     assert.equal(out.content, 'aaabbbccc');
 });
