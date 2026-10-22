@@ -73,10 +73,16 @@ test('formatToolDefinitions: renders the native DSML instruction and schemas', (
         type: 'function',
         function: { name: 'read', description: 'Read a file', parameters: { type: 'object' } },
     }], 'auto', 'dsml');
-    assert.ok(out.includes('### Available Tool Schemas'));
+    assert.ok(out.includes('<tool_calling>'));
+    assert.ok(out.includes('</tool_calling>'));
+    assert.ok(!out.includes('<tools>'));
+    assert.ok(out.includes('<rules>'));
+    assert.ok(out.includes('</rules>'));
+    assert.ok(out.includes('<tool_schemas>'));
+    assert.ok(out.includes('</tool_schemas>'));
     assert.ok(out.includes('"name":"read"'));
-    assert.ok(out.includes('"description":"Read a file"'));
     assert.ok(out.includes('"type":"object"'));
+    assert.ok(!out.includes('"description"'));
     assert.ok(out.includes('\uFF5CDSML\uFF5C calls'));
     assert.ok(out.includes('string="true|false"'));
     assert.ok(!out.includes('strict JSON'));
@@ -123,7 +129,7 @@ test('formatToolDefinitions: renders namespaced tools with a qualified name', ()
         function: { name: 'lookup', description: 'Look up a value' },
     }]);
     assert.ok(out.includes('"name":"search::lookup"'));
-    assert.ok(out.includes('Search tools.\\nLook up a value'));
+    assert.ok(!out.includes('"description"'));
 });
 
 test('formatToolDefinitions: accepts namespace inside function and qualified names', () => {
@@ -163,15 +169,7 @@ test('formatMessages: forwards tool_choice into the system prompt', () => {
     const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, { name: 'read' });
     assert.ok(systemPrompt.includes('MUST invoke the tool "read"'));
     const none = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, 'none');
-    assert.equal(none.systemPrompt.includes('### Available Tool Schemas'), false);
-});
-
-test('formatToolDefinitions: truncates long descriptions', () => {
-    const out = prompt.formatToolDefinitions([{
-        type: 'function',
-        function: { name: 'x', description: 'y'.repeat(600) },
-    }]);
-    assert.ok(out.includes('...'));
+    assert.equal(none.systemPrompt.includes('<tool_schemas>'), false);
 });
 
 test('messageFingerprint: stable for identical content, differs by role', () => {
@@ -292,6 +290,40 @@ test('formatMessages: separates system prompt and conversation', () => {
     }
 });
 
+test('formatMessages: a leading developer message becomes part of the system prompt', () => {
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const { prompt: conversation, systemPrompt } = prompt.formatMessages([
+            { role: 'developer', content: 'be terse' },
+            { role: 'user', content: 'hi' },
+        ], []);
+        assert.equal(systemPrompt, 'be terse');
+        assert.equal(conversation, 'User: hi');
+    } finally {
+        config.reload({});
+    }
+});
+
+test('formatMessages: keeps a mid-conversation developer message as a System turn', () => {
+    config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
+    try {
+        const { prompt: conversation } = prompt.formatMessages([
+            { role: 'user', content: 'u1' },
+            { role: 'developer', content: 'reminder' },
+            { role: 'user', content: 'u2' },
+        ], []);
+        assert.equal(conversation, 'User: u1\n\nSystem: reminder\n\nUser: u2');
+    } finally {
+        config.reload({});
+    }
+});
+
+test('collectPendingTurns: skips a leading developer message', () => {
+    const session = { sentKeys: new Set() };
+    const messages = [{ role: 'developer', content: 'lead' }, { role: 'user', content: 'u1' }];
+    assert.deepEqual(prompt.collectPendingTurns(messages, session), [messages[1]]);
+});
+
 test('formatMessages: keeps mid-conversation system messages in place', () => {
     config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
     try {
@@ -391,7 +423,7 @@ test('formatMessages: includes tool definitions in the system prompt', () => {
         { type: 'function', function: { name: 'read', description: 'Read' } },
     ]);
     assert.ok(systemPrompt.includes('"name":"read"'));
-    assert.ok(systemPrompt.includes('### Available Tool Schemas'));
+    assert.ok(systemPrompt.includes('<tool_schemas>'));
 });
 
 test('extractScreenshotPaths: collects structured screenshot_path JSON fields', () => {

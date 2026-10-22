@@ -11,4 +11,5 @@ node_modules/
 .run/*
 !.run/.gitkeep
 plan.md
+prompt.md
 coverage/
