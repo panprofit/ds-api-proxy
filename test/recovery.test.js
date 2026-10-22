@@ -787,51 +787,58 @@ test('runWithRecovery: malformed markup on the only account reports all-cooling 
     });
 });
 
-test('runWithRecovery: malformed markup rotates the account immediately', async () => {
-
-    const accountsArr = accounts.getAccounts();
-    const saved = accountsArr.slice();
-    accountsArr.length = 0;
-    accountsArr.push(makeAccount('a1'), makeAccount('a2'));
-    try {
-
-        const calls = [];
-        let rr = 0;
-        const accountStub = async (args) => {
-            const session = sessions.getOrCreateAgentSession(args.agentId);
-            let account;
-            if (session.accountId) {
-                account = accountsArr.find(a => a.id === session.accountId) || accountsArr[0];
-            } else {
-                account = accountsArr[rr % accountsArr.length];
-                rr++;
-                session.accountId = account.id;
-            }
-            calls.push({ prompt: args.prompt, accountId: account.id });
-            if (!session.id) { session.id = `sess-${Math.random().toString(36).slice(2)}`; session.messageCount = 0; }
-            return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
-        };
-
-        const malformed = '<tool_call>{"name":"read","arguments":{"path":';
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-
-            deadlineHit: () => true,
-            askDSStream: accountStub,
-            readDSResponse: async () => ({ content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+test('runWithRecovery: malformed markup re-prompts the same session before rotating', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const malformed = '<tool_call>{"name":"read","arguments":{"path":';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2);
+            assert.match(calls[1].prompt, /malformed tool-call markup/i);
+            assert.match(calls[1].prompt, /emit the tool call again/i);
         });
-        const out = await runWithRecovery(ctx);
+    });
+});
 
-        assert.equal(calls.length, 2);
-        assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
-        assert.equal(out.ok, false);
-
-        assert.equal(out.error.status, 502);
-        assert.equal(out.error.body.type, 'empty_response');
-    } finally {
-        accountsArr.length = 0;
-        accountsArr.push(...saved);
-    }
+test('runWithRecovery: malformed markup still broken after the re-prompt rotates the account', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const malformed = '<tool_call>{"name":"read","arguments":{"path":';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1, a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: malformed, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 3);
+            assert.match(calls[1].prompt, /malformed tool-call markup/i);
+            assert.equal(calls[2].prompt, calls[0].prompt);
+            assert.equal(a1.cooldownUntil, 0);
+            assert.equal(a1.failures, 0);
+        });
+    });
 });
 
 test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not rotated', async () => {
