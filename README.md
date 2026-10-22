@@ -186,23 +186,17 @@ Each auth JSON file looks like:
   "email": "<login email>",
   "token": "<bearer token>",
   "cookie": "<cookie header>",
-  "wasmUrl": "<PoW WASM module URL>",
-  "hifDliq": "<x-hif-dliq header>",
-  "hifLeim": "<x-hif-leim header>",
-  "extraHeaders": {
-    "x-device-id": "<browser device fingerprint>",
-    "sec-ch-ua": "<client hints>"
-  }
+  "wasmUrl": "<PoW WASM module URL>"
 }
 ```
 
 `token` is the DS bearer token and `cookie` is the `Cookie` header value (the
 helper writes the `ds_session_id` and `smidV2` cookies). Both values come from a
-logged-in DS web session. `email` is the login identifier (from `--email`, the
-captured login request, or the `/users/current` profile); the proxy hashes it
-(lower-cased) to derive the stable account id, so refreshing the token/cookie
-does not change the account's cooldowns, LRU position or sticky sessions.
-Legacy files without `email` keep the old token+cookie hash.
+logged-in DS web session. `email` is the login identifier (from `--email` or the
+startup prompt); the proxy hashes it (lower-cased) to derive the stable account
+id, so refreshing the token/cookie does not change the account's cooldowns, LRU
+position or sticky sessions. Legacy files without `email` keep the old
+token+cookie hash.
 
 The helper names the file after that same account id (the email hash, otherwise
 the token+cookie hash), so re-authenticating the same account overwrites its
@@ -210,22 +204,9 @@ file: `$DS_AUTH_DIR/<16-char id>.json`.
 
 The PoW WASM URL is stored per account in its auth config as `wasmUrl` (written
 by `npm run auth`), so accounts from different regions can pin their own copy of
-the solver.
-
-`hifDliq` / `hifLeim` are optional client-identity values captured from the
-browser's outgoing requests during `npm run auth`. When present they are
-forwarded upstream as the `x-hif-dliq` / `x-hif-leim` headers; when absent the
-proxy sends empty values. `x-hif-leim` is refreshed at runtime from
-`hif-leim.deepseek.com/query` and cached for the advertised TTL (about 10
-minutes), because the login value goes stale long before a completion runs.
-`x-hif-dliq` has no equivalent refresh endpoint and stays as captured.
-
-`extraHeaders` is optional and holds the stable browser fingerprint headers
-captured during login (`x-device-id`, `sec-ch-ua*`, `sec-fetch-*`, `priority`,
-`accept*`). Per-request headers (authorization, cookies, PoW, content length,
-origin, user-agent, request ids) are deliberately not captured: replaying a
-stale value would break the request. `x-device-id` is the important one —
-upstream treats a missing browser device fingerprint as a suspicious device.
+the solver. The short-lived `x-hif-leim` WAF token is not stored: the proxy
+fetches it at runtime from `hif-leim.deepseek.com/query` and caches it for the
+advertised TTL (about 10 minutes).
 
 The proxy refreshes an account's bearer token every
 `DS_TOKEN_REFRESH_INTERVAL_MS` (50 min by default) via `GET /users/current`.

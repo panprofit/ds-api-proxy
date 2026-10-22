@@ -12,7 +12,7 @@ const path = require('node:path');
 const accounts = require('../lib/accounts');
 const config = require('../lib/config');
 
-const { getAccounts, buildBaseHeaders, pickFingerprintHeaders, setAccountToken, discoverAuthPaths, loadDSConfig,
+const { getAccounts, buildBaseHeaders, setAccountToken, discoverAuthPaths, loadDSConfig,
         hasAuthConfig, auditAuthDir, selectAccountForSession, markAccountFailure,
         markAccountBroken, markAccountAuthExpired, hasAvailableAccount, waitForAvailableAccount,
         resetAccountState, accountStatePath, loadAccountState, serializeAccountState,
@@ -70,11 +70,9 @@ function withTempAuthDir(configs, fn) {
 // --- buildBaseHeaders -------------------------------------------------------
 
 test('buildBaseHeaders: includes auth, cookies and the fixed upstream host', () => {
-    const h = buildBaseHeaders({ token: 'TOK', cookie: 'a=b', hifDliq: 'DLIQ', hifLeim: 'LEIM' });
+    const h = buildBaseHeaders({ token: 'TOK', cookie: 'a=b' });
     assert.equal(h.Authorization, 'Bearer TOK');
     assert.equal(h.Cookie, 'a=b');
-    assert.equal(h['x-hif-dliq'], 'DLIQ');
-    assert.equal(h['x-hif-leim'], 'LEIM');
     assert.equal(h.Referer, h.Origin);
     assert.equal(h['Content-Type'], 'application/json');
 });
@@ -83,8 +81,6 @@ test('buildBaseHeaders: tolerates an empty config', () => {
     const h = buildBaseHeaders({});
     assert.equal(h.Authorization, 'Bearer ');
     assert.equal(h.Cookie, '');
-    assert.equal(h['x-hif-dliq'], '');
-    assert.equal(h['x-hif-leim'], '');
 });
 
 test('buildBaseHeaders: uses DS_CLIENT_LOCALE/_TIMEZONE defaults, overridable per account', () => {
@@ -104,39 +100,6 @@ test('buildBaseHeaders: uses DS_CLIENT_LOCALE/_TIMEZONE defaults, overridable pe
     } finally {
         config.reload();
     }
-});
-
-test('buildBaseHeaders: forwards captured fingerprint headers, base headers still win', () => {
-    const h = buildBaseHeaders({
-        token: 'TOK',
-        cookie: 'a=b',
-        extraHeaders: {
-            'x-device-id': 'device-1',
-            'sec-ch-ua': '"Chromium";v="149"',
-            authorization: 'Bearer stolen',
-            cookie: 'other=1',
-            'user-agent': 'stale',
-        },
-    });
-    assert.equal(h['x-device-id'], 'device-1');
-    assert.equal(h['sec-ch-ua'], '"Chromium";v="149"');
-    // Per-request/auth headers must come from the proxy, not the snapshot.
-    assert.equal(h.Authorization, 'Bearer TOK');
-    assert.equal(h.Cookie, 'a=b');
-    assert.notEqual(h['User-Agent'], 'stale');
-});
-
-test('pickFingerprintHeaders: keeps browser fingerprint headers in last-seen order', () => {
-    const picked = pickFingerprintHeaders([
-        { 'X-Device-Id': 'first', 'Sec-Ch-Ua': '"Chromium"', Authorization: 'Bearer a' },
-        { 'x-device-id': 'second', Accept: '*/*', Cookie: 'c=1', 'x-request-id': 'r1' },
-    ]);
-    assert.equal(picked['x-device-id'], 'second');
-    assert.equal(picked['sec-ch-ua'], '"Chromium"');
-    assert.equal(picked.accept, '*/*');
-    assert.equal(picked['x-request-id'], undefined);
-    assert.equal(picked.authorization, undefined);
-    assert.equal(picked.cookie, undefined);
 });
 
 test('setAccountToken: updates token and header, keeps the credential-derived id', () => {
