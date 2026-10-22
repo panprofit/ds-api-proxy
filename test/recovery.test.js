@@ -282,34 +282,6 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
     });
 });
 
-test('runWithRecovery: generation_err after tool-intent reasoning retries with thinking disabled', async () => {
-
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
-            const calls = [];
-            const ctx = baseCtx({
-                tools: [{ type: 'function', function: { name: 'bash' } }],
-                thinkingEnabled: true,
-                askDSStream: askStub([a1, a1], calls),
-                readDSResponse: sseOnce([
-                    {
-                        content: '', reasoningContent: 'I should use bash.', messageId: 'm1', finishReason: 'generation_err',
-                        modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
-                    },
-                    { content: 'done', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.equal(out.fullContent, 'done');
-            assert.equal(calls.length, 2);
-            assert.equal(calls[0].thinkingEnabled, true);
-            assert.equal(calls[1].thinkingEnabled, false);
-        });
-    });
-});
-
 test('runWithRecovery: no thinking fallback without reasoning or tools', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
@@ -1506,10 +1478,10 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
     });
 });
 
-test('runWithRecovery: a generation_err fallback disables thinking for later turns of the session', async () => {
+test('runWithRecovery: a generation_err abort after reasoning re-prompts the same session for the tool call', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_STICKY_THINKING_FALLBACK: '1' }, async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 thinkingEnabled: true,
@@ -1520,30 +1492,25 @@ test('runWithRecovery: a generation_err fallback disables thinking for later tur
                     { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
                 ]),
             });
+            const sessionIdBefore = ctx.session.id;
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
-            assert.equal(calls.length, 2);
-            assert.equal(calls[0].thinkingEnabled, true);
-            assert.equal(calls[1].thinkingEnabled, false);
-            assert.equal(ctx.session.toolsNeedNoThinking, true);
-
-            const laterCalls = [];
-            const later = await runWithRecovery({
-                ...ctx,
-                session: ctx.session,
-                askDSStream: askStub([a1], laterCalls),
-                readDSResponse: sseOnce([{ content: 'done', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null }]),
-            });
-            assert.equal(later.ok, true);
-            assert.equal(laterCalls[0].thinkingEnabled, false, 'later turns start without thinking');
+            assert.ok(out.toolCall, 'the tool call must be recovered');
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2, 'one original call plus one re-prompt');
+            assert.equal(calls[1].thinkingEnabled, true, 'thinking stays enabled');
+            assert.equal(sessionIdBefore, null, 'the first attempt had no remote session yet');
+            assert.equal(calls[1].freshSessionReset || false, false, 'the re-prompt does not reset the session');
+            assert.ok(calls[1].prompt.includes('emit the tool call now'), 'the re-prompt asks for the tool call');
+            assert.equal(a1.cooldownUntil, 0);
         });
     });
 });
 
-test('runWithRecovery: sticky thinking fallback is off by default when disabled', async () => {
+test('runWithRecovery: a re-prompt that yields nothing falls through to the normal recovery', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_STICKY_THINKING_FALLBACK: '0' }, async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 thinkingEnabled: true,
@@ -1551,11 +1518,86 @@ test('runWithRecovery: sticky thinking fallback is off by default when disabled'
                 askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
                     { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: null, modelError: { type: 'error', content: 'generation_err', finish_reason: 'generation_err' } },
-                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'still thinking', messageId: null, finishReason: null, modelError: { type: 'error', content: 'generation_err', finish_reason: 'generation_err' } },
                 ]),
             });
-            await runWithRecovery(ctx);
-            assert.equal(ctx.session.toolsNeedNoThinking, false);
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false, 'nothing was recovered');
+            assert.ok(calls.length >= 2, 'the re-prompt is attempted');
         });
+    });
+});
+
+test('runWithRecovery: an upstream HTTP 429 propagates to the caller instead of rotating', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const { createUpstreamHttpError } = require('../lib/http');
+        const accountStub = async (args) => {
+            const session = sessions.getOrCreateAgentSession(args.agentId);
+            session.accountId = a1.id;
+            throw createUpstreamHttpError(429, 'rate limited', '120');
+        };
+        const ctx = baseCtx({
+            deadlineHit: () => true,
+            askDSStream: accountStub,
+            readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+        });
+        await assert.rejects(
+            () => runWithRecovery(ctx),
+            (e) => {
+                assert.equal(e.status, 429);
+                assert.equal(e.type, 'rate_limit_error');
+                assert.equal(e.retryAfter, '120');
+                return true;
+            },
+        );
+    });
+});
+
+test('runWithRecovery: a native <tool_result> echo rotates to the next account and delivers the real answer', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const echo = '<tool_result>\nFAKE OUTPUT\n</tool_result>';
+            const ctx = baseCtx({
+                askDSStream: askStub([a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'the real answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'the real answer');
+            assert.doesNotMatch(out.fullContent, /FAKE OUTPUT/);
+            assert.equal(calls.length, 2);
+            assert.equal(a1.failures, 0);
+            assert.equal(a1.cooldownUntil, 0);
+        });
+    });
+});
+
+test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 when rotation is impossible', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        const calls = [];
+        const echo = '<tool_result>\nFAKE OUTPUT\n</tool_result>';
+        const ctx = baseCtx({
+
+            clientGone: () => true,
+            askDSStream: askStub([a1], calls),
+            readDSResponse: sseOnce([
+                { content: echo, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(calls.length, 1);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.status, 502);
+        assert.equal(out.error.body.type, 'tool_result_echo');
+
+        assert.equal(a1.cooldownUntil, 0);
     });
 });
