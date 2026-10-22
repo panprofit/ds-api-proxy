@@ -797,7 +797,7 @@ test('runWithRecovery: malformed markup re-prompts the same session before rotat
                 tools: [{ type: 'function', function: { name: 'read' } }],
                 askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
-                    { content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: malformed, reasoningContent: 'long reasoning', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                 ]),
             });
@@ -808,6 +808,9 @@ test('runWithRecovery: malformed markup re-prompts the same session before rotat
             assert.equal(calls.length, 2);
             assert.match(calls[1].prompt, /malformed tool-call markup/i);
             assert.match(calls[1].prompt, /emit the tool call again/i);
+            assert.doesNotMatch(calls[1].prompt, /long reasoning/);
+            assert.match(calls[1].freshSessionPrompt, /long reasoning/);
+            assert.match(calls[1].freshSessionPrompt, /emit the tool call immediately/i);
         });
     });
 });
@@ -823,7 +826,7 @@ test('runWithRecovery: malformed markup still broken after the re-prompt rotates
                 tools: [{ type: 'function', function: { name: 'read' } }],
                 askDSStream: askStub([a1, a1, a2], calls),
                 readDSResponse: sseOnce([
-                    { content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: malformed, reasoningContent: 'long reasoning A', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: malformed, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                     { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
                 ]),
@@ -834,7 +837,9 @@ test('runWithRecovery: malformed markup still broken after the re-prompt rotates
             assert.equal(out.toolCall.name, 'read');
             assert.equal(calls.length, 3);
             assert.match(calls[1].prompt, /malformed tool-call markup/i);
-            assert.equal(calls[2].prompt, calls[0].prompt);
+            assert.match(calls[2].prompt, /long reasoning A/);
+            assert.match(calls[2].prompt, /emit the tool call immediately/i);
+            assert.equal(calls[2].prompt, calls[2].freshSessionPrompt);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
         });
