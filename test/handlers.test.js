@@ -320,6 +320,25 @@ test('sendOpenAIStream: reasoning_content is streamed as its own deltas', () => 
     assert.equal(reasoning, 'thinking…');
 });
 
+test('sendOpenAIStream: does not duplicate reasoning already streamed live', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-live', created: 9,
+        choices: [{ message: { role: 'assistant', content: 'answer', reasoning_content: 'thinking' } }],
+    }, { liveReasoning: { id: 'ds-live', created: 9, text: 'think', roleSent: true } });
+    const deltas = res.chunks
+        .map(c => c.replace(/^data: /, '').trim())
+        .filter(c => c && c !== '[DONE]')
+        .map(c => JSON.parse(c).choices[0].delta);
+    assert.equal(deltas.some(d => d.role), false, 'the live path already sent the role chunk');
+    const reasoning = deltas
+        .filter(d => d.reasoning_content)
+        .map(d => d.reasoning_content)
+        .join('');
+    assert.equal(reasoning, 'ing');
+    assert.equal(deltas.filter(d => d.content).map(d => d.content).join(''), 'answer');
+});
+
 test('sendOpenAIStream: includeUsage appends a usage-only frame', () => {
     const res = fakeRes();
     handlers.sendOpenAIStream(res, {

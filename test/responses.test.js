@@ -234,6 +234,34 @@ test('sendResponseStream: reasoning content emits reasoning item before the mess
     assert.equal(completed.data.response.usage.output_tokens_details.reasoning_tokens, completed.data.response.output[0].summary[0].text.length > 0 ? completed.data.response.usage.output_tokens_details.reasoning_tokens : 0);
 });
 
+test('sendResponseStream: live reasoning is finalized without duplicates', () => {
+    const res = makeFakeRes();
+    const live = responses.createLiveReasoningStream(res, { model: 'm' });
+    live.write('thi');
+    live.write('nk');
+    responses.sendResponseStream(res, {
+        content: 'answer', reasoningContent: 'thinking', contextTokens: 3,
+    }, { model: 'm', liveReasoning: live });
+
+    const events = res.events();
+    assert.equal(events.filter(e => e.event === 'response.created').length, 1);
+    assert.equal(events.filter(e => e.event === 'response.in_progress').length, 1);
+    const deltas = events
+        .filter(e => e.event === 'response.reasoning_summary_text.delta')
+        .map(e => e.data.delta)
+        .join('');
+    assert.equal(deltas, 'thinking');
+    const reasoningDone = events.find(e => e.event === 'response.reasoning_summary_text.done');
+    assert.equal(reasoningDone.data.text, 'thinking');
+
+    const completed = events.find(e => e.event === 'response.completed');
+    assert.equal(completed.data.response.output.length, 2);
+    assert.equal(completed.data.response.output[0].type, 'reasoning');
+    assert.equal(completed.data.response.output[0].summary[0].text, 'thinking');
+    assert.equal(completed.data.response.output[1].type, 'message');
+    assert.equal(completed.data.response.output[1].content[0].text, 'answer');
+});
+
 test('sendResponseStream: finishReason length -> incomplete terminal event', () => {
     const res = makeFakeRes();
     responses.sendResponseStream(res, { content: 'partial', finishReason: 'length' });

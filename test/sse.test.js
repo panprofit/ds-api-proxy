@@ -471,40 +471,18 @@ test('readDSResponse: a muted body split across chunks is still detected', async
     assert.equal(out.muted.muteUntil, 1791636413.054);
 });
 
-test('readDSResponse: logs received chars periodically while the stream is active', async () => {
+test('readDSResponse: emits reasoning deltas incrementally without snapshot duplicates', async () => {
     const session = SESSION();
-    const { log, lines } = collectLog();
-    let t = 0;
+    const deltas = [];
     const chunks = [
-        sse({ p: 'response/content', v: 'aaa' }, { response_message_id: 'm' }),
-        sse({ p: 'response/content', v: 'bbb' }),
-        sse({ p: 'response/content', v: 'ccc' }),
+        sse({ p: 'response/fragments', v: { type: 'THINK', content: 'ab' } }),
+        sse({ p: 'response/fragments/-1/content', v: 'c' }),
+        sse({ v: { response: { fragments: [{ type: 'THINK', content: 'abcd' }] } } }),
+        sse({ response_message_id: 'm' }),
     ];
-    const stream = {
-        async *[Symbol.asyncIterator]() {
-            const enc = new TextEncoder();
-            for (const chunk of chunks) {
-                yield enc.encode(chunk);
-                t += 1000;
-            }
-        },
-    };
-    const out = await readDSResponse(stream, session, '[agent]', {
-        log, progressIntervalMs: 1000, now: () => t,
+    const out = await readDSResponse(streamOf(...chunks), session, '[t]', {
+        log: () => {}, onReasoningDelta: (delta) => deltas.push(delta),
     });
-    const progress = lines.filter(l => l.includes('[SSE] progress'));
-    assert.equal(progress.length, 2);
-    assert.ok(progress[0].includes('rawChars='));
-    assert.ok(progress[1].includes('contentChars=9'));
-    assert.equal(out.content, 'aaabbbccc');
-});
-
-test('readDSResponse: progress logging is disabled by a non-positive interval', async () => {
-    const session = SESSION();
-    const { log, lines } = collectLog();
-    const out = await readDSResponse(streamOf(sse({ p: 'response/content', v: 'hi' })), session, '[agent]', {
-        log, progressIntervalMs: 0, now: () => 0,
-    });
-    assert.equal(out.content, 'hi');
-    assert.equal(lines.some(l => l.includes('[SSE] progress')), false);
+    assert.deepEqual(deltas, ['ab', 'c', 'd']);
+    assert.equal(out.reasoningContent, 'abcd');
 });

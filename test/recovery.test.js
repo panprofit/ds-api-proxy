@@ -89,6 +89,23 @@ test('runWithRecovery: happy path returns text content', async () => {
     });
 });
 
+test('runWithRecovery: forwards live reasoning deltas to readDSResponse', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const deltas = [];
+        const ctx = baseCtx({
+            onReasoningDelta: (delta) => deltas.push(delta),
+            askDSStream: askStub([makeAccount('a1')]),
+            readDSResponse: async (body, session, agentTag, options) => {
+                options.onReasoningDelta('think');
+                return { content: 'Hello world', reasoningContent: 'think', messageId: 'm1', finishReason: 'stop', modelError: null };
+            },
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.deepEqual(deltas, ['think']);
+    });
+});
+
 test('runWithRecovery: empty response rotates the account instead of retrying it', async () => {
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');

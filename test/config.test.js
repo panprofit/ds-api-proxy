@@ -120,14 +120,6 @@ test('config.load: DS_MAX_RESPONSE_WORDS default, override and clamp', () => {
     assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: 'nope' }).maxResponseWords, 500);
 });
 
-test('config.load: DS_SSE_PROGRESS_INTERVAL_MS default, override and clamp', () => {
-    assert.equal(config.load({}).sseProgressIntervalMs, 10000);
-    assert.equal(config.load({ DS_SSE_PROGRESS_INTERVAL_MS: '2500' }).sseProgressIntervalMs, 2500);
-    assert.equal(config.load({ DS_SSE_PROGRESS_INTERVAL_MS: '0' }).sseProgressIntervalMs, 0);
-    assert.equal(config.load({ DS_SSE_PROGRESS_INTERVAL_MS: '-5' }).sseProgressIntervalMs, 0);
-    assert.equal(config.load({ DS_SSE_PROGRESS_INTERVAL_MS: 'nope' }).sseProgressIntervalMs, 10000);
-});
-
 test('config.load: ignores non-numeric values, keeps defaults', () => {
     const c = config.load({ PORT: 'abc', DS_MAX_CONCURRENT: 'x' });
     assert.equal(c.port, 9876);

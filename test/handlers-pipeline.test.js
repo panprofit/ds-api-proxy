@@ -111,6 +111,42 @@ test('handleChatCompletions: stream success writes SSE chunks', async () => {
     });
 });
 
+test('handleChatCompletions: streams reasoning deltas live before the final answer', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const deps = withDeps({
+            readDSResponse: async (body, session, agentTag, options) => {
+                options.onReasoningDelta('think');
+                return { content: 'answer', reasoningContent: 'think', messageId: 'm1', finishReason: 'stop', modelError: null };
+            },
+        });
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: 'hi' }],
+            stream: true,
+        }), deps);
+        const body = res.body();
+        const frames = body
+            .split('\n\n')
+            .map(block => block.replace(/^data: /, '').trim())
+            .filter(block => block && block !== '[DONE]')
+            .map(block => JSON.parse(block));
+        const reasoning = frames
+            .map(frame => frame.choices[0].delta)
+            .filter(delta => delta.reasoning_content)
+            .map(delta => delta.reasoning_content)
+            .join('');
+        assert.equal(reasoning, 'think', 'reasoning is streamed exactly once');
+        const content = frames
+            .map(frame => frame.choices[0].delta)
+            .filter(delta => delta.content)
+            .map(delta => delta.content)
+            .join('');
+        assert.equal(content, 'answer');
+        assert.ok(body.indexOf('"reasoning_content"') < body.indexOf('"content":"answer"'));
+    });
+});
+
 test('handleChatCompletions: tool-call result is serialized as tool_calls', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
@@ -343,6 +379,41 @@ test('handleResponses: stream success writes SSE events', async () => {
         assert.equal(res.statusCode, 200);
         assert.match(res.headers['Content-Type'], /text\/event-stream/);
         assert.match(res.body(), /event: response\./);
+    });
+});
+
+test('handleResponses: streams reasoning deltas live before the final answer', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const deps = withDeps({
+            readDSResponse: async (body, session, agentTag, options) => {
+                options.onReasoningDelta('think');
+                return { content: 'answer', reasoningContent: 'think', messageId: 'm1', finishReason: 'stop', modelError: null };
+            },
+        });
+        await handlers.handleResponses(req, res, JSON.stringify({
+            input: [{ role: 'user', content: 'hi' }],
+            stream: true,
+        }), deps);
+        const events = res.body()
+            .split('\n\n')
+            .map(block => block.trim())
+            .filter(block => block.startsWith('event: '))
+            .map((block) => {
+                const match = /^event: (\S+)\ndata: (.*)$/s.exec(block);
+                return { event: match[1], data: JSON.parse(match[2]) };
+            });
+        assert.equal(events.filter(e => e.event === 'response.created').length, 1);
+        const reasoning = events
+            .filter(e => e.event === 'response.reasoning_summary_text.delta')
+            .map(e => e.data.delta)
+            .join('');
+        assert.equal(reasoning, 'think');
+        const completed = events.find(e => e.event === 'response.completed');
+        assert.equal(completed.data.response.output[0].type, 'reasoning');
+        assert.equal(completed.data.response.output[1].type, 'message');
+        assert.ok(res.body().indexOf('response.reasoning_summary_text.delta') < res.body().indexOf('response.output_text.delta'));
     });
 });
 
