@@ -134,7 +134,7 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
-    
+
     assert.equal(seenOpts.opts.signal.constructor.name, 'AbortSignal');
 });
 
@@ -153,7 +153,7 @@ test('dsChatCompletionWithPow: bounds the call by the request deadline, not the 
         });
         assert.ok(seenSignal);
         assert.equal(seenSignal.constructor.name, 'AbortSignal');
-        
+
         assert.deepEqual(observed, [123456]);
     } finally {
         AbortSignal.timeout = originalTimeout;
@@ -170,7 +170,7 @@ test('createRemoteSession: returns the session id without deleting other session
         const id = await upstream.createRemoteSession({ id: 'acct', headers: {} }, {}, 'test');
         assert.equal(id, 'sess-9');
     });
-    
+
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, `${DS_BASE}/chat_session/create`);
     assert.ok(!calls.some(c => c.url.endsWith('/chat_session/delete_all')));
@@ -362,7 +362,7 @@ test('resolveMessageAttachments: uploads image_url parts and returns ids', async
         }
         return jsonResponse({});
     }, async () => {
-        
+
         const res = await upstream.resolveMessageAttachments(
             [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'file:///x.png' } }] }],
             account,
@@ -479,14 +479,14 @@ test('uploadCacheKey: same content under different names dedupes to one key', ()
     const account = { id: 'acct1' };
     const buffer = Buffer.from('same-bytes');
     const a = upstream.uploadCacheKey({ account, buffer, mime: 'image/png' });
-    
+
     const b = upstream.uploadCacheKey({ account, buffer, mime: 'image/png' });
     assert.equal(a, b);
 });
 
 test('uploadCacheKey: identical name/size/mime but different content does NOT collide', () => {
     const account = { id: 'acct1' };
-    
+
     const a = upstream.uploadCacheKey({ account, buffer: Buffer.from('AAAA'), mime: 'image/png' });
     const b = upstream.uploadCacheKey({ account, buffer: Buffer.from('BBBB'), mime: 'image/png' });
     assert.notEqual(a, b);
@@ -534,7 +534,7 @@ test('uploadFileToDS: rejects oversized buffers', async () => {
 });
 
 function binaryResponse(buffer, { status = 200, headers = {} } = {}) {
-    
+
     return {
         ok: status >= 200 && status < 300,
         status,
@@ -682,7 +682,7 @@ test('loadModule: throws on invalid WASM bytes and does not cache the failure', 
     const wasmUrl = 'https://8.8.8.8/bad-pow.wasm';
     await withFetch(async () => binaryResponse(Buffer.from('not-wasm')), async () => {
         await assert.rejects(() => upstream.loadModule(wasmUrl));
-        
+
         await assert.rejects(() => upstream.loadModule(wasmUrl));
     });
 });

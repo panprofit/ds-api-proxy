@@ -13,14 +13,14 @@ test('memoizeParse: caches per content and key, recomputes on content change', (
     assert.equal(memoizeParse(state, 'call', 'A', compute), 'parsed:A');
     assert.equal(memoizeParse(state, 'call', 'A', compute), 'parsed:A');
     assert.equal(calls, 1, 'same content+key must not recompute');
-    
+
     assert.equal(memoizeParse(state, 'unclosed', 'A', () => 'unclosed:A'), 'unclosed:A');
     assert.equal(memoizeParse(state, 'call', 'A', compute), 'parsed:A');
     assert.equal(calls, 1, 'a second key must not evict the first');
-    
+
     assert.equal(memoizeParse(state, 'call', 'B', compute), 'parsed:B');
     assert.equal(calls, 2, 'changed content must recompute');
-    
+
     assert.equal(memoizeParse(state, 'call', 'A', compute), 'parsed:A');
     assert.equal(calls, 3);
 });

@@ -182,7 +182,7 @@ test('looksLikeActionPromise: false for a real final answer', () => {
 });
 
 test('looksLikeActionPromise: only the tail matters (long answer wins)', () => {
-    
+
     const long = 'First let me explain the approach. ' + 'filler '.repeat(40) + 'In conclusion, the fix is complete.';
     assert.ok(long.length > 200);
     assert.equal(looksLikeActionPromise(long), false);

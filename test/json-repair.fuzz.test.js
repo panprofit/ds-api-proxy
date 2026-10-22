@@ -28,7 +28,7 @@ function randInt(rng, min, max) {
 }
 
 function randomString(rng, maxLen = 40) {
-    
+
     const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 '
         + '{}[]":,\\/|_-.<>=!@#$%^&*()~`'
         + '\n\t\r\b\f\u0000\u001f'
@@ -44,19 +44,19 @@ function randomBrokenToolCall(rng) {
     const argKey = pick(rng, ['path', 'command', 'content', 'limit', 'ключ']);
     const argVal = randomString(rng, 30);
     const shapes = [
-        
+
         `{"tool_call":{"name":"${name}","arguments":{"${argKey}":"x"${argVal}"y"}}}`,
-        
+
         `{"tool_call":{ id="call_1""name":"${name}","arguments":{"${argKey}":"${argVal}"}}}`,
-        
+
         `{"tool_call":{"name":"${name}","arguments":{"${argKey}":"${argVal}"}}}`,
-        
+
         `{"tool_call":{"name":"${name}","arguments":{"${argKey}":"${argVal}",}}}`,
-        
+
         `{"tool_call":{"name":"${name}","arguments":{"${argKey}":"a${argVal}\n\tb"}}}`,
-        
+
         `{"tool_call":{"name":"${name}","arguments":{"${argKey}":"${argVal}"}`,
-        
+
         `${randomString(rng, 10)}{"tool_call":{"name":"${name}","arguments":{"${argKey}":"${argVal}"}}}${randomString(rng, 10)}`,
     ];
     return pick(rng, shapes);
@@ -104,9 +104,9 @@ test('fuzz: json-repair functions do not throw on non-string junk', () => {
 
 function assertIdempotent(fnName, input) {
     const once = jr[fnName](input);
-    if (once === null) return; 
+    if (once === null) return;
     const twice = jr[fnName](once);
-    
+
     if (fnName === 'completeJsonClosers' && twice === null) return;
     assert.equal(twice, once, `${fnName} not idempotent on ${JSON.stringify(input)}`);
 }
@@ -127,7 +127,7 @@ test('fuzz: repairs are idempotent', () => {
 test('fuzz: repairJsonText leaves valid JSON untouched', () => {
     const rng = makeRng(103);
     for (let i = 0; i < 1000; i++) {
-        
+
         const value = { a: randomString(rng, 20), b: randInt(rng, -1e6, 1e6), c: [true, false, null] };
         const text = JSON.stringify(value);
         assert.equal(jr.repairJsonText(text), text, 'valid JSON must be unchanged');
@@ -156,11 +156,11 @@ test('fuzz: repairJsonText alone never turns arbitrary prose into a parseable ca
     for (let i = 0; i < 2000; i++) {
         const s = randomString(rng, 200);
         const repaired = jr.repairJsonText(s);
-        
+
         let originalParsed = true;
         try { JSON.parse(s); } catch (e) { originalParsed = false; }
         if (!originalParsed) {
-            
+
             try {
                 const parsed = JSON.parse(repaired);
                 assert.ok(parsed !== undefined);
@@ -205,9 +205,9 @@ function mutate(rng, s) {
     if (s.length === 0) return s;
     const pos = randInt(rng, 0, s.length - 1);
     const kind = randInt(rng, 0, 2);
-    if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1); 
-    if (kind === 1) return s.slice(0, pos) + pick(rng, ['"', '\\', '{', '}', ',', ']', '=', ' ', '\n']) + s.slice(pos); 
-    return s.slice(0, pos) + pick(rng, ['"', '\\', '{', '}', ',']) + s.slice(pos + 1); 
+    if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1);
+    if (kind === 1) return s.slice(0, pos) + pick(rng, ['"', '\\', '{', '}', ',', ']', '=', ' ', '\n']) + s.slice(pos);
+    return s.slice(0, pos) + pick(rng, ['"', '\\', '{', '}', ',']) + s.slice(pos + 1);
 }
 
 test('fuzz: mutations of corpus calls do not throw and stay valid', () => {

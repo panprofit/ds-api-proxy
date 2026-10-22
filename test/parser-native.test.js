@@ -5,8 +5,8 @@ const assert = require('node:assert/strict');
 
 const n = require('../lib/parser-native');
 
-const M = n.TOOL_CALL_START; 
-const E = n.TOOL_CALL_END;   
+const M = n.TOOL_CALL_START;
+const E = n.TOOL_CALL_END;
 
 test('normTagChar: folds the fullwidth pipe and the U+2581 separator', () => {
     assert.equal(n.normTagChar('\uFF5C'), '|');
@@ -26,7 +26,7 @@ test('looksLikeNativeMarker: true for the canonical open/close markers', () => {
 });
 
 test('looksLikeNativeMarker: true when the separators are hallucinated', () => {
-    
+
     assert.equal(n.looksLikeNativeMarker('<|tool_calls_begin|>'), true);
     assert.equal(n.looksLikeNativeMarker('<\uFF5Ctool\u2581calls\u2581begin\uFF5C>'), true);
 });
@@ -84,7 +84,7 @@ test('parseNativeToolCalls: ignores a marker inside a code fence', () => {
 
 test('parseNativeToolCalls: null for a truncated body', () => {
     const body = JSON.stringify([{ name: 'f', arguments: { a: 1 } }]);
-    
+
     assert.equal(n.parseNativeToolCalls(M + body.slice(0, body.length - 3)), null);
 });
 

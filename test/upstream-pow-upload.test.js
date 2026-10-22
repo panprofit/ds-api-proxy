@@ -167,7 +167,7 @@ test('uploadFileToDS: uploads, polls to SUCCESS, and serves the second call from
         assert.equal(res.file.status, 'SUCCESS');
     });
     assert.equal(calls.filter(u => u.endsWith('/file/upload_file')).length, 1);
-    
+
     const res2 = await upstream.uploadFileToDS({ buffer: Buffer.from('PNG'), filename: 'a.png', mime: 'image/png', account });
     assert.equal(res2.id, 'file-1');
 });
@@ -261,7 +261,7 @@ test('waitForFileReady: logs and retries while the file is not visible yet', asy
     let n = 0;
     await withFetch(async () => {
         n++;
-        
+
         if (n === 1) return jsonResponse({ data: { biz_data: { files: [] } } });
         return jsonResponse({ data: { biz_data: { files: [{ id: 'f1', status: 'SUCCESS' }] } } });
     }, async () => {

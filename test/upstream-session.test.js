@@ -83,7 +83,7 @@ test('askDSStream: recreates the session on HTTP 400 and retries once', async ()
     };
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh-context' });
-    
+
     assert.equal(calls.completions.length, 2);
     assert.equal(calls.completions[1].prompt, 'fresh-context');
     assert.equal(out.freshSessionReset, true);
@@ -117,7 +117,7 @@ test('askDSStream: retries transient 5xx with backoff on the same account', asyn
     };
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'hi', agentId: 'agent1' });
-    
+
     assert.equal(calls.completions.length, 3);
     assert.equal(calls.created, 0);
     assert.equal(out.resp.status, 200);
@@ -134,7 +134,7 @@ test('askDSStream: gives up on persistent 5xx after bounded retries', async () =
     };
     const ask = createUpstreamSession(deps);
     await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1' }), /DS upstream HTTP 502/);
-    
+
     assert.equal(calls.completions.length, 4);
 });
 
@@ -148,7 +148,7 @@ test('askDSStream: a client disconnect stops transient 5xx retries', async () =>
         return { status: 503, ok: false, headers: { get: () => null }, text: async () => 'unavailable' };
     };
     const ask = createUpstreamSession(deps);
-    
+
     await assert.rejects(
         () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
         /DS upstream HTTP 503/
@@ -176,7 +176,7 @@ test('askDSStream: recreates the session on 409/410 as well', async () => {
 });
 
 test('askDSStream: a failed retry after session recreate marks the account and throws', async () => {
-    
+
     const { deps, calls, session } = makeDeps({
         session: makeSession({ id: 'stale', accountId: 'a1' }),
     });
@@ -198,10 +198,10 @@ test('askDSStream: a failed retry after session recreate marks the account and t
         () => ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh-context' }),
         /DS upstream HTTP 503/
     );
-    
+
     assert.equal(calls.completions.length, 2);
     assert.equal(calls.completions[1].prompt, 'fresh-context');
-    
+
     assert.deepEqual(failures, [
         { status: 400, label: 'completion', retryAfter: null },
         { status: 503, label: 'completion after session recreate', retryAfter: '30' },
@@ -210,7 +210,7 @@ test('askDSStream: a failed retry after session recreate marks the account and t
 });
 
 test('askDSStream: uses the recovery prompt when session was reset by rotation', async () => {
-    
+
     const session = makeSession({ id: 'old', accountId: 'a1' });
     const { deps, calls } = makeDeps({
         session,
@@ -281,7 +281,7 @@ test('askDSStream: keeps fileIds when the account did not change', async () => {
 });
 
 test('askDSStream: tags the session log line when thinking mode is enabled', async () => {
-    
+
     const logs = [];
     const { deps } = makeDeps({ log: (m) => logs.push(m) });
     const ask = createUpstreamSession(deps);
@@ -303,7 +303,7 @@ test('askDSStream: context reflects the full conversation, not summed deltas', a
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'abcd', agentId: 'agent1', freshSessionPrompt: 'full history one' });
     assert.equal(session.contextTokens, estimateTokens('full history one'));
-    
+
     await ask({ prompt: 'a'.repeat(40), agentId: 'agent1', freshSessionPrompt: 'full history one and two' });
     assert.equal(session.contextTokens, estimateTokens('full history one and two'));
 });
@@ -323,7 +323,7 @@ test('askDSStream: accumulation also counts the fresh prompt after a session rec
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'delta', agentId: 'agent1', freshSessionPrompt: 'full conversation' });
     assert.equal(out.freshSessionReset, true);
-    
+
     assert.equal(session.contextTokens, estimateTokens('full conversation'));
 });
 
@@ -354,13 +354,13 @@ test('askDSStream: throttles before solving PoW', async () => {
     deps.solvePowForPath = async () => { rec.order.push('pow'); return 'pow'; };
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'hi', agentId: 'agent1' });
-    
+
     assert.deepEqual(rec.order, ['slot', 'pow']);
     assert.equal(calls.completions.length, 1);
 });
 
 test('askDSStream: creates a fresh session before solving PoW so the header stays fresh', async () => {
-    
+
     const order = [];
     const { deps } = makeDeps();
     deps.createRemoteSession = async () => { order.push('create'); return 'sess-1'; };
@@ -389,7 +389,7 @@ test('askDSStream: aborts with 429 when no completion slot is granted', async ()
     deps.solvePowForPath = async () => { powSolved = true; return 'pow'; };
     const ask = createUpstreamSession(deps);
     await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1' }), /DS upstream HTTP 429/);
-    
+
     assert.equal(powSolved, false);
     assert.equal(calls.completions.length, 0);
 });
@@ -422,7 +422,7 @@ test('askDSStream: no pressure is computed when the rate limit is disabled (0)',
     });
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'hi', agentId: 'agent1' });
-    
+
     assert.equal(called, false);
     assert.equal(rec.calls[0].opts.pressure, 0);
 });

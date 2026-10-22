@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { isDebugEnabled, debugLog, debugLogEnv } = require('../lib/debug');
+const { isDebugEnabled, debugLog, debugLogEnv, debugLogLazy } = require('../lib/debug');
 
 test('isDebugEnabled: true for 1/true (any case), false otherwise', () => {
     assert.equal(isDebugEnabled({ DS_DEBUG: '1' }), true);
@@ -43,6 +43,20 @@ test('debugLogEnv: emits for a truthy env and stays silent for an empty one', ()
     assert.deepEqual(lines, ['hello']);
     debugLogEnv(log, {}, 'world');
     assert.deepEqual(lines, ['hello']);
+});
+
+test('debugLogLazy: skips building the message when debug is off', () => {
+    let built = 0;
+    debugLogLazy(() => {}, () => { built++; return 'x'; });
+    assert.equal(built, 0, 'message factory must not run while debug is disabled');
+});
+
+test('debugLogLazy: builds and emits the message when debug is on', () => {
+    const lines = [];
+    debugLogLazy((...a) => lines.push(a.join(' ')), () => 'lazy hello', { DS_DEBUG: '1' });
+    assert.deepEqual(lines, ['lazy hello']);
+    debugLogLazy((...a) => lines.push(a.join(' ')), () => 'suppressed', {});
+    assert.deepEqual(lines, ['lazy hello']);
 });
 
 test('debugLogEnv: non-function log falls back to console.log', () => {

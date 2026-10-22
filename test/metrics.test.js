@@ -26,7 +26,7 @@ test('createMetrics: inc increments a known counter and ignores unknown names', 
     const m = createMetrics();
     m.inc('requests');
     m.inc('requests', 4);
-    m.inc('not-a-counter', 100); 
+    m.inc('not-a-counter', 100);
     const snap = m.snapshot();
     assert.equal(snap.requests, 5);
     assert.equal(Object.prototype.hasOwnProperty.call(snap, 'not-a-counter'), false);

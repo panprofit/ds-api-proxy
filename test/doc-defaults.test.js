@@ -60,7 +60,7 @@ function documentedDefaults() {
     const out = new Map();
     for (const m of REFERENCE.matchAll(/^\| `([A-Z0-9_]+)` *\| `([^`]+)`/gm)) {
         const [, key, raw] = m;
-        
+
         const num = Number(raw);
         out.set(key, raw === 'true' ? true : raw === 'false' ? false : Number.isNaN(num) ? raw : num);
     }
@@ -78,7 +78,7 @@ test('doc defaults: every documented default matches config.load({})', () => {
         }
         const doc = documented.get(key);
         const actual = defaults[field];
-        
+
         const docNorm = actual === true || actual === false ? (doc === 1 || doc === true) : String(doc);
         const actualNorm = actual === true || actual === false ? actual : String(actual);
         if (docNorm !== actualNorm) {
@@ -89,7 +89,7 @@ test('doc defaults: every documented default matches config.load({})', () => {
 });
 
 test('doc defaults: the map covers every documented env key', () => {
-    
+
     const documented = documentedDefaults();
     const covered = new Set(Object.keys(DOC_KEY_TO_CONFIG_FIELD));
     const unchecked = [...documented.keys()]

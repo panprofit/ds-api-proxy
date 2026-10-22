@@ -44,7 +44,7 @@ test('tool results: oversized content is truncated on a UTF-8 boundary', () => {
     config.reload({ DS_MAX_TOOL_RESULT_BYTES: '4' });
     try {
         const rendered = prompt.renderTurn({ role: 'tool', content: 'ab😀cd' });
-        
+
         assert.ok(rendered.includes('ab\n\n[tool result truncated: 8 bytes -> 2 bytes]'));
         assert.ok(!rendered.includes('\uFFFD'));
     } finally {
@@ -218,7 +218,7 @@ test('collectPendingTurns: two identical consecutive user turns are both pending
     const pending = prompt.collectPendingTurns(messages, session);
     assert.equal(pending.length, 2);
     prompt.markTurnsSent(session, pending);
-    
+
     assert.equal(prompt.collectPendingTurns(messages, session).length, 0);
     assert.equal(prompt.collectPendingTurns([...messages, { role: 'user', content: 'ping' }], session).length, 1);
 });
@@ -233,12 +233,12 @@ test('collectPendingTurns: identical tool results in different turns are both ke
 });
 
 test('markTurnsSent: a subset marks the same occurrence keys as the full list', () => {
-    
+
     const session = { sentKeys: new Set() };
     const first = { role: 'user', content: 'dup' };
     const second = { role: 'user', content: 'dup' };
     const messages = [first, second];
-    
+
     prompt.markTurnsSent(session, [first]);
     const pending = prompt.collectPendingTurns(messages, session);
     assert.deepEqual(pending, [second]);
@@ -265,7 +265,7 @@ test('renderTurn: renders a user turn, a tool turn and nothing else', () => {
 });
 
 test('formatMessages: renders tool results through the shared renderTurn path', () => {
-    
+
     config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
     try {
         const msg = { role: 'tool', content: 'out', tool_call_id: 'c9' };
@@ -278,7 +278,7 @@ test('formatMessages: renders tool results through the shared renderTurn path', 
 });
 
 test('formatMessages: separates system prompt and conversation', () => {
-    
+
     config.reload({ DS_MAX_RESPONSE_WORDS: '0' });
     try {
         const { prompt: conversation, systemPrompt } = prompt.formatMessages([
@@ -431,7 +431,7 @@ test('extractScreenshotPaths: ignores non-existent files and dedupes', () => {
 
 test('extractScreenshotPaths: ignores free text (prompt-injection guard)', () => {
     const exists = () => true;
-    
+
     const messages = [
         { role: 'tool', content: 'see MEDIA:/etc/passwd.png here' },
         { role: 'user', content: 'look at /tmp/pic.jpg now' },
@@ -455,7 +455,7 @@ test('collectPendingTurns: after marking a fresh session, nothing is pending', (
         { role: 'tool', content: 'result' },
     ];
     const session = { sentKeys: new Set() };
-    
+
     prompt.markTurnsSent(session, messages);
     assert.deepEqual(prompt.collectPendingTurns(messages, session), []);
 });

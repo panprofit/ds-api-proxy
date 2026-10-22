@@ -8,7 +8,7 @@ const { createShutdown, waitForDrain } = require('../lib/shutdown');
 function fakeSemaphore({ inFlight = 0 } = {}) {
     return {
         inFlight,
-        
+
         waitForZeroCalls: [],
         waitForZero(timeoutMs) {
             this.waitForZeroCalls.push(timeoutMs);
@@ -93,7 +93,7 @@ test('shutdown: force-closes and logs when the grace period expires', async () =
 
 test('shutdown: deletes remote sessions and waits for pending deletes to settle', async () => {
     const h = makeCtl({ resets: 2 });
-    
+
     h.setPendingSize(1);
     setTimeout(() => h.setPendingSize(0), 10);
     await h.ctl.shutdown('SIGINT');
@@ -113,7 +113,7 @@ test('shutdown: is idempotent — a second call is a no-op', async () => {
     assert.equal(await h.ctl.shutdown('SIGTERM'), true);
     assert.equal(await h.ctl.shutdown('SIGINT'), false);
     assert.equal(h.server.closed, 1, 'server.close called only once');
-    
+
     assert.equal(h.sink.logs.filter((l) => /received/.test(l)).length, 1);
 });
 

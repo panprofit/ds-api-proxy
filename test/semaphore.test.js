@@ -73,7 +73,7 @@ test('semaphore: waitForZero resolves when the last slot is released', async () 
     const r2 = sem.acquire();
     let resolved = false;
     const pending = sem.waitForZero(1000).then((v) => { resolved = true; return v; });
-    
+
     await Promise.resolve();
     assert.equal(resolved, false);
     r1();
@@ -111,6 +111,6 @@ test('semaphore: a timed-out waiter is not notified later', async () => {
     const sem = createSemaphore(1);
     const r = sem.acquire();
     assert.equal(await sem.waitForZero(10), false);
-    r(); 
+    r();
     assert.equal(sem.inFlight, 0);
 });

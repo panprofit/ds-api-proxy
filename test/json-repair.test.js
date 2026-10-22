@@ -11,7 +11,7 @@ test('extractBalancedJsonObjects: finds multiple objects in order', () => {
 });
 
 test('extractBalancedJsonObjects: a stray unclosed opener is skipped', () => {
-    
+
     const out = jr.extractBalancedJsonObjects('{sh ... then {"ok":true}');
     assert.deepEqual(out, ['{"ok":true}']);
 });
@@ -125,7 +125,7 @@ test('splitConcatenatedToolCalls: splits two glued calls into a comma-joined pai
     const a = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
     const b = '{"tool_call":{"name":"bash","arguments":{"command":"ls"}}}';
     const out = jr.splitConcatenatedToolCalls(a + b);
-    
+
     const objs = jr.extractBalancedJsonObjects(out);
     assert.equal(objs.length, 2);
 });

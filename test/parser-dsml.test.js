@@ -214,7 +214,7 @@ test('parseDsmlToolCall: parses a bare invoke without a wrapper', () => {
 });
 
 test('parseDsmlToolCall: parses an open-ended <direct name=...> tag', () => {
-    
+
     const tc = d.parseDsmlToolCall('<direct name="read"><parameter name="p">1</parameter>', () => {});
     assert.equal(tc.name, 'read');
     assert.deepEqual(JSON.parse(tc.arguments), { p: '1' });
@@ -226,7 +226,7 @@ test('parseDsmlToolCall: returns null when there is no markup', () => {
 });
 
 test('parseDsmlToolCall: text outside the <tool_calls> wrapper is ignored', () => {
-    
+
     const tc = d.parseDsmlToolCall('<tool_calls><invoke name="f"><parameter name="p">1</parameter></invoke></tool_calls> trailing', () => {});
     assert.equal(tc.name, 'f');
 });
@@ -260,7 +260,7 @@ test('parseDsmlToolCall: literal tags inside a code argument are raw text', () =
 });
 
 test('parseDsmlToolCall: recovers a tool name from a leading name parameter', () => {
-    
+
     const text = `<${P}DSML${P} calls>\n<${P}DSML${P} parameter name="name" string="true">f</${P}DSML${P} parameter>\n<${P}DSML${P} parameter name="a">1</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
     const tc = d.parseDsmlToolCall(text, () => {});
     assert.equal(tc.name, 'f');
@@ -278,17 +278,17 @@ test('looksLikeToolCallMarkup: true for real tag forms', () => {
 });
 
 test('looksLikeToolCallMarkup: false for prose that merely mentions DSML', () => {
-    
+
     assert.equal(d.looksLikeToolCallMarkup('use `|DSML| calls` to invoke a tool'), false);
     assert.equal(d.looksLikeToolCallMarkup('plain text'), false);
     assert.equal(d.looksLikeToolCallMarkup(''), false);
 });
 
 test('looksLikeToolCallMarkup: ignores tag names quoted in inline code', () => {
-    
+
     assert.equal(d.looksLikeToolCallMarkup('оборачиваются в `<tool_calls>` с тегами `<invoke>` / `<parameter>`'), false);
     assert.equal(d.looksLikeToolCallMarkup('use `<invoke name="read">` for a read'), false);
-    
+
     assert.equal(d.looksLikeToolCallMarkup('<tool_calls>\n<invoke name="bash">\nsee `<invoke>` above'), true);
 });
 

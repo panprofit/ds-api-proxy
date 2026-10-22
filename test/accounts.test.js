@@ -17,7 +17,7 @@ const { getAccounts, buildBaseHeaders, setAccountToken, discoverAuthPaths, loadD
         getAccountById, accountIdFromCredentials, accountIdFromEmail, accountIdForConfig, persistAccountToken } = accounts;
 
 afterEach(() => {
-    
+
     config.reload();
     const arr = getAccounts();
     arr.length = 0;
@@ -45,12 +45,12 @@ function setAccounts(list) {
 }
 
 function withTempAuthDir(configs, fn) {
-    
+
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-auth-'));
     for (const [name, cfg] of Object.entries(configs)) {
         fs.writeFileSync(path.join(dir, name), JSON.stringify(cfg));
     }
-    
+
     config.reload({ DS_AUTH_DIR: dir });
     try {
         return fn(dir);
@@ -83,7 +83,7 @@ test('buildBaseHeaders: uses DS_CLIENT_LOCALE/_TIMEZONE defaults, overridable pe
         const overridden = buildBaseHeaders({ token: 'T', locale: 'de', timezone_offset: 7200 });
         assert.equal(overridden['x-client-locale'], 'de');
         assert.equal(overridden['x-client-timezone-offset'], '7200');
-        
+
         const utc = buildBaseHeaders({ token: 'T', locale: 'en', timezone_offset: 0 });
         assert.equal(utc['x-client-locale'], 'en');
         assert.equal(utc['x-client-timezone-offset'], '0');
@@ -130,7 +130,7 @@ test('persistAccountToken: a write failure is reported, not thrown', () => {
 });
 
 test('buildBaseHeaders: returns an empty-config header set when called without an argument', () => {
-    
+
     setAccounts([makeAccount('a1', { token: 'TOK', cookie: 'c=1' })]);
     const h = buildBaseHeaders();
     assert.equal(h.Authorization, 'Bearer ');
@@ -160,7 +160,7 @@ test('loadDSConfig: loads accounts, assigns credential-hash ids, and sets header
         assert.equal(ok, true);
         const arr = getAccounts();
         assert.equal(arr.length, 2);
-        
+
         assert.deepEqual(arr.map(a => a.id), [
             accountIdFromCredentials({ token: 'T1', cookie: 'C1' }),
             accountIdFromCredentials({ token: 'T2', cookie: 'C2' }),
@@ -376,7 +376,7 @@ test('selectAccountForSession: a pick marks the account state dirty and a flush 
         const session = { accountId: null };
         const picked = selectAccountForSession(session);
         assert.equal(picked.id, 'a1');
-        
+
         flushAccountState();
         const written = JSON.parse(fs.readFileSync(path.join(dir, '.account-state.json'), 'utf8'));
         assert.ok(written.lastUsedAt.a1 > 0);
@@ -425,7 +425,7 @@ test('auditAuthDir: reports on the defaulted auth dir when DS_AUTH_DIR is unset'
     config.reload(env);
     try {
         const report = auditAuthDir();
-        
+
         assert.equal(report.message.includes('./.auth'), true);
         assert.equal(report.reason, 'no-configs');
     } finally {
@@ -503,7 +503,7 @@ test('selectAccountForSession: picks the least-recently-used ready account', () 
     const first = selectAccountForSession({ accountId: null });
     const second = selectAccountForSession({ accountId: null });
     const third = selectAccountForSession({ accountId: null });
-    
+
     assert.deepEqual([first.id, second.id, third.id], ['a1', 'a2', 'a1']);
 });
 
@@ -511,7 +511,7 @@ test('selectAccountForSession: forceLru ignores a healthy sticky account', () =>
     const a1 = makeAccount('a1', { lastUsedAt: Date.now() - 60000 });
     const a2 = makeAccount('a2', { lastUsedAt: Date.now() - 1000 });
     setAccounts([a1, a2]);
-    
+
     const session = { accountId: 'a2' };
     const picked = selectAccountForSession(session, { forceLru: true });
     assert.equal(picked, a1);
@@ -520,7 +520,7 @@ test('selectAccountForSession: forceLru ignores a healthy sticky account', () =>
 
 test('selectAccountForSession: prefers an idle account over a recently used one', () => {
     const now = Date.now();
-    
+
     setAccounts([
         makeAccount('a1', { lastUsedAt: now - 60000 }),
         makeAccount('a2', { lastUsedAt: now - 1000 }),
@@ -574,7 +574,7 @@ test('selectAccountForSession: throws 429 when every account is cooling down', (
     ]);
     assert.throws(() => selectAccountForSession({ accountId: null }), (err) => {
         assert.equal(err.status, 429);
-        
+
         assert.equal(err.type, 'rate_limit_error');
         assert.ok(err.retryAfter >= 1);
         return true;
@@ -642,7 +642,7 @@ test('markAccountBroken: honors the requested cooldown window', () => {
 });
 
 test('markAccountAuthExpired: disables the account and clears any timed cooldown', () => {
-    
+
     const a = makeAccount('a1', { cooldownUntil: Date.now() + 300000 });
     setAccounts([a]);
     markAccountAuthExpired(a);
@@ -715,10 +715,10 @@ test('resetAccountState: clears cooldowns, failures, auth expiry and lastUsedAt'
     const a1 = makeAccount('a1', { failures: 3 });
     const a2 = makeAccount('a2', { failures: 1 });
     setAccounts([a1, a2]);
-    
+
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a2');
-    
+
     a1.cooldownUntil = Date.now() + 60000;
     a2.cooldownUntil = Date.now() + 60000;
     a2.authExpired = true;
@@ -728,7 +728,7 @@ test('resetAccountState: clears cooldowns, failures, auth expiry and lastUsedAt'
     assert.equal(a1.failures, 0);
     assert.equal(a2.failures, 0);
     assert.equal(a2.authExpired, false);
-    
+
     assert.equal(selectAccountForSession({ accountId: null }).id, 'a1');
 });
 
@@ -772,7 +772,7 @@ test('waitForCompletionSlot: second call waits out the interval since the first'
     const a = makeAccount('a1');
     const clock = fakeClock();
     await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
-    clock.advance(2000); 
+    clock.advance(2000);
     await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
     assert.deepEqual(clock.slept, [3000]);
     assert.equal(a.nextCompletionAt, clock.now() + 5000);
@@ -781,7 +781,7 @@ test('waitForCompletionSlot: second call waits out the interval since the first'
 test('waitForCompletionSlot: pressure stretches the reservation interval', async () => {
     const a = makeAccount('a1');
     const clock = fakeClock();
-    
+
     await accounts.waitForCompletionSlot(a, {
         intervalMs: 5000, pressure: 1, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
     });
@@ -792,7 +792,7 @@ test('waitForCompletionSlot: pressure stretches the reservation interval', async
 test('waitForCompletionSlot: pressure scales linearly and 0 preserves the base interval', async () => {
     const a = makeAccount('a1');
     const clock = fakeClock();
-    
+
     await accounts.waitForCompletionSlot(a, {
         intervalMs: 5000, pressure: 0.5, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
     });
@@ -809,7 +809,7 @@ test('waitForCompletionSlot: pressure scales linearly and 0 preserves the base i
 test('waitForCompletionSlot: pressure is clamped to [0,1] and factor 0 disables it', async () => {
     const a = makeAccount('a1');
     const clock = fakeClock();
-    
+
     await accounts.waitForCompletionSlot(a, {
         intervalMs: 5000, pressure: 4, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
     });
@@ -832,7 +832,7 @@ test('waitForCompletionSlot: pressure is clamped to [0,1] and factor 0 disables 
 
 test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls queue)', async () => {
     const a = makeAccount('a1');
-    
+
     const t = 1_000_000;
     const slept = [];
     const opts = { intervalMs: 5000, now: () => t, sleep: async (ms) => { slept.push(ms); } };
@@ -841,7 +841,7 @@ test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls
         accounts.waitForCompletionSlot(a, opts),
         accounts.waitForCompletionSlot(a, opts),
     ]);
-    
+
     assert.deepEqual(slept, [5000, 10000]);
 });
 
@@ -850,7 +850,7 @@ test('waitForCompletionSlot: a long wait does not spend the whole deadline budge
     a.nextCompletionAt = 0;
     const clock = fakeClock();
     await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
-    
+
     const ok = await accounts.waitForCompletionSlot(a, { intervalMs: 5000, maxWaitMs: 1000, now: clock.now, sleep: clock.sleep });
     assert.equal(ok, false);
     assert.deepEqual(clock.slept, []);

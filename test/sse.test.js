@@ -98,7 +98,7 @@ test('readDSResponse: response/fragments/-1/content appends to last fragment', a
 });
 
 test('readDSResponse: response/fragments/-1/content appends reasoning to the last fragment', async () => {
-    
+
     const session = SESSION();
     const body = sse(
         { p: 'response/fragments', v: { type: 'THINK', content: 'th' } },
@@ -197,7 +197,7 @@ test('readDSResponse: model error defaults finish_reason to null', async () => {
 });
 
 test('readDSResponse: a model error does not advance the parent session', async () => {
-    
+
     const session = { parentMessageId: 'parent-0', messageCount: 3 };
     const out = await readDSResponse(
         streamOf(sse(
@@ -308,7 +308,7 @@ test('readDSResponse: handles events split across arbitrary chunk boundaries', a
         { p: 'response/content', v: 'cd' },
         { response_message_id: 'split-m' },
     );
-    
+
     const enc = new TextEncoder();
     const bytes = enc.encode(body);
     const chunks = [];
@@ -404,7 +404,7 @@ test('readDSResponse: no raw dump by default', async () => {
 });
 
 test('readDSResponse: dumpRawStream with zero parsed events logs a body preview', async () => {
-    
+
     const session = SESSION();
     const { log, lines } = collectLog();
     const out = await readDSResponse(streamOf(MUTED_BODY), session, '[agent]', { log, dumpRawStream: true });
@@ -448,7 +448,7 @@ test('readDSResponse: a muted JSON body yields zero events and sets `muted`', as
     assert.ok(out.muted);
     assert.equal(out.muted.message, 'user is muted');
     assert.equal(out.muted.muteUntil, 1791636413.054);
-    
+
     assert.equal(session.parentMessageId, 'parent-0');
     assert.equal(session.messageCount, 0);
     assert.ok(lines.some(l => l.includes('DS account muted')));

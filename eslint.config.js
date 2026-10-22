@@ -24,6 +24,7 @@ module.exports = [
             'no-empty': ['error', { allowEmptyCatch: true }],
             eqeqeq: ['error', 'always', { null: 'ignore' }],
             'no-multiple-empty-lines': ['error', { max: 1, maxBOF: 0, maxEOF: 1 }],
+            'no-trailing-spaces': 'error',
             'prefer-const': 'error',
             'no-var': 'error',
         },

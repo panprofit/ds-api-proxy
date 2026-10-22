@@ -11,7 +11,7 @@ const SERVER_SRC = fs.readFileSync(path.join(__dirname, '..', 'lib', 'server.js'
 function topLevelBindings(src) {
     const names = new Set();
     const beforeServer = src.split('const server = http.createServer')[0];
-    
+
     const re = /^(?:const|let|var)\s+(?:\{([^}]*)\}|([A-Za-z_$][\w$]*))/gm;
     let m;
     while ((m = re.exec(beforeServer)) !== null) {
@@ -23,7 +23,7 @@ function topLevelBindings(src) {
         }
         if (m[2]) names.add(m[2]);
     }
-    
+
     const fre = /^function\s+([A-Za-z_$][\w$]*)/gm;
     while ((m = fre.exec(beforeServer)) !== null) names.add(m[1]);
     return names;
@@ -51,7 +51,7 @@ test('index.js: every helper it calls is imported/declared', () => {
 });
 
 test('lib/server.js: has a single top-level error handler that is fatal only before listen', () => {
-    
+
     const handlerCount = (SERVER_SRC.match(/server\.on\('error'/g) || []).length;
     assert.equal(handlerCount, 1, 'expected exactly one server error handler');
     assert.match(SERVER_SRC, /if\s*\(!listening\)/);
@@ -59,7 +59,7 @@ test('lib/server.js: has a single top-level error handler that is fatal only bef
 });
 
 test('lib/server.js: builds a shutdown controller without a TDZ trap', () => {
-    
+
     assert.match(SERVER_SRC, /let shutdownCtl = null/);
     assert.match(SERVER_SRC, /shutdownCtl = createShutdown\(/);
     assert.match(SERVER_SRC, /function shuttingDown\(\) \{/);
@@ -76,7 +76,7 @@ test('index.js: wires SIGTERM/SIGINT to the graceful-shutdown controller', () =>
 });
 
 test('lib/server.js: rejects new requests while draining', () => {
-    
+
     assert.match(SERVER_SRC, /type: 'shutting_down'/);
     assert.match(SERVER_SRC, /if \(shuttingDown\(\)\)/);
 });
@@ -93,7 +93,7 @@ test('index.js: does not import parser helpers it no longer uses', () => {
 test('lib/server.js: exposes socket timeouts and the GET /health endpoint', () => {
     assert.match(SERVER_SRC, /server\.headersTimeout\s*=/);
     assert.match(SERVER_SRC, /server\.requestTimeout\s*=/);
-    
+
     assert.match(SERVER_SRC, /url\.pathname === '\/health'/);
     assert.doesNotMatch(SERVER_SRC, /url\.pathname === '\/status'/);
 });

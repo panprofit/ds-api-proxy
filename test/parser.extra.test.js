@@ -65,7 +65,7 @@ test('smoke matrix: 50 seeds × 200 iterations do not break parseToolCall', () =
       }
     }
   }
-  
+
   assert.ok(totalParsed / totalCalls > 0.9, `parsed ${totalParsed}/${totalCalls}`);
 });
 
@@ -80,21 +80,21 @@ test('smoke matrix: 50 seeds × 100 iterations of random garbage do not throw', 
 });
 
 const EVIL_CHARS = [
-  '\u2028', 
-  '\u2029', 
-  '\u200B', 
-  '\u200C', 
-  '\u200D', 
-  '\uFEFF', 
-  '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', 
-  '\u2066', '\u2067', '\u2068', '\u2069', 
-  '\uD800', '\uDFFF', 
-  '\uFFFD', 
-  '\u3000', 
-  '\u00A0', 
-  '\u0000', 
-  '\u0007', 
-  '\u001B', 
+  '\u2028',
+  '\u2029',
+  '\u200B',
+  '\u200C',
+  '\u200D',
+  '\uFEFF',
+  '\u202A', '\u202B', '\u202C', '\u202D', '\u202E',
+  '\u2066', '\u2067', '\u2068', '\u2069',
+  '\uD800', '\uDFFF',
+  '\uFFFD',
+  '\u3000',
+  '\u00A0',
+  '\u0000',
+  '\u0007',
+  '\u001B',
 ];
 
 test('unicode: parseToolCall does not throw on each evil char', () => {
@@ -122,7 +122,7 @@ test('unicode: evil chars do not pass tool-name validation', () => {
     if (ch === '\u0000') continue;
     const tc = parser.buildToolCall(`f${ch}`, {});
     if (ch.trim() === '') {
-      
+
       assert.ok(tc, `whitespace ${JSON.stringify(ch)} must be trimmed`);
       assert.equal(tc.name, 'f');
     } else {
@@ -179,7 +179,7 @@ test('boundaries: MAX_TOOL_MARKUP_CHARS + 1 is rejected', () => {
 
 test('boundaries: exactly MAX_TOOL_ARGUMENT_CHARS of arguments', () => {
   const target = parser.MAX_TOOL_ARGUMENT_CHARS;
-  
+
   const prefix = '{"a":"';
   const suffix = '"}';
   const fillerLen = target - prefix.length - suffix.length;

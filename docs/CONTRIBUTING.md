@@ -53,7 +53,7 @@ Formatting is pinned by `.editorconfig` (4-space indent, LF, final newline).
   so `npm test` stays deterministic.
 - **Add tests with the code.** New modules get a direct `test/<module>.test.js`;
   bug fixes get a regression test that fails without the fix.
-- The coverage gate requires **95% lines / 90% functions / 90% branches**
+- The coverage gate requires **99% lines / 95% functions / 92% branches**
   (`npm run test:coverage`). CI runs it on Node 24.
 - Tests must not reach the network or open real sockets. Inject dependencies
   (`askDSStream`, `readDSResponse`, account/session stubs) as the existing
@@ -66,7 +66,9 @@ Formatting is pinned by `.editorconfig` (4-space indent, LF, final newline).
 - Keep modules focused; `lib/config.js` is the single source of truth for env
   parsing (the diagnostic switches `DS_DEBUG` / `DS_DUMP_SSE` are the only
   deliberate lazy exceptions).
-- Comments explain *why*, not *what* — the existing code is the reference.
+- Comments are banned: regular `//` and `/* */` comments fail
+  `ban-comments/ban-comments`. Only JSDoc type annotations (required by `tsc`)
+  and ESLint directives are allowed.
 - Prefer small, reviewable changes; update `README.md` when you change behavior,
   env vars, endpoints or the security posture.
 

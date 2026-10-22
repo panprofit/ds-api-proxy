@@ -30,7 +30,7 @@ const HOST = config.host;
 const pendingDeletes = new Set();
 function trackDelete(promise) {
     pendingDeletes.add(promise);
-    
+
     promise.catch(() => {}).finally(() => pendingDeletes.delete(promise));
 }
 
@@ -65,7 +65,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         refreshAccountToken,
         refreshClientHeaders: hif.refreshHifHeaders,
     });
-    
+
     const semaphore = createSemaphore(config.maxConcurrent);
 
     const requestDeps = {
@@ -97,7 +97,7 @@ function auditAuthDirAtStartup() {
 function main() {
     auditAuthDirAtStartup();
     const runtime = buildRuntime({ startedAt: Date.now() });
-    
+
     if (configModule.get().corsAllowAnyOrigin) {
         console.log(`[DS-API] CORS: reflecting any Origin (HOST=${HOST} is loopback and DS_ALLOWED_ORIGINS is empty).`);
     } else if (configModule.get().allowedOrigins.length > 0) {
@@ -122,10 +122,10 @@ function main() {
 
 if (require.main === module) {
     process.on('unhandledRejection', (reason) => console.error('[DS-API] unhandledRejection:', reason));
-    
+
     process.on('uncaughtException', (err) => {
         console.error('[DS-API] uncaughtException (exiting):', err);
-        
+
         process.exitCode = 1;
         setImmediate(() => process.exit(1));
     });

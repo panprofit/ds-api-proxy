@@ -115,7 +115,7 @@ test('createServer: POST /v1/models is 405', async () => {
 test('createServer: a malformed request URL is 400 instead of a hung socket', async () => {
     const { srv } = build();
     const res = fakeRes();
-    
+
     await dispatch(srv, fakeReq({ url: '//[' }), res);
     assert.equal(res.statusCode, 400);
     assert.equal(JSON.parse(res.body()).error.type, 'invalid_request_error');
@@ -165,9 +165,9 @@ test('createServer: a stalled body read is 408', async () => {
         req.headers = { host: 'localhost' };
         req.socket = { remoteAddress: '127.0.0.1' };
         req.resume = () => {};
-        
+
         process.nextTick(() => req.emit('data', Buffer.from('{')));
-        
+
         const keepAlive = setInterval(() => {}, 5);
         try {
             await dispatch(srv, req, res);
@@ -213,7 +213,7 @@ test('createServer: listen works without a callback', async () => {
     const { srv } = build();
     await new Promise((resolve) => {
         srv.listen();
-        
+
         const t = setInterval(() => { if (srv.listening) { clearInterval(t); resolve(); } }, 5);
     });
     assert.equal(srv.listening, true);

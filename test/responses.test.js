@@ -148,7 +148,7 @@ function makeFakeRes() {
         flushHeaders() {},
         write(chunk) { chunks.push(String(chunk)); },
         end() { this.ended = true; },
-        
+
         events() {
             const out = [];
             const raw = chunks.join('');
@@ -184,10 +184,10 @@ test('sendResponseStream: text response emits created -> deltas -> completed -> 
     assert.ok(names.includes('response.output_item.done'));
     assert.ok(names.includes('response.completed'));
     assert.ok(!names.includes('response.incomplete'));
-    
+
     const deltas = events.filter(e => e.event === 'response.output_text.delta').map(e => e.data.delta);
     assert.equal(deltas.join(''), 'hello world');
-    
+
     const completed = events.find(e => e.event === 'response.completed');
     assert.equal(completed.data.response.status, 'completed');
     assert.equal(completed.data.response.output_text, 'hello world');
@@ -525,7 +525,7 @@ test('normalizeInput: skips non-object entries', () => {
 });
 
 test('normalizeInput: an unknown item type with a role falls back to a message', () => {
-    
+
     const out = responses.normalizeInput([{ type: 'future_item', role: 'assistant', content: 'yo' }]);
     assert.deepEqual(out, [{ role: 'assistant', content: 'yo' }]);
 });

@@ -104,9 +104,9 @@ test('runWithRecovery: empty response rotates the account instead of retrying it
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'recovered');
-        
+
         assert.equal(calls.length, 2);
-        
+
     });
 });
 
@@ -173,7 +173,7 @@ test('runWithRecovery: same-account retries are bounded by DS_MAX_SAME_ACCOUNT_R
 });
 
 test('runWithRecovery: reasoning-only response rotates the account without cooling it', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -189,7 +189,7 @@ test('runWithRecovery: reasoning-only response rotates the account without cooli
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'Final answer.');
-            
+
             assert.equal(calls.length, 2);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
@@ -198,10 +198,10 @@ test('runWithRecovery: reasoning-only response rotates the account without cooli
 });
 
 test('runWithRecovery: empty response rotates without parking the account', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        
+
         const accountStub = async (args) => {
             const session = sessions.getOrCreateAgentSession(args.agentId);
             session.accountId = a1.id;
@@ -220,7 +220,7 @@ test('runWithRecovery: empty response rotates without parking the account', asyn
 });
 
 test('runWithRecovery: DS generation_err outage does not cool down the account', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         const ctx = baseCtx({
@@ -238,7 +238,7 @@ test('runWithRecovery: DS generation_err outage does not cool down the account',
 });
 
 test('runWithRecovery: DS generation_err retries the SAME account before giving up', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -271,9 +271,9 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
             assert.equal(out.error.status, 503);
             assert.equal(out.error.body.type, 'upstream_unavailable');
             assert.equal(out.error.body.upstream_retries, 3);
-            
+
             assert.deepEqual(calls, ['a1', 'a1', 'a1', 'a1', 'a1']);
-            
+
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a2.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
@@ -283,7 +283,7 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
 });
 
 test('runWithRecovery: generation_err after tool-intent reasoning retries with thinking disabled', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
@@ -326,7 +326,7 @@ test('runWithRecovery: no thinking fallback without reasoning or tools', async (
                 }),
             });
             await runWithRecovery(ctx);
-            
+
             assert.equal(calls.length, 1);
             assert.equal(calls[0].thinkingEnabled, true);
         });
@@ -334,7 +334,7 @@ test('runWithRecovery: no thinking fallback without reasoning or tools', async (
 });
 
 test('runWithRecovery: DS generation_err retries the last turn in the SAME remote session', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         await withConfig({ DS_MAX_UPSTREAM_RETRIES: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
@@ -357,7 +357,7 @@ test('runWithRecovery: DS generation_err retries the last turn in the SAME remot
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, false);
             assert.equal(out.error.body.upstream_retries, 2);
-            
+
             assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-2']);
             assert.equal(created, 2, 'only the fresh-session fallback recreates the session');
         });
@@ -365,7 +365,7 @@ test('runWithRecovery: DS generation_err retries the last turn in the SAME remot
 });
 
 test('runWithRecovery: DS generation_err falls back to one fresh-session attempt after same-session retries', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
@@ -389,7 +389,7 @@ test('runWithRecovery: DS generation_err falls back to one fresh-session attempt
             assert.equal(out.ok, false);
             assert.equal(out.error.status, 503);
             assert.equal(out.error.body.type, 'upstream_unavailable');
-            
+
             assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-2']);
             assert.equal(created, 2, 'exactly one session recreation for the fresh fallback');
         });
@@ -412,14 +412,14 @@ test('runWithRecovery: DS generation_err stops immediately with 0 retries config
             assert.equal(out.ok, false);
             assert.equal(out.error.status, 503);
             assert.equal(out.error.body.upstream_retries, 0);
-            
+
             assert.equal(calls.length, 2);
         });
     });
 });
 
 test('runWithRecovery: a muted body parks the account until mute_until and rotates', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     const muteUntilSec = Math.floor(Date.now() / 1000) + 3600;
@@ -427,7 +427,7 @@ test('runWithRecovery: a muted body parks the account until mute_until and rotat
     await withAccounts([a1, a2], async () => {
         let first = true;
         const ctx = baseCtx({
-            
+
             deadlineHit: () => true,
             askDSStream: async (args) => {
                 const session = sessions.getOrCreateAgentSession(args.agentId);
@@ -436,7 +436,7 @@ test('runWithRecovery: a muted body parks the account until mute_until and rotat
                 first = false;
                 return { resp: { body: {} }, account: acct, promptUsed: args?.prompt || 'p', freshSessionReset: false };
             },
-            
+
             readDSResponse: sseOnce([
                 { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted },
                 { content: 'after rotation', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
@@ -445,7 +445,7 @@ test('runWithRecovery: a muted body parks the account until mute_until and rotat
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'after rotation');
-        
+
         const remaining = a1.cooldownUntil - Date.now();
         assert.ok(remaining > 3500 * 1000, `expected ~1h park, got ${remaining}ms`);
         assert.equal(a1.failures, 1);
@@ -473,24 +473,24 @@ test('runWithRecovery: a muted body on all accounts returns 429 with mute_until'
         assert.equal(out.error.status, 429);
         assert.equal(out.error.body.type, 'rate_limit_error');
         assert.equal(out.error.body.mute_until, muteUntilSec);
-        
+
         assert.equal(out.error.body.failed_session_id, 'sess-muted');
         assert.equal(out.error.body.message_count, 3);
         assert.equal(out.error.body.account, a1.id);
-        
+
         assert.equal(out.error.body.message, 'All auth accounts are muted or cooling down. Retry later.');
     });
 });
 
 test('runWithRecovery: empty response on all accounts returns 429 terminal error', async () => {
-    
+
     const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
     await withAccounts([cooling], async () => {
         const ctx = baseCtx({
             askDSStream: askStub([cooling]),
-            
+
             deadlineHit: () => true,
-            
+
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
         });
         const out = await runWithRecovery(ctx);
@@ -517,7 +517,7 @@ test('runWithRecovery: exhausting the account budget returns an error, not an em
 });
 
 test('runWithRecovery: rotation stops once the rotation budget elapses', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -535,7 +535,7 @@ test('runWithRecovery: rotation stops once the rotation budget elapses', async (
 });
 
 test('runWithRecovery: rotating to another account resets the transient-retry counter', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -554,7 +554,7 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
                 if (!session.id) { session.id = `sess-${account.id}`; session.messageCount = 0; }
                 return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
             };
-            
+
             const transient = () => ({
                 content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err',
                 modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
@@ -569,7 +569,7 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, false);
             assert.equal(out.error.body.type, 'upstream_unavailable');
-            
+
             assert.equal(out.error.body.upstream_retries, 3);
             assert.equal(out.error.body.account, 'a2');
         });
@@ -592,7 +592,7 @@ test('runWithRecovery: parses a strict JSON tool call', async () => {
 });
 
 test('runWithRecovery: unknown tool name is not leaked as text (rotation unavailable)', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"nope","arguments":{}}}';
         const ctx = baseCtx({
@@ -623,7 +623,7 @@ test('runWithRecovery: unknown tool rotates the account immediately', async () =
             const valid = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
             const calls = [];
             let rr = 0;
-            
+
             const accountStub = async (args) => {
                 const session = sessions.getOrCreateAgentSession(args.agentId);
                 let account;
@@ -649,7 +649,7 @@ test('runWithRecovery: unknown tool rotates the account immediately', async () =
             assert.equal(out.ok, true);
             assert.equal(out.toolCall.name, 'read');
             assert.equal(calls.length, 2);
-            
+
             assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
@@ -725,7 +725,7 @@ test('runWithRecovery: tool_choice auto does not enforce a call', async () => {
 });
 
 test('runWithRecovery: terminal unknown tool increments the unknownTool metric', async () => {
-    
+
     const real = metrics.inc;
     const counted = [];
     metrics.inc = (name) => counted.push(name);
@@ -734,7 +734,7 @@ test('runWithRecovery: terminal unknown tool increments the unknownTool metric',
             const content = '{"tool_call":{"name":"nope","arguments":{}}}';
             const ctx = baseCtx({
                 tools: [{ type: 'function', function: { name: 'read' } }],
-                
+
                 clientGone: () => true,
                 askDSStream: askStub([makeAccount('a1')]),
                 readDSResponse: async () => ({ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
@@ -750,7 +750,7 @@ test('runWithRecovery: terminal unknown tool increments the unknownTool metric',
 });
 
 test('runWithRecovery: unknown tool on the only (cooling) account reports all-cooling (429)', async () => {
-    
+
     const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
     await withAccounts([cooling], async () => {
         const content = '{"tool_call":{"name":"nope","arguments":{}}}';
@@ -768,7 +768,7 @@ test('runWithRecovery: unknown tool on the only (cooling) account reports all-co
 });
 
 test('runWithRecovery: malformed markup on the only account reports all-cooling (429)', async () => {
-    
+
     const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
     await withAccounts([cooling], async () => {
         const content = '<tool_call>{"name":"read","arguments":{"path":';
@@ -786,13 +786,13 @@ test('runWithRecovery: malformed markup on the only account reports all-cooling 
 });
 
 test('runWithRecovery: malformed markup rotates the account immediately', async () => {
-    
+
     const accountsArr = accounts.getAccounts();
     const saved = accountsArr.slice();
     accountsArr.length = 0;
     accountsArr.push(makeAccount('a1'), makeAccount('a2'));
     try {
-        
+
         const calls = [];
         let rr = 0;
         const accountStub = async (args) => {
@@ -813,17 +813,17 @@ test('runWithRecovery: malformed markup rotates the account immediately', async 
         const malformed = '<tool_call>{"name":"read","arguments":{"path":';
         const ctx = baseCtx({
             tools: [{ type: 'function', function: { name: 'read' } }],
-            
+
             deadlineHit: () => true,
             askDSStream: accountStub,
             readDSResponse: async () => ({ content: malformed, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
         });
         const out = await runWithRecovery(ctx);
-        
+
         assert.equal(calls.length, 2);
         assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
         assert.equal(out.ok, false);
-        
+
         assert.equal(out.error.status, 502);
         assert.equal(out.error.body.type, 'empty_response');
     } finally {
@@ -850,7 +850,7 @@ test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not 
 });
 
 test('runWithRecovery: auth_expired rotates to the next account and succeeds', async () => {
-    
+
     const accountsArr = accounts.getAccounts();
     const saved = accountsArr.slice();
     accountsArr.length = 0;
@@ -885,9 +885,9 @@ test('runWithRecovery: auth_expired rotates to the next account and succeeds', a
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'ok from a2');
-        
+
         assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
-        
+
         const a1 = accountsArr.find(a => a.id === 'a1');
         assert.equal(a1.authExpired, true, 'a1 should be disabled after the auth error');
         assert.equal(a1.cooldownUntil, 0, 'auth expiry must not create a cooldown');
@@ -913,14 +913,14 @@ test('runWithRecovery: auth_expired on the only account returns a terminal error
             throw err;
         };
         const ctx = baseCtx({
-            
+
             deadlineHit: () => true,
             askDSStream: accountStub,
             readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
         });
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, false);
-        
+
         assert.equal(out.error.status, 401);
         assert.equal(out.error.body.type, 'auth_expired');
         assert.equal(out.error.body.account, 'a1');
@@ -937,7 +937,7 @@ test('runWithRecovery: clientGone while rotating after an empty response aborts 
             clientGone: () => gone,
             askDSStream: askStub([makeAccount('a1')]),
             readDSResponse: async () => {
-                gone = true; 
+                gone = true;
                 return { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null };
             },
         });
@@ -990,7 +990,7 @@ test('runWithRecovery: fileIds is forwarded to askDSStream', async () => {
 });
 
 test('runWithRecovery: context-too-long model error is surfaced as 400', async () => {
-    
+
     const cooling = makeAccount('a1', { cooldownUntil: Date.now() + 60000 });
     await withAccounts([cooling], async () => {
         const ctx = baseCtx({
@@ -1008,7 +1008,7 @@ test('runWithRecovery: context-too-long model error is surfaced as 400', async (
 });
 
 test('runWithRecovery: context-too-long skips empty retries (deterministic failure)', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         const calls = [];
@@ -1050,7 +1050,7 @@ test('runWithRecovery: reasoning-only response rotates instead of re-prompting',
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'Final answer.');
             assert.equal(calls.length, 2);
-            
+
             assert.equal(calls[1].prompt, calls[0].prompt);
             assert.doesNotMatch(calls[1].prompt, /final answer/i);
         });
@@ -1084,7 +1084,7 @@ async function withConfig(overrides, fn) {
     try {
         return await fn();
     } finally {
-        
+
         config.reload();
     }
 }
@@ -1105,7 +1105,7 @@ test('runWithRecovery: auto-continuation appends the continuation and updates fi
             assert.equal(out.fullContent, 'part1\npart2');
             assert.equal(out.reasoningContent, 'r2');
             assert.equal(out.finishReason, 'stop');
-            
+
             assert.equal(calls.length, 2);
             assert.equal(calls[1].prompt, 'continue');
         });
@@ -1143,7 +1143,7 @@ test('runWithRecovery: rotation re-uploads attachments and the continuation uses
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'part1\npart2');
             assert.equal(calls.length, 3);
-            
+
             assert.deepEqual(calls[1].fileIds, ['f1']);
             assert.equal(calls[1].fileIdsAccountId, 'a1');
             assert.deepEqual(calls[2].fileIds, ['f2']);
@@ -1176,7 +1176,7 @@ test('runWithRecovery: continuation that rotates account is skipped and session 
             const ctx = baseCtx({
                 askDSStream: async (args) => {
                     call++;
-                    
+
                     const account = call === 1 ? makeAccount('a1') : makeAccount('a2');
                     return { resp: { body: {} }, account, promptUsed: args.prompt, freshSessionReset: false };
                 },
@@ -1184,7 +1184,7 @@ test('runWithRecovery: continuation that rotates account is skipped and session 
                     { content: 'part1', reasoningContent: '', messageId: 'm1', finishReason: 'length', modelError: null },
                 ]),
             });
-            
+
             ctx.session.accountId = 'a1';
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
@@ -1195,7 +1195,7 @@ test('runWithRecovery: continuation that rotates account is skipped and session 
 
 test('runWithRecovery: MEDIA paths from tool results are injected when absent', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        
+
         const os = require('node:os');
         const fsp = require('node:fs');
         const imagePath = require('node:path').join(os.tmpdir(), `ds-recovery-${process.pid}.png`);
@@ -1234,7 +1234,7 @@ test('runWithRecovery: a fresh session marks every turn sent', async () => {
 test('runWithRecovery: a reused session forwards only pending turns', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const calls = [];
-        
+
         const accountStub = async (args) => {
             const s = sessions.getOrCreateAgentSession(args.agentId);
             calls.push({ prompt: args.prompt });
@@ -1242,7 +1242,7 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
             return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
         };
         let reads = 0;
-        
+
         const readStub = async () => {
             const s = sessions.getOrCreateAgentSession('test-agent');
             const result = { content: 'ok', reasoningContent: '', messageId: `m${++reads}`, finishReason: 'stop', modelError: null };
@@ -1254,10 +1254,10 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
             askDSStream: accountStub,
             readDSResponse: readStub,
         });
-        
+
         await runWithRecovery(ctx);
         calls.length = 0;
-        
+
         ctx.messages = [{ role: 'user', content: 'hi' }, { role: 'user', content: 'again' }];
         const out = await runWithRecovery(ctx);
         assert.equal(out.ok, true);
@@ -1269,7 +1269,7 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
 });
 
 test('runWithRecovery: a session with no accepted turn is treated as fresh', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
@@ -1280,7 +1280,7 @@ test('runWithRecovery: a session with no accepted turn is treated as fresh', asy
                     { content: 'ok', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                 ]),
             });
-            
+
             ctx.session.id = 'sess-empty';
             ctx.session.accountId = 'a1';
             const out = await runWithRecovery(ctx);
@@ -1296,7 +1296,7 @@ test('runWithRecovery: a session with no accepted turn is treated as fresh', asy
 test('runWithRecovery: logs the incremental-prompt diagnostic on the first (fresh-session) turn', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const lines = [];
-        
+
         const accountStub = async (args) => {
             const s = sessions.getOrCreateAgentSession(args.agentId);
             if (!s.id) { s.id = 'sess-1'; s.messageCount = 0; }
@@ -1388,7 +1388,7 @@ test('runWithRecovery: short action-promise rotates to the next account and yiel
             assert.ok(out.toolCall, 'the promised action must become a real tool call');
             assert.equal(out.toolCall.name, 'read');
             assert.equal(calls.length, 2, 'one attempt on a1, then a rotation to a2');
-            
+
             assert.equal(calls[1].prompt, calls[0].prompt);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
@@ -1397,7 +1397,7 @@ test('runWithRecovery: short action-promise rotates to the next account and yiel
 });
 
 test('runWithRecovery: an action-promise with no finish_reason still rotates and yields the tool call', async () => {
-    
+
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -1460,10 +1460,10 @@ test('runWithRecovery: promise marker on a LONG body does not continue', async (
 });
 
 test('runWithRecovery: rate-limit empty response cools the account via the Retry-After path', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        
+
         const ctx = baseCtx({
             deadlineHit: () => true,
             askDSStream: askStub([a1]),
@@ -1485,7 +1485,7 @@ test('runWithRecovery: rate-limit empty response cools the account via the Retry
 });
 
 test('runWithRecovery: context-too-long stops empty-retries before burning one', async () => {
-    
+
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         const calls = [];
@@ -1513,7 +1513,7 @@ test('runWithRecovery: action-promise gives up with a terminal 502 when rotation
         const calls = [];
         const ctx = baseCtx({
             tools: [{ type: 'function', function: { name: 'read' } }],
-            
+
             clientGone: () => true,
             askDSStream: askStub([a1], calls),
             readDSResponse: sseOnce([
@@ -1586,7 +1586,7 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
         const calls = [];
         const echo = '<tool_result>\nFAKE OUTPUT\n</tool_result>';
         const ctx = baseCtx({
-            
+
             clientGone: () => true,
             askDSStream: askStub([a1], calls),
             readDSResponse: sseOnce([
@@ -1598,7 +1598,7 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
         assert.equal(out.ok, false);
         assert.equal(out.error.status, 502);
         assert.equal(out.error.body.type, 'tool_result_echo');
-        
+
         assert.equal(a1.cooldownUntil, 0);
     });
 });

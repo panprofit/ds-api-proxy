@@ -68,18 +68,18 @@ test('extractBalancedJsonObjects: escaped quotes inside a string', () => {
 });
 
 test('extractBalancedJsonObjects: escaped backslash inside a string', () => {
-  
+
   const text = '{"s":"a\\\\b","n":1}';
   assert.deepEqual(parser.extractBalancedJsonObjects(text), [text]);
   assert.doesNotThrow(() => JSON.parse(text));
 });
 
 test('takeJsonParseError: returns the reason for the last JSON.parse error', () => {
-  
+
   parser.parseToolCall('{"tool_call":{"name":"edit","arguments":{"path":/x}}}', () => {});
   const err = parser.takeJsonParseError();
   assert.ok(err && typeof err === 'string', 'expected an error string');
-  
+
   assert.equal(parser.takeJsonParseError(), null);
 });
 
@@ -227,7 +227,7 @@ test('canonicalizeToolMarkupTag: short calls wrapper -> tool_calls', () => {
 });
 
 test('normalizeToolMarkupTags: plain `calls` outside angle brackets is left alone', () => {
-  
+
   const text = 'The function calls into the parser.';
   assert.equal(parser.normalizeToolMarkupTags(text), text);
   assert.equal(parser.looksLikeToolCallMarkup(text), false);
@@ -396,7 +396,7 @@ test('extractToolCallScope: no wrapper -> null', () => {
 });
 
 test('extractToolCallScope: duplicate opening wrappers are tolerated', () => {
-  
+
   const scope = parser.extractToolCallScope(
     '<tool_calls><tool_calls><invoke name="f"></invoke></tool_calls></tool_calls>',
   );
@@ -477,7 +477,7 @@ test('parseToolCall: fenced JSON', () => {
 });
 
 test('parseToolCall: fenced shell block surrounded by prose is NOT a tool call', () => {
-  
+
   const text = 'Вот как это сделать:\n```bash\npwd && ls\n```\nГотово.';
   assert.equal(parser.parseToolCall(text, silentLog), null);
 });
@@ -536,7 +536,7 @@ test('parseToolCall: DSML marker but broken -> null', () => {
 });
 
 test('parseToolCall: valid inline JSON wins over a trailing truncated DSML copy', () => {
-  
+
   const text =
     '{"tool_call":{"name":"edit","arguments":{"path":"lib/recovery.js"}}}' +
     '<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>\n' +
@@ -591,13 +591,13 @@ test('repairJsonText: trailing comma before } and ]', () => {
 });
 
 test('repairJsonText: a comma inside a string is left alone', () => {
-  const input = '{"s":"a,}"}'; 
+  const input = '{"s":"a,}"}';
   assert.equal(parser.repairJsonText(input), input);
   assert.doesNotThrow(() => JSON.parse(input));
 });
 
 test('repairJsonText: an escaped quote does not toggle the string state', () => {
-  
+
   const input = '{"s":"a\\"b\nc"}';
   const out = parser.repairJsonText(input);
   assert.doesNotThrow(() => JSON.parse(out));
@@ -728,7 +728,7 @@ test('exported constants are defined and positive', () => {
 });
 
 test('exported limits are the same values as parser-limits.js', () => {
-  
+
   const limits = require('../lib/parser-limits');
   for (const key of [
     'MAX_TOOL_MARKUP_CHARS',

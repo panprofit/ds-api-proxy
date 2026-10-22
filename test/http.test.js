@@ -53,7 +53,7 @@ test('setCorsResponseHeaders: sets methods and allows the session-routing header
     http.setCorsResponseHeaders(res);
     assert.equal(res.headers['Access-Control-Allow-Methods'], 'POST, GET, OPTIONS');
     const allowed = res.headers['Access-Control-Allow-Headers'];
-    
+
     for (const h of ['Content-Type', 'Authorization', 'x-agent-session', 'x-session-affinity', 'x-session-id', 'session_id', 'x-client-request-id']) {
         assert.ok(allowed.includes(h), );
     }
@@ -65,7 +65,7 @@ test('typeForStatus: is the single source of the status -> type mapping', () => 
     assert.equal(http.typeForStatus(403), 'authentication_error');
     assert.equal(http.typeForStatus(500), 'upstream_http_error');
     assert.equal(http.typeForStatus(400), 'upstream_http_error');
-    
+
     assert.equal(http.typeForStatus(null), 'upstream_http_error');
     assert.equal(http.typeForStatus('abc'), 'upstream_http_error');
     assert.equal(http.typeForStatus(0), 'upstream_http_error');
@@ -159,7 +159,7 @@ test('redactError: strips DS session cookies (ds_session_id / smidV2)', () => {
 });
 
 test('redactError: truncates very long messages', () => {
-    
+
     const out = http.redactError(new Error('a-'.repeat(1000)));
     assert.ok(out.length <= 501);
     assert.ok(out.endsWith('\u2026'));
@@ -186,12 +186,12 @@ test('truncateForLog: custom ellipsis, including empty', () => {
 });
 
 test('truncateForLog: never splits a surrogate pair (astral char)', () => {
-    
+
     const text = 'a\u{1F600}b';
-    
+
     const out = http.truncateForLog(text, 2, '');
     assert.equal(out, 'a');
-    
+
     assert.equal([...out].length, 1);
     assert.equal(Buffer.from(out, 'utf8').toString('utf8'), out);
 });
@@ -227,7 +227,7 @@ test('shortAgentId: accepts uppercase UUIDs', () => {
 test('shortAgentId: leaves non-UUID ids unchanged', () => {
     assert.equal(http.shortAgentId('dev-agent'), 'dev-agent');
     assert.equal(http.shortAgentId('127.0.0.1'), '127.0.0.1');
-    
+
     assert.equal(http.shortAgentId('4b04-7590-aeca'), '4b04-7590-aeca');
 });
 

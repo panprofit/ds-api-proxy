@@ -111,7 +111,7 @@ test('readRequestBody: marks tooLarge past the cap', async () => {
 });
 
 test('readRequestBody: a size violation does not destroy the socket', async () => {
-    
+
     const req = requestWith(['xxxxx', 'yyyyy']);
     let destroyed = false;
     req.destroy = () => { destroyed = true; };
@@ -138,13 +138,13 @@ test('readRequestBody: a stream error is reported as errored, not tooLarge', asy
 });
 
 test('readRequestBody: times out without destroying the socket (router writes the 408)', async () => {
-    
+
     const req = new EventEmitter();
     let destroyed = false;
     req.destroy = () => { destroyed = true; };
     let resumed = false;
     req.resume = () => { resumed = true; };
-    
+
     const keepAlive = setInterval(() => {}, 1000);
     let result;
     try {
@@ -201,14 +201,14 @@ test('parseChatRequest: skips null/non-object message entries', () => {
 });
 
 test('readRequestBody: measures the cap in bytes, not UTF-16 code units', async () => {
-    
-    const twoByte = '\u00e9'; 
+
+    const twoByte = '\u00e9';
     const { tooLarge } = await handlers.readRequestBody(requestWith([twoByte.repeat(4)]), 6);
     assert.equal(tooLarge, true, '8 bytes should exceed a 6-byte cap');
 });
 
 test('readRequestBody: preserves multibyte chars split across chunk boundaries', async () => {
-    
+
     const emoji = Buffer.from('\u{1F600}', 'utf8');
     const a = emoji.subarray(0, 2);
     const b = emoji.subarray(2);
@@ -410,7 +410,7 @@ test('applyCors: denies all browser origins on a non-loopback bind with no allow
         const res = fakeRes();
         handlers.applyCors({ headers: { origin: 'https://app.example' } }, res);
         assert.equal(res.headers['Access-Control-Allow-Origin'], undefined);
-        
+
         assert.equal(res.headers['Vary'], 'Origin');
     } finally {
         config.reload();
@@ -478,7 +478,7 @@ test('writeError: an aborted SSE write does not throw', () => {
 });
 
 test('writeError: a timeout resets the active session and reports it', () => {
-    
+
     const res = errorRes();
     const session = sessions.createSession();
     session.id = 'remote-9';
@@ -519,7 +519,7 @@ test('sendOpenAIStream: obfuscation pads every choice-bearing chunk', () => {
     const withChoices = chunks.filter(c => c.choices && c.choices.length > 0);
     assert.ok(withChoices.length > 0);
     assert.ok(withChoices.every(c => typeof c.obfuscation === 'string' && c.obfuscation.length > 0));
-    
+
     assert.ok(withChoices.every(c => c.choices[0].delta.obfuscation === undefined));
 });
 

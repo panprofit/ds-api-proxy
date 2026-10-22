@@ -81,7 +81,7 @@ test('filenameForSource: uses the basename of an http(s) URL', () => {
 });
 
 test('filenameForSource: data URIs still produce a non-empty name', () => {
-    
+
     const name = filenameForSource('data:image/png;base64,AAAA', 'image/png');
     assert.ok(typeof name === 'string' && name.length > 0);
 });

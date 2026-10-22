@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = [
-    
+
     {
         name: 'strict JSON tool_call',
         input: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}',
@@ -47,7 +47,7 @@ module.exports = [
         input: '<tool_calls>\n<invoke name="bash">\n<parameter name="command" string="true">cd x; echo "a"</invoke>\n</invoke>\n</tool_calls>',
         call: { name: 'bash', args: { command: 'cd x; echo "a"' } },
     },
-    
+
     {
         name: 'trailing comma in arguments',
         input: '{"tool_call":{"name":"read","arguments":{"path":"/t",}}}',
@@ -93,7 +93,7 @@ module.exports = [
         input: '{"tool_call":{"name":"read"}}',
         call: { name: 'read', args: {} },
     },
-    
+
     {
         name: 'plain prose mentioning a tool',
         input: 'I will read the file for you now.',

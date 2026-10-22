@@ -28,17 +28,17 @@ test('buildHealthReport: defaults are safe with no arguments', () => {
     assert.equal(report.status, 'ok');
     assert.equal(report.shutting_down, false);
     assert.equal(typeof report.accounts.total, 'number');
-    assert.equal(report.uptime_ms, 0);          
-    assert.equal(report.concurrency, undefined); 
+    assert.equal(report.uptime_ms, 0);
+    assert.equal(report.concurrency, undefined);
 });
 
 test('buildHealthReport: counts usable vs available vs cooling accounts', () => {
     const now = 1_000_000;
     const report = health.buildHealthReport({
         accounts: [
-            acct({ cooldownUntil: 0 }),                 
-            acct({ cooldownUntil: now + 5000 }),        
-            acct({ token: '', cookie: '' }),            
+            acct({ cooldownUntil: 0 }),
+            acct({ cooldownUntil: now + 5000 }),
+            acct({ token: '', cookie: '' }),
         ],
         now,
     });
@@ -78,7 +78,7 @@ test('buildHealthReport: reports the semaphore concurrency when provided', () =>
 
 test('buildHealthReport: uptime is computed from startedAt and floored at 0', () => {
     assert.equal(health.buildHealthReport({ startedAt: 1000, now: 1500 }).uptime_ms, 500);
-    
+
     assert.equal(health.buildHealthReport({ startedAt: 2000, now: 1500 }).uptime_ms, 0);
 });
 
@@ -172,7 +172,7 @@ test('buildHealthReport: a null accounts list is treated as empty', () => {
 
 test('handleHealth: an explicit peerAddress overrides the socket lookup', () => {
     const res = fakeRes();
-    
+
     health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, { peerAddress: '127.0.0.1', sessionCount: 5 });
     assert.equal(JSON.parse(res.body).sessions, 5);
 });

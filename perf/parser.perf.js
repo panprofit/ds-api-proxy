@@ -29,7 +29,7 @@ function timeIt(fn, iterations) {
   const start = process.hrtime.bigint();
   for (let i = 0; i < iterations; i++) fn();
   const end = process.hrtime.bigint();
-  return Number(end - start) / 1e6; 
+  return Number(end - start) / 1e6;
 }
 
 const PERF_BUDGET_SCALE = process.env.NODE_V8_COVERAGE ? 4 : 1;
@@ -47,7 +47,7 @@ test('perf: parseToolCall on 1KB of garbage < 400ms for 1000 iterations', () => 
   const run = () => timeIt(() => {
     for (const s of inputs) parser.parseToolCall(s, silentLog);
   }, 1);
-  run(); 
+  run();
   const ms = bestOf(run);
   assert.ok(ms < PERF_BUDGET(400), `too slow: ${ms.toFixed(1)}ms`);
 });
@@ -55,7 +55,7 @@ test('perf: parseToolCall on 1KB of garbage < 400ms for 1000 iterations', () => 
 test('perf: parseToolCall on valid DSML < 200ms for 1000 iterations', () => {
   const text = '<tool_calls><invoke name="f"><parameter name="x">1</parameter></invoke></tool_calls>';
   const run = () => timeIt(() => parser.parseToolCall(text, silentLog), 1000);
-  run(); 
+  run();
   const ms = bestOf(run);
   assert.ok(ms < PERF_BUDGET(200), `too slow: ${ms.toFixed(1)}ms`);
 });
@@ -64,7 +64,7 @@ test('perf: extractBalancedJsonObjects on 10KB < 100ms for 100 iterations', () =
   const rng = makeRng(101);
   const big = Array.from({ length: 100 }, () => JSON.stringify({ a: randomString(rng, 50) })).join('');
   const run = () => timeIt(() => parser.extractBalancedJsonObjects(big), 100);
-  run(); 
+  run();
   const ms = bestOf(run);
   assert.ok(ms < PERF_BUDGET(100), `too slow: ${ms.toFixed(1)}ms`);
 });
@@ -73,7 +73,7 @@ test('perf: normalizeToolMarkupTags on 10KB < 100ms for 100 iterations', () => {
   const rng = makeRng(102);
   const big = randomString(rng, 10240);
   const run = () => timeIt(() => parser.normalizeToolMarkupTags(big), 100);
-  run(); 
+  run();
   const ms = bestOf(run);
   assert.ok(ms < PERF_BUDGET(100), `too slow: ${ms.toFixed(1)}ms`);
 });

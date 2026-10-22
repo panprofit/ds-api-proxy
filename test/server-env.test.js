@@ -44,7 +44,7 @@ async function startServer(port, extraEnv = {}) {
 }
 
 test('server: reports a bad DS_AUTH_DIR at startup but still listens', async () => {
-    
+
     const port = await freePort();
     const { child, log } = await startServer(port);
     try {
@@ -150,7 +150,7 @@ test('router: OPTIONS preflight returns 204 with CORS headers', async () => {
 });
 
 test('router: OPTIONS is answered even for an unknown path', async () => {
-    
+
     await withServer(async (base) => {
         const res = await fetch(`${base}/nope`, { method: 'OPTIONS' });
         assert.equal(res.status, 204);
@@ -198,7 +198,7 @@ test('router: a JSON array body is 400 on both endpoints', async () => {
 });
 
 test('router: a body over DS_MAX_BODY_BYTES returns 413 payload_too_large', async () => {
-    
+
     await withServer(async (base) => {
         const res = await fetch(`${base}/v1/chat/completions`, {
             method: 'POST',

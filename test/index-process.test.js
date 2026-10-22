@@ -98,7 +98,7 @@ async function startAndWait() {
     return { child, done, log: () => out };
 }
 test('index.js: a throwing idle-session sweep is caught, logged and does not kill the server', async () => {
-    
+
     const { child, done, log } = await startAndWait();
     try {
         const deadline = Date.now() + 4000;

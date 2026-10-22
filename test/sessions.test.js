@@ -79,7 +79,7 @@ test('getOrCreateAgentSession: returns the same session on subsequent calls', ()
 });
 
 test('getOrCreateAgentSession: does NOT touch lastActivityAt on access', () => {
-    
+
     const s = getOrCreateAgentSession('agent-1');
     s.lastActivityAt = 1;
     const again = getOrCreateAgentSession('agent-1');
@@ -112,7 +112,7 @@ test('deleteSession: deletes a long id under its truncated key, not the raw one'
     const longId = 'z'.repeat(MAX_SESSION_ID_LENGTH + 20);
     const created = getOrCreateAgentSession(longId);
     assert.equal(getSessionCount(), 1);
-    
+
     assert.equal(deleteSession(longId), true);
     assert.equal(getSessionCount(), 0);
     assert.notEqual(getOrCreateAgentSession(longId), created);
@@ -127,7 +127,7 @@ test('getOrCreateAgentSession: repairs a session whose sentKeys is not a Set', (
 });
 
 test('getOrCreateAgentSession: throws 503 too_many_sessions at capacity', () => {
-    
+
     for (let i = 0; i < MAX_SESSIONS; i++) getSessions().set(`a${i}`, createSession());
     assert.equal(getSessionCount(), MAX_SESSIONS);
     assert.throws(
@@ -194,7 +194,7 @@ test('resetRemoteSession: clears remote state and reports the failure snapshot',
     assert.equal(s.createdAt, null);
     assert.equal(s.messageCount, 0);
     assert.equal(s.sentKeys.size, 0);
-    
+
     assert.equal(s.accountId, 'acct-1');
 });
 
@@ -232,11 +232,11 @@ test('prepareSessionForPrompt: returns null for a healthy active session', () =>
 });
 
 test('prepareSessionForPrompt: does NOT reset a session that keeps talking past the TTL', () => {
-    
+
     const s = createSession();
     s.id = 'remote-1';
-    s.createdAt = 1000; 
-    s.lastActivityAt = 1000 + SESSION_TTL_MS * 5; 
+    s.createdAt = 1000;
+    s.lastActivityAt = 1000 + SESSION_TTL_MS * 5;
     s.messageCount = 42;
     assert.equal(prepareSessionForPrompt(s, s.lastActivityAt + SESSION_TTL_MS), null);
     assert.equal(s.id, 'remote-1');
@@ -309,7 +309,7 @@ test('resetAllRemoteSessions: skips sessions without a remote id', () => {
 });
 
 test('sweepIdleSessions: ephemeral sessions use the short backstop age', () => {
-    
+
     const s = getOrCreateAgentSession('anon-test');
     s.ephemeral = true;
     s.lastActivityAt = Date.now() - 11 * 60 * 1000;
@@ -328,7 +328,7 @@ test('sweepIdleSessions: a fresh ephemeral session is kept', () => {
 });
 
 test('sweepIdleSessions: deletes the upstream session before dropping an idle one', () => {
-    
+
     const s = getOrCreateAgentSession('idle');
     s.id = 'remote-9';
     s.accountId = 'acct-9';
@@ -369,7 +369,7 @@ test('sweepIdleSessions: removes sessions idle beyond maxIdleMs and reports the 
 });
 
 test('sweepIdleSessions: keeps sessions idle exactly at the threshold', () => {
-    
+
     const realNow = Date.now;
     Date.now = () => 1_000_000;
     try {
@@ -429,7 +429,7 @@ test('exported constants are positive and consistent with defaults', () => {
     assert.ok(Number.isFinite(SESSION_TTL_MS) && SESSION_TTL_MS > 0);
     assert.ok(Number.isInteger(MAX_SESSION_ID_LENGTH) && MAX_SESSION_ID_LENGTH > 0);
     assert.ok(Number.isInteger(MAX_SESSIONS) && MAX_SESSIONS > 0);
-    
+
     assert.ok(Number.isFinite(UPLOAD_CACHE_TTL_MS) && UPLOAD_CACHE_TTL_MS > 0);
     assert.equal(typeof uploadCache.sweep, 'function');
 });
@@ -437,7 +437,7 @@ test('exported constants are positive and consistent with defaults', () => {
 test('recordTokenRate: first sample records the context but reports no rate', () => {
     const s = createSession();
     const rate = recordTokenRate(s, 1000, 1000);
-    assert.equal(rate.tokensPerMinute, 0); 
+    assert.equal(rate.tokensPerMinute, 0);
     assert.equal(rate.deltaTokens, 1000);
     assert.equal(s.tokenRateSamples.length, 1);
     assert.equal(s.peakTokensPerMinute, 0);
@@ -445,7 +445,7 @@ test('recordTokenRate: first sample records the context but reports no rate', ()
 
 test('recordTokenRate: computes the burn rate between consecutive samples', () => {
     const s = createSession();
-    
+
     recordTokenRate(s, 0, 0);
     const rate = recordTokenRate(s, 6000, 60000);
     assert.equal(rate.tokensPerMinute, 6000);
@@ -493,7 +493,7 @@ test('tokenRatePressure: no limit / no session / too few samples -> 0', () => {
 
 test('tokenRatePressure: 0 while the burn rate is at or below the limit', () => {
     const s = createSession();
-    
+
     recordTokenRate(s, 0, 0);
     recordTokenRate(s, 6000, 60000);
     assert.equal(tokenRatePressure(s, 6000, 60000), 0);
@@ -502,19 +502,19 @@ test('tokenRatePressure: 0 while the burn rate is at or below the limit', () => 
 
 test('tokenRatePressure: linear between the limit and 2x, then clamped to 1', () => {
     const s = createSession();
-    
+
     recordTokenRate(s, 0, 0);
     recordTokenRate(s, 12000, 60000);
     assert.equal(tokenRatePressure(s, 6000, 60000), 1);
 
     const s2 = createSession();
-    
+
     recordTokenRate(s2, 0, 0);
     recordTokenRate(s2, 9000, 60000);
     assert.equal(tokenRatePressure(s2, 6000, 60000), 0.5);
 
     const s3 = createSession();
-    
+
     recordTokenRate(s3, 0, 0);
     recordTokenRate(s3, 60000, 60000);
     assert.equal(tokenRatePressure(s3, 6000, 60000), 1);
@@ -523,8 +523,8 @@ test('tokenRatePressure: linear between the limit and 2x, then clamped to 1', ()
 test('tokenRatePressure: a stale window reports no pressure', () => {
     const s = createSession();
     recordTokenRate(s, 0, 0);
-    recordTokenRate(s, 60000, 60000); 
-    
+    recordTokenRate(s, 60000, 60000);
+
     const now = 60000 + TOKEN_RATE_WINDOW_MS + 1;
     assert.equal(tokenRatePressure(s, 6000, now), 0);
 });
@@ -532,6 +532,6 @@ test('tokenRatePressure: a stale window reports no pressure', () => {
 test('tokenRatePressure: a retry that re-sends the same context is not pressure', () => {
     const s = createSession();
     recordTokenRate(s, 50000, 0);
-    recordTokenRate(s, 50000, 1000); 
+    recordTokenRate(s, 50000, 1000);
     assert.equal(tokenRatePressure(s, 6000, 1000), 0);
 });

@@ -67,7 +67,7 @@ test('upload-cache: UPLOAD_CACHE_TTL_MS is a positive finite number', () => {
 });
 
 test('upload-cache: sweep() honors a config.reload() of DS_UPLOAD_CACHE_TTL_MS', () => {
-    
+
     reset();
     const now = Date.now();
     uploadCache.set('edge', { id: 'f1', cachedAt: now - 60_000 });

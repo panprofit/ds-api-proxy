@@ -125,7 +125,7 @@ function shellPatternSafe(s) {
 }
 
 function killExistingBrowser() {
-    
+
     if (!['linux', 'darwin'].includes(process.platform)) return;
     const port = config.get().authCdpPort;
     const patterns = [`--remote-debugging-port=${port}`, profileDir].map(shellPatternSafe);
@@ -291,7 +291,7 @@ function parseMaybeJson(s) {
 function looksLikeToken(value) {
     const v = String(value || '').trim();
     if (v.length < 20) return false;
-    
+
     if (/^\d+$/.test(v)) return false;
     return true;
 }
@@ -306,7 +306,7 @@ function normalizeToken(raw) {
         value = parsed.value || parsed.token || parsed.access_token || parsed.accessToken || '';
     }
     value = String(value || '').trim();
-    
+
     if (/^".*"$/.test(value)) {
         const unwrapped = parseMaybeJson(value);
         if (typeof unwrapped === 'string') value = unwrapped.trim();
@@ -344,7 +344,7 @@ async function waitForLoginForm(cdp, timeoutMs) {
 }
 
 async function submitLogin(cdp) {
-    
+
     const expr = `(() => {
         const byType = document.querySelector('button[type=submit]');
         if (byType) { byType.click(); return 'submit-button'; }
@@ -390,7 +390,7 @@ async function readPageAuth(cdp) {
         for (const store of stores) {
             for (const [k, v] of Object.entries(store)) {
                 if (!/token/i.test(k)) continue;
-                
+
                 if (TOKEN_METADATA_KEY.test(k)) continue;
                 token = normalizeToken(v);
                 if (token) break;
@@ -416,7 +416,7 @@ async function readPageAuth(cdp) {
             }
         }
     }
-    
+
     const wasmUrl =
         (pageState.resources || []).find((u) => /sha3.*\.wasm/.test(u)) ||
         'https://fe-static.deepseek.com/chat/static/sha3_wasm_bg.7b9ca65ddd.wasm';
@@ -456,20 +456,20 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         '--disable-infobars',
         '--disable-dev-shm-usage',
     ];
-    
+
     if (headless) args.push('--headless=new', '--disable-gpu', '--no-sandbox');
     else if (process.getuid && process.getuid() === 0) args.push('--no-sandbox');
-    
+
     args.push('about:blank');
 
     const browser = spawn(browserPath, args, { stdio: 'ignore', detached: true });
     browser.unref();
-    
+
     let browserClosed = false;
     const browserExitPromise = new Promise((resolve) => {
         browser.on('exit', () => { browserClosed = true; closeAsk(); resolve(); });
     });
-    
+
     let cdp = null;
 
     try {
@@ -482,7 +482,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         await cdp.send('Network.enable');
 
         if (headless) {
-            
+
             await cdp.send('Network.setUserAgentOverride', {
                 userAgent: DESKTOP_UA,
                 acceptLanguage: 'en-US,en;q=0.9',
@@ -492,7 +492,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 source: 'Object.defineProperty(navigator, "webdriver", { get: () => undefined });',
             });
         }
-        
+
         await cdp.send('Page.navigate', { url: signInUrl() });
         await sleep(1500);
 
@@ -503,7 +503,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 throw new Error('Sign-in form did not appear; the page may be blocked (CloudFront/WAF) or the layout changed.');
             }
             console.log('[auth] filling credentials...');
-            
+
             const emailSelector = `document.querySelector('input[placeholder*="Phone"], input[placeholder*="email" i], input[type=text]')`;
             const passwordSelector = `document.querySelector('input[type=password]')`;
             const r1 = await setInputValue(cdp, emailSelector, email);
@@ -517,7 +517,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         } else {
             console.log('\n[auth] Browser is open. Log in to DeepSeek in THIS separate window.');
             console.log('[auth] After logging in, send a short message to DeepSeek, for example: hi');
-            
+
             await Promise.race([
                 ask('[auth] Once you are logged in and have sent a test message, press ENTER here: '),
                 browserExitPromise,
@@ -527,7 +527,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 return { ok: false, reason: 'browser-closed' };
             }
         }
-        
+
         const deadline = Date.now() + cfg.loginTimeoutMs;
         let auth = null;
         let lastHref = '';
@@ -560,7 +560,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
         const accountEmail = String(email || '').trim();
-        
+
         if (accountEmail) auth.email = accountEmail;
         const fileName = authFileName(accountEmail, auth);
         if (accountEmail) {
@@ -600,7 +600,7 @@ async function probeAccount(account) {
     let json = null;
     try { json = text ? JSON.parse(text) : null; }
     catch { return { status: 'error', detail: 'non-JSON response (WAF/captcha page?)' }; }
-    
+
     if (!json?.data?.biz_data?.challenge) {
         const bizCode = json?.data?.biz_code;
         const msg = json?.data?.biz_msg || json?.msg || 'no PoW challenge in response';
@@ -647,13 +647,13 @@ async function runRepair(opts) {
         process.exitCode = 1;
         return;
     }
-    
+
     const browserPath = resolveBrowserPath(cfg);
     const email = opts.email.trim();
 
     for (const r of expired) {
         const label = `${path.basename(r.account.file)} (id=${r.account.id})`;
-        
+
         const acctEmail = email || r.account.config?.email || emailFromFileName(r.account.file);
         if (!acctEmail) {
             console.error(`[auth:repair] ${label}: no email in the auth config; add 'email' to the file or pass --email. Skipping.`);
@@ -673,7 +673,7 @@ async function runRepair(opts) {
 
         let login;
         try {
-            
+
             login = await runLoginFlow({ headless: true, email: acctEmail, password });
         } catch (e) {
             console.error(`[auth:repair] ${label}: re-login failed: ${e.message}`);
@@ -683,7 +683,7 @@ async function runRepair(opts) {
             console.error(`[auth:repair] ${label}: re-login did not produce credentials (${login.reason}).`);
             continue;
         }
-        
+
         const fresh = { id: accounts.accountIdForConfig(login.auth), file: login.filePath, config: login.auth, headers: accounts.buildBaseHeaders(login.auth) };
         process.stdout.write(`[auth:repair] ${label}: verifying new credentials... `);
         const verify = await probeAccount(fresh);
@@ -725,14 +725,14 @@ async function main() {
     if (headless && !explicitEmail) {
         throw new Error('--headless requires --email (there is no visible window to log in by hand).');
     }
-    
+
     let email = explicitEmail;
     if (!headless && !email) {
         const typed = (await ask('[auth] Email to save with this account (blank to skip): ')).trim();
         if (isEmailShape(typed)) email = typed;
         else if (typed) console.warn('[auth] That does not look like an email; continuing without it.');
     }
-    
+
     let password = '';
     if (explicitEmail) {
         password = await askHidden(`[auth] Password for ${explicitEmail}: `);

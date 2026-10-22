@@ -62,7 +62,7 @@ function randomDsmlToolCall(rng, opts = {}) {
   for (let i = 0; i < n; i++) {
     const pname = `p${i}`;
     const stringMode = pick(rng, ['', ' string="true"', ' string="false"']);
-    
+
     const pval = stringMode === ' string="false"'
       ? pick(rng, ['1', 'true', 'false', 'null', '{"a":1}', '[1,2]', '"str"'])
       : pick(rng, ['1', 'hello', '{"a":1}', 'true', '']);
@@ -90,7 +90,7 @@ function assertValidToolCallShape(tc) {
   assert.match(tc.name, /^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,127}$/);
   assert.equal(typeof tc.arguments, 'string');
   assert.ok(tc.arguments.length <= parser.MAX_TOOL_ARGUMENT_CHARS);
-  
+
   const parsed = JSON.parse(tc.arguments);
   assert.equal(typeof parsed, 'object');
   assert.ok(!Array.isArray(parsed));
@@ -234,7 +234,7 @@ test('fuzz: buildToolCall does not exceed the argument limit', () => {
     if (tc) {
       assert.ok(tc.arguments.length <= parser.MAX_TOOL_ARGUMENT_CHARS);
     } else {
-      
+
       assert.ok(JSON.stringify(args).length > parser.MAX_TOOL_ARGUMENT_CHARS - 10);
     }
   }
@@ -244,9 +244,9 @@ function mutate(rng, s) {
   if (s.length === 0) return s;
   const pos = randInt(rng, 0, s.length - 1);
   const kind = randInt(rng, 0, 2);
-  if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1); 
-  if (kind === 1) return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|', '｜', ' ', '\0']) + s.slice(pos); 
-  return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|']) + s.slice(pos + 1); 
+  if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1);
+  if (kind === 1) return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|', '｜', ' ', '\0']) + s.slice(pos);
+  return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|']) + s.slice(pos + 1);
 }
 
 test('fuzz: mutations of valid calls do not break the parser', () => {
@@ -256,7 +256,7 @@ test('fuzz: mutations of valid calls do not break the parser', () => {
     const nMutations = randInt(rng, 1, 5);
     for (let j = 0; j < nMutations; j++) s = mutate(rng, s);
     assert.doesNotThrow(() => parser.parseToolCall(s, silentLog), `threw on: ${JSON.stringify(s)}`);
-    
+
     const tc = parser.parseToolCall(s, silentLog);
     if (tc) assertValidToolCallShape(tc);
   }

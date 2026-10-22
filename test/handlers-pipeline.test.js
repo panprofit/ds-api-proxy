@@ -240,7 +240,7 @@ test('handleChatCompletions: invalid params are 400 before any upstream call', a
 });
 
 test('handleChatCompletions: no available account is rejected as 429 before recovery', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -259,7 +259,7 @@ test('handleChatCompletions: no available account is rejected as 429 before reco
 });
 
 test('handleChatCompletions: a terminal recovery failure (non-stream) is written as JSON', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -275,19 +275,19 @@ test('handleChatCompletions: a terminal recovery failure (non-stream) is written
         }), deps);
         assert.equal(res.statusCode, 502);
         assert.equal(res.headers['Content-Type'], 'application/json');
-        
+
         assert.equal(res.json().error.type, 'empty_response');
     });
 });
 
 test('handleChatCompletions: recovery failure after SSE commit writes an error frame', async () => {
-    
+
     const acct = makeAccount('a1');
     await withAccounts([acct], async () => {
         const req = fakeReq();
         const res = fakeRes();
         const deps = withDeps({
-            
+
             readDSResponse: async () => ({
                 content: '<tool_call>{"name":"read","arguments":{"path":',
                 reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null,
@@ -354,15 +354,15 @@ test('handleResponses: invalid params are 400', async () => {
 });
 
 test('handleChatCompletions: a prompt rollover resets the session before the prompt is built', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const session = sessions.getOrCreateAgentSession('dev-agent');
         session.id = 'remote-1';
         session.messageCount = 100;
-        
+
         session.createdAt = Date.now() - 3 * 60 * 60 * 1000;
         session.lastActivityAt = Date.now() - 3 * 60 * 60 * 1000;
-        
+
         const req = fakeReq({ headers: { 'x-session-id': 'dev-agent' } });
         const res = fakeRes();
         await handlers.handleChatCompletions(req, res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
@@ -372,7 +372,7 @@ test('handleChatCompletions: a prompt rollover resets the session before the pro
 });
 
 test('handleChatCompletions: clientGone during recovery returns without writing', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -460,7 +460,7 @@ test('handleChatCompletions: attachment failures are logged but do not fail the 
 });
 
 test('handleResponses: a post-commit context overflow emits response.failed for compaction', async () => {
-    
+
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
         const res = fakeRes();
@@ -488,10 +488,10 @@ test('handleChatCompletions: an anonymous request deletes its ephemeral session'
         sessions.setRemoteSessionDeleter((accountId, sessionId) => { deleted.push(sessionId); });
         try {
             const res = fakeRes();
-            
+
             await handlers.handleChatCompletions(fakeReq(), res, JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }), withDeps());
             assert.equal(res.statusCode, 200);
-            
+
             assert.equal(sessions.getSessionCount(), 0, 'the ephemeral local session must be deleted');
         } finally {
             sessions.setRemoteSessionDeleter(null);

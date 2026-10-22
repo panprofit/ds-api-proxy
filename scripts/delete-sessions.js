@@ -55,7 +55,7 @@ async function deleteAllSessionsForAccount(account, { dryRun = false } = {}) {
             console.error(`[sessions:delete] ${label}: HTTP ${resp.status}: ${text.substring(0, 200)}`);
             return { accountId: account.id, ok: false, status: resp.status };
         }
-        
+
         let json = null;
         try { json = text ? JSON.parse(text) : null; } catch (e) {
             console.error(`[sessions:delete] ${label}: non-JSON response: ${text.substring(0, 200)}`);
@@ -79,7 +79,7 @@ async function main() {
     if (opts.help) { usage(); return; }
 
     const remoteHost = config.get().remoteHost;
-    
+
     loadDSConfig({ fatal: false });
     let accounts = getAccounts();
     if (opts.accountId) {

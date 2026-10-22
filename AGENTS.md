@@ -45,7 +45,8 @@ comes from `--email`/`-e`, the password is always prompted, and headless mode is
 offers a headless re-login for any that are auth-expired / captcha-blocked.
 
 `node --test` discovers `test/*.test.js`. There is no watch/coverage requirement
-in normal work; `npm run test:coverage` exists but is strict (95% lines).
+in normal work; `npm run test:coverage` exists but is strict (99% lines,
+95% functions, 92% branches).
 
 ## Architecture
 
