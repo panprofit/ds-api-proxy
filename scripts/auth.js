@@ -56,118 +56,12 @@ function isEmailShape(value) {
     return EMAIL_RE.test(String(value || '').trim());
 }
 
-// Find an email inside a storage value. DS keeps the profile in localStorage,
-// sometimes as a JSON string (e.g. `userInfo`); nested keys named *email* win
-// over a blind scan so unrelated addresses are not picked up.
-function findEmailInValue(value, depth = 0) {
-    if (depth > 4 || value === null || value === undefined) return '';
-    if (typeof value === 'string') {
-        const text = value.trim();
-        if (isEmailShape(text)) return text;
-        if (text.startsWith('{') || text.startsWith('[')) {
-            try { return findEmailInValue(JSON.parse(text), depth + 1); } catch { return ''; }
-        }
-        return '';
-    }
-    if (typeof value !== 'object') return '';
-    for (const [key, child] of Object.entries(value)) {
-        if (!/email/i.test(key)) continue;
-        const found = findEmailInValue(child, depth + 1);
-        if (found) return found;
-    }
-    for (const child of Object.values(value)) {
-        const found = findEmailInValue(child, depth + 1);
-        if (found) return found;
-    }
-    return '';
-}
-
-// Recover the login identifier from the captured POST /api/v0/users/login
-// request. Interactive (visible) logins have no --email, and the form value is
-// destroyed once the SPA navigates away, so the request body is the only place
-// the email survives. Returns '' when the endpoint or payload
-// shape differs (e.g. a form-urlencoded body), leaving callers to fall back
-// to the page profile or /users/current.
-function emailFromLoginPost(events) {
-    for (const ev of events) {
-        if (ev.method !== 'Network.requestWillBeSent') continue;
-        const req = ev.params && ev.params.request;
-        if (!req || req.method !== 'POST' || !/\/api\/v0\/users\/login/.test(req.url)) continue;
-        const body = parseMaybeJson(req.postData);
-        if (body && typeof body === 'object') {
-            const id = body.email || body.mobile || body.phone || '';
-            if (id) return String(id).trim();
-        } else if (typeof req.postData === 'string' && req.postData.includes('=')) {
-            const params = new URLSearchParams(req.postData);
-            const id = params.get('email') || params.get('mobile') || params.get('phone') || '';
-            if (id) return id.trim();
-        }
-    }
-    return '';
-}
-
-// Ask DS for the logged-in user's email. The response layout is not part of
-// the public API, so the whole profile is scanned instead of one fixed field.
-// A masked address is rejected so it cannot become a bogus stable account id.
-async function fetchProfileEmail(auth) {
-    try {
-        const resp = await fetch(`${baseUrl()}/api/v0/users/current`, {
-            headers: accounts.buildBaseHeaders(auth),
-            signal: AbortSignal.timeout(15000),
-        });
-        if (!resp.ok) {
-            console.warn(`[auth] profile lookup returned HTTP ${resp.status}`);
-            return '';
-        }
-        const json = await resp.json();
-        const email = findEmailInValue(json?.data);
-        if (!email) console.warn('[auth] profile lookup returned no email');
-        return email;
-    } catch (e) {
-        console.warn(`[auth] profile lookup failed: ${e && e.message}`);
-        return '';
-    }
-}
-
-// Same lookup, but from the page itself: the browser has the session cookies,
-// the right TLS fingerprint and already passed the WAF challenge.
-async function fetchProfileEmailFromPage(cdp) {
-    try {
-        const url = JSON.stringify(`${baseUrl()}/api/v0/users/current`);
-        const evalRes = await cdp.send('Runtime.evaluate', {
-            expression: `(async () => {
-                try {
-                    const r = await fetch(${url}, { credentials: 'include', headers: { accept: '*/*' }, signal: AbortSignal.timeout(15000) });
-                    return JSON.stringify({ status: r.status, text: await r.text() });
-                } catch (e) { return JSON.stringify({ error: String((e && e.message) || e) }); }
-            })()`,
-            awaitPromise: true,
-            returnByValue: true,
-        });
-        const payload = parseMaybeJson(evalRes?.result?.value);
-        if (!payload || payload.error) {
-            console.warn(`[auth] profile lookup in page failed: ${payload?.error || 'no result'}`);
-            return '';
-        }
-        if (payload.status !== 200) {
-            console.warn(`[auth] profile lookup in page returned HTTP ${payload.status}`);
-            return '';
-        }
-        const email = findEmailInValue(parseMaybeJson(payload.text)?.data);
-        if (!email) console.warn('[auth] profile lookup in page returned no email');
-        return email;
-    } catch (e) {
-        console.warn(`[auth] profile lookup in page failed: ${e && e.message}`);
-        return '';
-    }
-}
-
 // Name the saved auth file after the account id: the email hash when the login
 // email is known, otherwise the legacy token+cookie hash. Re-authenticating the
 // same account therefore overwrites its file, and the file name matches the id
 // used in logs, --account and the persisted state.
-function authFileName(email, auth, capturedEmail) {
-    const accountEmail = String(email || capturedEmail || auth?.email || '').trim();
+function authFileName(email, auth) {
+    const accountEmail = String(email || auth?.email || '').trim();
     if (accountEmail) return accounts.accountIdFromEmail(accountEmail);
     return accounts.accountIdFromCredentials(auth);
 }
@@ -529,22 +423,6 @@ async function submitLogin(cdp) {
     return r.result?.value;
 }
 
-// Request headers the page itself sent, in capture order. CDP exposes them on
-// `requestWillBeSent` (request.headers) and on `requestWillBeSentExtraInfo`
-// (headers); response events must not contribute, or the last-seen value for a
-// fingerprint header would come from the response.
-function capturedRequestHeaderSets(events) {
-    const out = [];
-    for (const ev of events || []) {
-        if (ev.method === 'Network.requestWillBeSent' && ev.params?.request?.headers) {
-            out.push(ev.params.request.headers);
-        } else if (ev.method === 'Network.requestWillBeSentExtraInfo' && ev.params?.headers) {
-            out.push(ev.params.headers);
-        }
-    }
-    return out;
-}
-
 async function readPageAuth(cdp) {
     const evalRes = await cdp.send('Runtime.evaluate', {
         expression: `(() => {
@@ -588,8 +466,6 @@ async function readPageAuth(cdp) {
         .map((c) => `${c.name}=${c.value}`)
         .join('; ');
 
-    let hifDliq = '';
-    let hifLeim = '';
     for (const ev of cdp.events) {
         const headers = ev.params?.headers || ev.params?.request?.headers;
         if (!headers) continue;
@@ -598,8 +474,6 @@ async function readPageAuth(cdp) {
             if (lk === 'authorization' && !token && /^Bearer\s+/i.test(String(v))) {
                 token = String(v).replace(/^Bearer\s+/i, '');
             }
-            if (lk === 'x-hif-dliq' && v) hifDliq = String(v);
-            if (lk === 'x-hif-leim' && v) hifLeim = String(v);
         }
     }
 
@@ -611,14 +485,7 @@ async function readPageAuth(cdp) {
         (pageState.resources || []).find((u) => /sha3.*\.wasm/.test(u)) ||
         'https://fe-static.deepseek.com/chat/static/sha3_wasm_bg.7b9ca65ddd.wasm';
 
-    const auth = { token, cookie, wasmUrl, hifDliq, hifLeim };
-    // The signed-in profile is in storage; use it when the login POST body was
-    // not captured (form-encoded body, SPA navigation).
-    const pageEmail = findEmailInValue(stores);
-    if (pageEmail) auth.email = pageEmail;
-    const extraHeaders = accounts.pickFingerprintHeaders(capturedRequestHeaderSets(cdp.events));
-    if (Object.keys(extraHeaders).length > 0) auth.extraHeaders = extraHeaders;
-    return auth;
+    return { token, cookie, wasmUrl };
 }
 
 // Open the disposable browser and capture credentials. Returns
@@ -780,20 +647,11 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
 
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
-        const capturedEmail = emailFromLoginPost(cdp.events);
-        const pageProfileEmail = await fetchProfileEmailFromPage(cdp);
-        const profileEmail = pageProfileEmail || await fetchProfileEmail(auth);
-        // Prefer an explicit --email, then an email-shaped captured/page/profile
-        // value (the login body may be a phone number instead).
-        let accountEmail = String(email || [capturedEmail, auth.email, pageProfileEmail, profileEmail].find(isEmailShape) || '').trim();
-        if (!accountEmail && !headless) {
-            const typed = (await ask('[auth] Email to save with this account (blank to skip): ')).trim();
-            if (isEmailShape(typed)) accountEmail = typed;
-        }
+        const accountEmail = String(email || '').trim();
         // Persist the login identifier so the loader can key the account by a
         // stable email hash instead of the rotating token+cookie pair.
         if (accountEmail) auth.email = accountEmail;
-        const fileName = authFileName(accountEmail, auth, capturedEmail);
+        const fileName = authFileName(accountEmail, auth);
         if (accountEmail) {
             console.log(`[auth] account email: ${accountEmail}`);
         } else {
@@ -971,17 +829,26 @@ async function main() {
     }
 
     const headless = opts.headless;
-    const email = opts.email.trim();
-    if (headless && !email) {
+    const explicitEmail = opts.email.trim();
+    if (headless && !explicitEmail) {
         throw new Error('--headless requires --email (there is no visible window to log in by hand).');
+    }
+
+    // A typed email only names the saved account; autofill stays opt-in via
+    // --email because the form must be interacted with manually otherwise.
+    let email = explicitEmail;
+    if (!headless && !email) {
+        const typed = (await ask('[auth] Email to save with this account (blank to skip): ')).trim();
+        if (isEmailShape(typed)) email = typed;
+        else if (typed) console.warn('[auth] That does not look like an email; continuing without it.');
     }
 
     // Password is always prompted, never read from the environment. Read it
     // before opening the browser so the terminal is free and the profile is
     // only created once credentials are in hand.
     let password = '';
-    if (email) {
-        password = await askHidden(`[auth] Password for ${email}: `);
+    if (explicitEmail) {
+        password = await askHidden(`[auth] Password for ${explicitEmail}: `);
         if (!password) throw new Error('Empty password; aborting.');
     }
 

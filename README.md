@@ -102,8 +102,10 @@ change and flushed together on the `DS_ACCOUNT_STATE_FLUSH_MS` interval (default
 60s), so the request path never does disk I/O. It is not an auth config and is
 skipped by the loader; delete it to force a clean slate.
 
-The login email is passed on the command line (`--email` / `-e`) and the
-password is prompted for interactively — neither is read from the environment.
+The login email is passed on the command line (`--email` / `-e`); without it the
+script asks for one at startup (blank skips it) and uses it only to name the
+saved account file. The password is prompted only for `--email` auto-fill —
+neither is read from the environment.
 Headless mode is opt-in per run with `--headless` / `-H` (or the
 `npm run auth:headless` script). Headless auto-fill requires `--email`. To check
 existing accounts and re-login any that have expired, use `npm run auth:repair`
@@ -115,7 +117,9 @@ existing accounts and re-login any that have expired, use `npm run auth:repair`
 
 Flow:
 
-1. Run `npm run auth`; a separate Chrome window opens at the DS host.
+1. Run `npm run auth`; you are asked for the account email (blank skips it; it
+   only names the saved file), then a separate Chrome window opens at the DS
+   host.
    - To auto-fill instead, run `npm run auth -- --email me@example.com` and
      enter the password at the prompt.
    - For a headless run use `npm run auth:headless -- --email me@example.com`.
