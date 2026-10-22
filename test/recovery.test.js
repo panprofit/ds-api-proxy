@@ -227,6 +227,31 @@ test('runWithRecovery: reasoning-only response continues in the same session wit
     });
 });
 
+test('runWithRecovery: reasoning-only continuation still runs after the request deadline', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                deadlineHit: () => true,
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            ctx.session.id = 'remote-1';
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'Final answer.');
+            assert.equal(calls.length, 2);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(ctx.session.id, 'remote-1');
+        });
+    });
+});
+
 test('runWithRecovery: empty response rotates without parking the account', async () => {
 
     const a1 = makeAccount('a1');
@@ -811,6 +836,31 @@ test('runWithRecovery: malformed markup re-prompts the same session before rotat
             assert.doesNotMatch(calls[1].prompt, /long reasoning/);
             assert.match(calls[1].freshSessionPrompt, /long reasoning/);
             assert.match(calls[1].freshSessionPrompt, /emit the tool call immediately/i);
+        });
+    });
+});
+
+test('runWithRecovery: broken markup re-prompt still runs after the request deadline', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const malformed = '<tool_call>{"name":"read","arguments":{"path":';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                deadlineHit: () => true,
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: malformed, reasoningContent: 'long reasoning', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2);
+            assert.match(calls[1].prompt, /malformed tool-call markup/i);
         });
     });
 });
@@ -1577,7 +1627,7 @@ test('runWithRecovery: a generation_err abort after reasoning re-prompts the sam
             assert.equal(calls[1].thinkingEnabled, true, 'thinking stays enabled');
             assert.equal(sessionIdBefore, null, 'the first attempt had no remote session yet');
             assert.equal(calls[1].freshSessionReset || false, false, 'the re-prompt does not reset the session');
-            assert.ok(calls[1].prompt.includes('emit the tool call now'), 'the re-prompt asks for the tool call');
+            assert.match(calls[1].prompt, /emit the tool call now/i, 'the re-prompt asks for the tool call');
             assert.equal(a1.cooldownUntil, 0);
         });
     });
