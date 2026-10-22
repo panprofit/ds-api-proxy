@@ -75,3 +75,59 @@ test('index.js: a failed delete is swallowed (no unhandled rejection escapes)', 
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+test('index.js: deleteOrphanedRemoteSessions deletes every journaled session upstream', async () => {
+    const journal = path.join(tmp, 'journal-2.json');
+    config.reload({ DS_AUTH_DIR: tmp, DS_SESSION_JOURNAL: journal });
+    accounts.loadDSConfig({ fatal: false });
+    calls.length = 0;
+    behaviour = async () => true;
+
+    sessions.takeOrphanedRemoteSessions();
+    sessions.noteRemoteSession(account.id, 'orphan-a');
+    sessions.noteRemoteSession(account.id, 'orphan-b');
+
+    const index = require('../index');
+    assert.equal(index.deleteOrphanedRemoteSessions(), 2);
+    await settle();
+
+    assert.deepEqual(calls.map(c => c.sessionId).sort(), ['orphan-a', 'orphan-b']);
+    assert.equal(sessions.takeOrphanedRemoteSessions().length, 0, 'the journal must be drained');
+
+    config.reload({ DS_AUTH_DIR: tmp });
+    fs.rmSync(journal, { force: true });
+});
+
+test('index.js: buildRuntime wires a sweep interval and a listen callback', async () => {
+    const index = require('../index');
+    const runtime = index.buildRuntime({ startedAt: 1 });
+    assert.equal(typeof runtime.listen, 'function');
+    assert.equal(typeof runtime.semaphore.waitForZero, 'function');
+    assert.equal(runtime.requestDeps.requestDeadlineMs > 0, true);
+    if (runtime.shutdownCtl && typeof runtime.shutdownCtl.shutdown === 'function') {
+        assert.equal(runtime.shutdownCtl.shuttingDown, false);
+    }
+    if (runtime.server && typeof runtime.server.close === 'function') runtime.server.close();
+});
+
+test('index.js: a journaled orphan is deleted and forgotten on success', async () => {
+    const journal = path.join(tmp, 'journal-3.json');
+    config.reload({ DS_AUTH_DIR: tmp, DS_SESSION_JOURNAL: journal });
+    accounts.loadDSConfig({ fatal: false });
+    calls.length = 0;
+    behaviour = async () => true;
+
+    sessions.takeOrphanedRemoteSessions();
+    sessions.noteRemoteSession(account.id, 'orphan-c');
+    const index = require('../index');
+    assert.equal(index.deleteOrphanedRemoteSessions(), 1);
+    await settle();
+    assert.equal(calls.length, 1);
+
+    sessions.takeOrphanedRemoteSessions();
+    sessions.noteRemoteSession(account.id, 'orphan-d');
+    assert.equal(sessions.takeOrphanedRemoteSessions().length, 1);
+
+    config.reload({ DS_AUTH_DIR: tmp });
+    fs.rmSync(journal, { force: true });
+});

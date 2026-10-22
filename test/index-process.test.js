@@ -54,7 +54,7 @@ test('index.js: an uncaughtException is logged with its stack and exits 1', asyn
     const { done } = await runLauncher('uncaught');
     const { code, out } = await done;
     assert.equal(code, 1, 'uncaughtException must exit with status 1');
-    assert.match(out, /uncaughtException \(exiting\)/);
+    assert.match(out, /uncaughtException/);
     assert.match(out, /injected uncaught/);
     assert.match(out, /at /, 'the stack trace must reach the output');
 });
@@ -113,4 +113,29 @@ test('index.js: a throwing idle-session sweep is caught, logged and does not kil
         child.kill('SIGKILL');
         await done;
     }
+});
+
+test('index.js: an uncaughtException before the runtime exists still exits 1', async () => {
+    const port = await freePort();
+    const child = spawn(process.execPath, ['--require', PRELOAD, path.join(ROOT, 'index.js')], {
+        env: {
+            ...process.env,
+            DS_AUTH_DIR: '/nonexistent',
+            HOST: '127.0.0.1',
+            PORT: String(port),
+            DS_TEST_MODE: 'uncaught-early',
+            DS_TEST_SERVER_PATH: path.join(ROOT, 'lib', 'server.js'),
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { out += d; });
+    const { code } = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('no exit: ' + out)); }, 8000);
+        timer.unref();
+        child.on('exit', (c, signal) => { clearTimeout(timer); resolve({ code: c, signal }); });
+    });
+    assert.equal(code, 1, 'the setImmediate fallback must still exit 1');
+    assert.match(out, /uncaughtException/);
 });

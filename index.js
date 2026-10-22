@@ -4,6 +4,7 @@ const {
     getOrCreateAgentSession, prepareSessionForPrompt,
     resetRemoteSession, sweepIdleSessions, setRemoteSessionDeleter,
     resetAllRemoteSessions, recordTokenRate, tokenRatePressure,
+    noteRemoteSession, forgetRemoteSession, takeOrphanedRemoteSessions,
 } = require('./lib/sessions');
 const {
     selectAccountForSession, markAccountFailure,
@@ -41,7 +42,16 @@ function deleteRemoteSessionForAccount(accountId, sessionId) {
         return Promise.resolve();
     }
     return Promise.resolve(deleteRemoteSession(account, account.headers, sessionId))
+        .then(() => forgetRemoteSession(sessionId))
         .catch(e => debugLog(console.error, '[DS-API] remote session delete failed:', e.message));
+}
+
+function deleteOrphanedRemoteSessions() {
+    const orphans = takeOrphanedRemoteSessions();
+    for (const orphan of orphans) {
+        trackDelete(deleteRemoteSessionForAccount(orphan.accountId, orphan.id));
+    }
+    return orphans.length;
 }
 
 setRemoteSessionDeleter((accountId, sessionId) => {
@@ -53,6 +63,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         getOrCreateAgentSession,
         prepareSessionForPrompt,
         resetRemoteSession,
+        noteRemoteSession,
         recordTokenRate,
         tokenRatePressure,
         selectAccountForSession,
@@ -96,6 +107,8 @@ function auditAuthDirAtStartup() {
 
 function main() {
     auditAuthDirAtStartup();
+    const orphaned = deleteOrphanedRemoteSessions();
+    if (orphaned > 0) console.log(`[DS-API] deleting ${orphaned} remote session(s) left behind by a previous crash`);
     const runtime = buildRuntime({ startedAt: Date.now() });
 
     if (configModule.get().corsAllowAnyOrigin) {
@@ -121,16 +134,22 @@ function main() {
 }
 
 if (require.main === module) {
+    let runtime;
+
     process.on('unhandledRejection', (reason) => console.error('[DS-API] unhandledRejection:', reason));
 
     process.on('uncaughtException', (err) => {
-        console.error('[DS-API] uncaughtException (exiting):', err);
-
+        console.error('[DS-API] uncaughtException:', err);
         process.exitCode = 1;
+
+        if (runtime && runtime.shutdownCtl && !runtime.shutdownCtl.shuttingDown) {
+            setTimeout(() => process.exit(1), 5000).unref();
+            runtime.shutdownCtl.shutdown('uncaughtException', 1);
+            return;
+        }
         setImmediate(() => process.exit(1));
     });
 
-    let runtime;
     try {
         runtime = main();
     } catch (err) {
@@ -142,4 +161,4 @@ if (require.main === module) {
     process.on('SIGINT', () => runtime.shutdownCtl.shutdown('SIGINT'));
 }
 
-module.exports = { buildRuntime, main };
+module.exports = { buildRuntime, main, deleteOrphanedRemoteSessions };

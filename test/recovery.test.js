@@ -1602,3 +1602,57 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
         assert.equal(a1.cooldownUntil, 0);
     });
 });
+
+test('runWithRecovery: a generation_err fallback disables thinking for later turns of the session', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_STICKY_THINKING_FALLBACK: '1' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: null, modelError: { type: 'error', content: 'generation_err', finish_reason: 'generation_err' } },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(calls.length, 2);
+            assert.equal(calls[0].thinkingEnabled, true);
+            assert.equal(calls[1].thinkingEnabled, false);
+            assert.equal(ctx.session.toolsNeedNoThinking, true);
+
+            const laterCalls = [];
+            const later = await runWithRecovery({
+                ...ctx,
+                session: ctx.session,
+                askDSStream: askStub([a1], laterCalls),
+                readDSResponse: sseOnce([{ content: 'done', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null }]),
+            });
+            assert.equal(later.ok, true);
+            assert.equal(laterCalls[0].thinkingEnabled, false, 'later turns start without thinking');
+        });
+    });
+});
+
+test('runWithRecovery: sticky thinking fallback is off by default when disabled', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_STICKY_THINKING_FALLBACK: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: null, modelError: { type: 'error', content: 'generation_err', finish_reason: 'generation_err' } },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            await runWithRecovery(ctx);
+            assert.equal(ctx.session.toolsNeedNoThinking, false);
+        });
+    });
+});

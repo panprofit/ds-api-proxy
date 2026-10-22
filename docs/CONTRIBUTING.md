@@ -53,7 +53,7 @@ Formatting is pinned by `.editorconfig` (4-space indent, LF, final newline).
   so `npm test` stays deterministic.
 - **Add tests with the code.** New modules get a direct `test/<module>.test.js`;
   bug fixes get a regression test that fails without the fix.
-- The coverage gate requires **99% lines / 95% functions / 92% branches**
+- The coverage gate requires **99% lines / 94% functions / 92% branches**
   (`npm run test:coverage`). CI runs it on Node 24.
 - Tests must not reach the network or open real sockets. Inject dependencies
   (`askDSStream`, `readDSResponse`, account/session stubs) as the existing

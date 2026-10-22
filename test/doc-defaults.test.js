@@ -25,6 +25,8 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_MAX_UPSTREAM_RETRIES: 'maxUpstreamRetries',
     DS_MAX_SAME_ACCOUNT_RETRIES: 'maxSameAccountRetries',
     DS_MAX_CONTINUATION: 'maxContinuation',
+    DS_SESSION_JOURNAL: 'sessionJournalPath',
+    DS_STICKY_THINKING_FALLBACK: 'stickyThinkingFallback',
     DS_ACTION_PROMISE_MAX_CHARS: 'actionPromiseMaxChars',
     DS_TOKEN_RATE_LIMIT_PER_MIN: 'tokenRateLimitPerMin',
     DS_TOKEN_RATE_BACKOFF_FACTOR: 'tokenRateBackoffFactor',

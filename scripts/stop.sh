@@ -25,18 +25,25 @@ done
 
 fifo_file="${DS_LOG_FILE:-./.run/.log}.fifo"
 
+pid_is_ours() {
+    [ -n "${1:-}" ] || return 1
+    kill -0 "$1" 2>/dev/null || return 1
+    [ -r "/proc/$1/cmdline" ] || return 0
+    tr '\0' ' ' < "/proc/$1/cmdline" | grep -q 'index\.js'
+}
+
 if [ ! -f "$pid_file" ]; then
     echo "[stop] PID file not found: $pid_file" >&2
     exit 1
 fi
 
 pid=$(cat "$pid_file")
-if ! kill -0 "$pid" 2>/dev/null; then
-    echo "[stop] no live process with PID $pid; removing stale PID file"
-    rm -f "$pid_file" "$fifo_file"
+if ! pid_is_ours "$pid"; then
+    echo "[stop] no live ds-api-proxy with PID $pid; removing stale PID file"
+    rm -f "$pid_file" "$fifo_file" "${fifo_file}.pid"
     exit 0
 fi
 
 kill -"$signal" "$pid"
 echo "[stop] sent SIG$signal to PID $pid"
-rm -f "$pid_file" "$fifo_file"
+rm -f "$pid_file" "$fifo_file" "${fifo_file}.pid"

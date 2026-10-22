@@ -535,3 +535,133 @@ test('tokenRatePressure: a retry that re-sends the same context is not pressure'
     recordTokenRate(s, 50000, 1000);
     assert.equal(tokenRatePressure(s, 6000, 1000), 0);
 });
+
+test('session journal: note and forget keep the file in sync', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}.json`);
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        sessions.noteRemoteSession('acct-1', 'sess-1');
+        sessions.noteRemoteSession('acct-2', 'sess-2');
+        assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), [
+            { id: 'sess-1', accountId: 'acct-1' },
+            { id: 'sess-2', accountId: 'acct-2' },
+        ]);
+        sessions.forgetRemoteSession('sess-1');
+        assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), [{ id: 'sess-2', accountId: 'acct-2' }]);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});
+
+test('session journal: takeOrphanedRemoteSessions drains the journal', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-b.json`);
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        sessions.noteRemoteSession('acct-1', 'orphan-1');
+        const orphans = sessions.takeOrphanedRemoteSessions();
+        assert.deepEqual(orphans, [{ id: 'orphan-1', accountId: 'acct-1' }]);
+        assert.equal(fs.existsSync(file), false);
+        assert.deepEqual(sessions.takeOrphanedRemoteSessions(), []);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});
+
+test('session journal: an existing journal file is loaded on first use', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-c.json`);
+    fs.writeFileSync(file, JSON.stringify([
+        { id: 'pre-1', accountId: 'acct-9' },
+        { id: '', accountId: 'acct-x' },
+        { accountId: 'acct-y' },
+        { id: 'pre-2' },
+    ]));
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        assert.deepEqual(sessions.takeOrphanedRemoteSessions(), [
+            { id: 'pre-1', accountId: 'acct-9' },
+            { id: 'pre-2', accountId: null },
+        ]);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});
+
+test('session journal: a corrupt journal file is ignored', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-d.json`);
+    fs.writeFileSync(file, 'not json at all');
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        assert.deepEqual(sessions.takeOrphanedRemoteSessions(), []);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});
+
+test('session journal: a non-array journal is ignored', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-e.json`);
+    fs.writeFileSync(file, JSON.stringify({ ids: ['a'] }));
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        assert.deepEqual(sessions.takeOrphanedRemoteSessions(), []);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});
+
+test('session journal: a missing journal file yields no orphans', () => {
+    const os = require('node:os');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-f.json`);
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        assert.deepEqual(sessions.takeOrphanedRemoteSessions(), []);
+    } finally {
+        config.reload();
+    }
+});
+
+test('noteRemoteSession: an empty session id is not journaled', () => {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const nodePath = require('node:path');
+    const config = require('../lib/config');
+    const file = nodePath.join(os.tmpdir(), `ds-journal-${process.pid}-${Date.now()}-g.json`);
+    config.reload({ DS_SESSION_JOURNAL: file });
+    try {
+        sessions.noteRemoteSession('acct-1', '');
+        assert.equal(fs.existsSync(file), false);
+        sessions.noteRemoteSession('acct-1', null);
+        assert.equal(fs.existsSync(file), false);
+        sessions.forgetRemoteSession(null);
+        assert.equal(fs.existsSync(file), false);
+    } finally {
+        config.reload();
+        fs.rmSync(file, { force: true });
+    }
+});

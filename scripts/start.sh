@@ -31,10 +31,22 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+# A bare `kill -0` only proves *some* process owns the recorded PID; after a
+# crash the number is routinely recycled by an unrelated process, which made
+# start.sh refuse to start (and, worse, let stop.sh kill a stranger). Confirm
+# the command line is ours before treating the PID as live.
+pid_is_ours() {
+    [ -n "${1:-}" ] || return 1
+    kill -0 "$1" 2>/dev/null || return 1
+    [ -r "/proc/$1/cmdline" ] || return 0
+    tr '\0' ' ' < "/proc/$1/cmdline" | grep -q 'index\.js'
+}
+
+if [ -f "$pid_file" ] && pid_is_ours "$(cat "$pid_file")"; then
     echo "[start] already running with PID $(cat "$pid_file")" >&2
     exit 1
 fi
+rm -f "$pid_file"
 
 mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")"
 
@@ -77,7 +89,19 @@ fi
 # reads it and appends stamped lines to the real log file. If the FIFO cannot
 # be created we fall back to writing the raw log directly.
 fifo_file="${log_file}.fifo"
+fifo_pid_file="${fifo_file}.pid"
 log_target="$log_file"
+
+# A filter left over from a crashed instance still owns the old FIFO; it would
+# block the next `mkfifo` from being useful and pin a reader nobody writes to.
+if [ -f "$fifo_pid_file" ]; then
+    old_filter=$(cat "$fifo_pid_file" 2>/dev/null || echo "")
+    if [ -n "$old_filter" ] && kill -0 "$old_filter" 2>/dev/null; then
+        echo "[start] stopping orphaned log filter (PID $old_filter)" >&2
+        kill "$old_filter" 2>/dev/null || true
+    fi
+    rm -f "$fifo_pid_file"
+fi
 rm -f "$fifo_file"
 if mkfifo "$fifo_file" 2>/dev/null; then
     # `awk`'s strftime is a single process and exact; the POSIX-shell fallback
@@ -100,6 +124,7 @@ if mkfifo "$fifo_file" 2>/dev/null; then
     else
         setsid sh -c 'while IFS= read -r line; do printf "%s %s\n" "[$(TZ=UTC0 date -u +%Y-%m-%dT%H:%M:%SZ)]" "$line"; done' <"$fifo_file" >>"$log_file" &
     fi
+    echo $! > "$fifo_pid_file"
     log_target="$fifo_file"
 else
     echo "[start] WARNING: could not create $fifo_file; logging without timestamps" >&2
@@ -110,19 +135,35 @@ fi
 # fallback where setsid is unavailable (e.g. some minimal images).
 # The FIFO is a pipe, not a regular file, so it must not be opened in append
 # mode; the real log file is appended to (restarts must not truncate history).
+# `$!` after `setsid node …` is the PID of setsid, which forks whenever it is
+# already a process-group leader -- node then gets a *different* PID and the
+# recorded one dies immediately. Have the child record its own PID instead:
+# the shell writes `$$` and `exec`s node, so the number never changes hands.
 if command -v setsid >/dev/null 2>&1; then
     if [ "$log_target" = "$log_file" ]; then
-        setsid node --env-file-if-exists=.env index.js >>"$log_target" 2>&1 </dev/null &
+        setsid sh -c 'echo $$ > "$1"; exec node --env-file-if-exists=.env index.js' sh "$pid_file" >>"$log_target" 2>&1 </dev/null &
     else
-        setsid node --env-file-if-exists=.env index.js >"$log_target" 2>&1 </dev/null &
+        setsid sh -c 'echo $$ > "$1"; exec node --env-file-if-exists=.env index.js' sh "$pid_file" >"$log_target" 2>&1 </dev/null &
     fi
 else
     if [ "$log_target" = "$log_file" ]; then
-        nohup node --env-file-if-exists=.env index.js >>"$log_target" 2>&1 </dev/null &
+        nohup sh -c 'echo $$ > "$1"; exec node --env-file-if-exists=.env index.js' sh "$pid_file" >>"$log_target" 2>&1 </dev/null &
     else
-        nohup node --env-file-if-exists=.env index.js >"$log_target" 2>&1 </dev/null &
+        nohup sh -c 'echo $$ > "$1"; exec node --env-file-if-exists=.env index.js' sh "$pid_file" >"$log_target" 2>&1 </dev/null &
     fi
 fi
-pid=$!
-echo "$pid" > "$pid_file"
+launcher=$!
+n=0
+while [ ! -s "$pid_file" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+pid=$(cat "$pid_file" 2>/dev/null || echo "")
+if [ -z "$pid" ]; then
+    pid=$launcher
+    echo "$pid" > "$pid_file"
+    echo "[start] WARNING: the server did not record its PID; falling back to the launcher PID" >&2
+fi
+if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$pid_file"
+    echo "[start] server exited immediately; see $log_file" >&2
+    exit 1
+fi
 echo "[start] ds-api-proxy started (PID $pid), logging to $log_file"
