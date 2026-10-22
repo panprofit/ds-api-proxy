@@ -337,52 +337,38 @@ test('formatMessages: renders assistant tool_calls as native DSML invokes', () =
     assert.ok(conversation.includes('\uFF5CDSML\uFF5C calls>'));
 });
 
-test('formatMessages: renders prior assistant reasoning before the answer', () => {
+test('formatMessages: never folds assistant reasoning into the prompt', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', reasoning_content: 'weigh options', content: 'done' },
     ], []);
-    assert.equal(conversation, 'Assistant: <think>\nweigh options\n</think>\ndone');
+    assert.equal(conversation, 'Assistant: done');
+    assert.ok(!conversation.includes('<think>'));
 });
 
-test('formatMessages: renders prior assistant reasoning before a tool call', () => {
-    const { prompt: conversation } = prompt.formatMessages([
-        { role: 'assistant', reasoning_content: 'need the file', tool_calls: [{ function: { name: 'read', arguments: '{"path":"a"}' } }] },
-    ], []);
-    assert.ok(conversation.startsWith('Assistant: <think>\nneed the file\n</think>'));
-    assert.ok(conversation.includes('invoke name="read"'));
-});
-
-test('formatMessages: without tools drops reasoning before the latest user message', () => {
-    const { prompt: conversation } = prompt.formatMessages([
-        { role: 'assistant', reasoning_content: 'old think', content: 'old answer' },
-        { role: 'user', content: 'next question' },
-        { role: 'assistant', reasoning_content: 'current think', content: 'current answer' },
-    ], []);
-    assert.ok(!conversation.includes('old think'));
-    assert.ok(conversation.includes('old answer'));
-    assert.ok(conversation.includes('current think'));
-    assert.ok(conversation.includes('current answer'));
-});
-
-test('formatMessages: without tools keeps reasoning inside the current turn across tool results', () => {
-    const { prompt: conversation } = prompt.formatMessages([
-        { role: 'user', content: 'do it' },
-        { role: 'assistant', reasoning_content: 'turn think', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{}' } }] },
-        { role: 'tool', content: 'result' },
-        { role: 'assistant', reasoning_content: 'after tool', content: 'final' },
-    ], []);
-    assert.ok(conversation.includes('turn think'));
-    assert.ok(conversation.includes('after tool'));
-});
-
-test('formatMessages: a tools declaration keeps reasoning from earlier turns', () => {
+test('formatMessages: reasoning is dropped even when tools are declared', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', reasoning_content: 'old think', content: 'old answer' },
         { role: 'user', content: 'next question' },
         { role: 'assistant', reasoning_content: 'current think', content: 'current answer' },
     ], [{ type: 'function', function: { name: 'read' } }]);
-    assert.ok(conversation.includes('old think'));
-    assert.ok(conversation.includes('current think'));
+    assert.ok(!conversation.includes('old think'));
+    assert.ok(!conversation.includes('current think'));
+    assert.ok(conversation.includes('old answer'));
+    assert.ok(conversation.includes('current answer'));
+});
+
+test('formatMessages: reasoning is dropped next to a tool call', () => {
+    const { prompt: conversation } = prompt.formatMessages([
+        { role: 'user', content: 'do it' },
+        { role: 'assistant', reasoning_content: 'need the file', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"path":"a"}' } }] },
+        { role: 'tool', content: 'result' },
+        { role: 'assistant', reasoning_content: 'after tool', content: 'final' },
+    ], []);
+    assert.ok(!conversation.includes('need the file'));
+    assert.ok(!conversation.includes('after tool'));
+    assert.ok(!conversation.includes('<think>'));
+    assert.ok(conversation.includes('invoke name="read"'));
+    assert.ok(conversation.includes('final'));
 });
 
 test('formatMessages: non-string arguments are JSON-encoded with string="false"', () => {
