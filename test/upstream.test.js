@@ -134,17 +134,15 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
-
-    assert.equal(seenOpts.opts.signal.constructor.name, 'AbortSignal');
 });
 
-test('dsChatCompletionWithPow: bounds the call by the request deadline, not the fetch timeout', async () => {
-    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_FETCH_TIMEOUT_MS: '1000' });
+test('dsChatCompletionWithPow: bounds the call by the completion timeout, not the request deadline', async () => {
+    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_COMPLETION_TIMEOUT_MS: '234567', DS_FETCH_TIMEOUT_MS: '1000' });
     const originalTimeout = AbortSignal.timeout;
     const observed = [];
     AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };
     try {
-        assert.equal(upstream.completionTimeoutMs(), 123456);
+        assert.equal(upstream.completionTimeoutMs(), 234567);
         let seenSignal = null;
         await withFetch(async (url, opts) => { seenSignal = opts.signal; return jsonResponse({}); }, async () => {
             await upstream.dsChatCompletionWithPow({
@@ -154,11 +152,44 @@ test('dsChatCompletionWithPow: bounds the call by the request deadline, not the 
         assert.ok(seenSignal);
         assert.equal(seenSignal.constructor.name, 'AbortSignal');
 
-        assert.deepEqual(observed, [123456]);
+        assert.deepEqual(observed, [234567]);
     } finally {
         AbortSignal.timeout = originalTimeout;
         config.reload({});
     }
+});
+
+test('dsChatCompletionWithPow: the completion stream has no default timeout', async () => {
+    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_FETCH_TIMEOUT_MS: '1000' });
+    const originalTimeout = AbortSignal.timeout;
+    const observed = [];
+    AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };
+    try {
+        assert.equal(upstream.completionTimeoutMs(), 0);
+        let seenSignal;
+        await withFetch(async (url, opts) => { seenSignal = opts.signal; return jsonResponse({}); }, async () => {
+            await upstream.dsChatCompletionWithPow({
+                sessionId: 's1', parentMessageId: 'p1', prompt: 'hi', powHeader: 'POW', dsHeaders: {},
+            });
+        });
+        assert.equal(seenSignal, undefined);
+        assert.deepEqual(observed, []);
+    } finally {
+        AbortSignal.timeout = originalTimeout;
+        config.reload({});
+    }
+});
+
+test('dsChatCompletionWithPow: forwards the client abort signal', async () => {
+    const controller = new AbortController();
+    let seenSignal = null;
+    await withFetch(async (url, opts) => { seenSignal = opts.signal; return jsonResponse({}); }, async () => {
+        await upstream.dsChatCompletionWithPow({
+            sessionId: 's1', parentMessageId: 'p1', prompt: 'hi', powHeader: 'POW', dsHeaders: {},
+            signal: controller.signal,
+        });
+    });
+    assert.equal(seenSignal, controller.signal);
 });
 
 test('createRemoteSession: returns the session id without deleting other sessions', async () => {

@@ -106,6 +106,7 @@ test('classifyRecoveryFailure: context-too-long -> 400', () => {
 
 test('classifyRecoveryFailure: timeout -> 504', () => {
     assert.deepEqual(classifyRecoveryFailure(null, true), { status: 504, type: 'request_timeout' });
+    assert.deepEqual(classifyRecoveryFailure({ type: 'request_timeout' }), { status: 504, type: 'request_timeout' });
 });
 
 test('classifyRecoveryFailure: model error type is propagated', () => {

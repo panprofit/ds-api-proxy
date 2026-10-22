@@ -21,6 +21,7 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_CLIENT_TIMEZONE_OFFSET: 'clientTimezoneOffset',
     DS_MAX_CONCURRENT: 'maxConcurrent',
     DS_REQUEST_DEADLINE_MS: 'requestDeadlineMs',
+    DS_COMPLETION_TIMEOUT_MS: 'completionTimeoutMs',
     DS_ROTATION_BUDGET_MS: 'rotationBudgetMs',
     DS_MAX_UPSTREAM_RETRIES: 'maxUpstreamRetries',
     DS_MAX_SAME_ACCOUNT_RETRIES: 'maxSameAccountRetries',

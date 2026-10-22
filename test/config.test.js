@@ -12,6 +12,7 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.maxConcurrent, 10);
     assert.equal(c.authDir, './.auth');
     assert.equal(c.requestDeadlineMs, 120000);
+    assert.equal(c.completionTimeoutMs, 0);
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.maxSameAccountRetries, 1);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
@@ -56,6 +57,13 @@ test('config.load: parses and overrides from env', () => {
     assert.equal(c.requestDeadlineMs, 1000);
     assert.equal(c.sessionTtlMs, 1234);
     assert.equal(c.authDir, '/auth');
+});
+
+test('config.load: DS_COMPLETION_TIMEOUT_MS default, override and clamp', () => {
+    assert.equal(config.load({}).completionTimeoutMs, 0);
+    assert.equal(config.load({ DS_COMPLETION_TIMEOUT_MS: '600000' }).completionTimeoutMs, 600000);
+    assert.equal(config.load({ DS_COMPLETION_TIMEOUT_MS: '-1' }).completionTimeoutMs, 0);
+    assert.equal(config.load({ DS_COMPLETION_TIMEOUT_MS: 'nope' }).completionTimeoutMs, 0);
 });
 
 test('config.load: DS_TOKEN_REFRESH_INTERVAL_MS default, override and clamp', () => {

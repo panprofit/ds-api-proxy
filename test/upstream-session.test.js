@@ -58,6 +58,14 @@ test('askDSStream: creates a session then sends the completion', async () => {
     assert.equal(calls.completions[0].powHeader, 'pow');
 });
 
+test('askDSStream: forwards the client abort signal to the completion', async () => {
+    const { deps, calls } = makeDeps();
+    const controller = new AbortController();
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hello', agentId: 'agent1', abortSignal: controller.signal });
+    assert.equal(calls.completions[0].signal, controller.signal);
+});
+
 test('askDSStream: reuses an existing session without recreating', async () => {
     const { deps, calls } = makeDeps({
         session: makeSession({ id: 'existing', accountId: 'a1' }),

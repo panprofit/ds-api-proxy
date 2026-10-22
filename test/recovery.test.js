@@ -172,6 +172,30 @@ test('runWithRecovery: same-account retries are bounded by DS_MAX_SAME_ACCOUNT_R
     });
 });
 
+test('runWithRecovery: a completion timeout is recoverable and rotates to the next account', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: async (args) => {
+                    calls.push(args);
+                    if (calls.length === 1) {
+                        throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+                    }
+                    return { resp: { body: {} }, account: a2, promptUsed: args.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([{ content: 'recovered after timeout', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'recovered after timeout');
+            assert.equal(calls.length, 2);
+        });
+    });
+});
+
 test('runWithRecovery: reasoning-only response rotates the account without cooling it', async () => {
 
     const a1 = makeAccount('a1');
