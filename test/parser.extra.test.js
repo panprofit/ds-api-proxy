@@ -1,4 +1,3 @@
-// parser.extra.test.js
 'use strict';
 
 const test = require('node:test');
@@ -7,9 +6,6 @@ const parser = require('../lib/parser.js');
 
 const silentLog = () => {};
 
-// ---------------------------------------------------------------------------
-// PRNG and generators (same as in parser.fuzz.test.js — copied for self-containment)
-// ---------------------------------------------------------------------------
 function makeRng(seed) {
   let a = seed >>> 0;
   return function rng() {
@@ -51,9 +47,6 @@ function randomToolCallMarkup(rng) {
   }
 }
 
-// ===========================================================================
-// 1. SMOKE MATRIX: 50 different seeds
-// ===========================================================================
 test('smoke matrix: 50 seeds × 200 iterations do not break parseToolCall', () => {
   const seeds = Array.from({ length: 50 }, (_, i) => i + 1);
   let totalParsed = 0;
@@ -72,7 +65,7 @@ test('smoke matrix: 50 seeds × 200 iterations do not break parseToolCall', () =
       }
     }
   }
-  // The vast majority of generated calls must parse.
+  
   assert.ok(totalParsed / totalCalls > 0.9, `parsed ${totalParsed}/${totalCalls}`);
 });
 
@@ -86,25 +79,22 @@ test('smoke matrix: 50 seeds × 100 iterations of random garbage do not throw', 
   }
 });
 
-// ===========================================================================
-// 3. "EVIL" UNICODE EDGE CASES
-// ===========================================================================
 const EVIL_CHARS = [
-  '\u2028', // LINE SEPARATOR
-  '\u2029', // PARAGRAPH SEPARATOR
-  '\u200B', // ZERO WIDTH SPACE
-  '\u200C', // ZERO WIDTH NON-JOINER
-  '\u200D', // ZERO WIDTH JOINER
-  '\uFEFF', // BOM
-  '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', // RTL/LTR overrides
-  '\u2066', '\u2067', '\u2068', '\u2069', // isolates
-  '\uD800', '\uDFFF', // lone surrogates
-  '\uFFFD', // replacement char
-  '\u3000', // ideographic space
-  '\u00A0', // NBSP
-  '\u0000', // NUL
-  '\u0007', // BEL
-  '\u001B', // ESC
+  '\u2028', 
+  '\u2029', 
+  '\u200B', 
+  '\u200C', 
+  '\u200D', 
+  '\uFEFF', 
+  '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', 
+  '\u2066', '\u2067', '\u2068', '\u2069', 
+  '\uD800', '\uDFFF', 
+  '\uFFFD', 
+  '\u3000', 
+  '\u00A0', 
+  '\u0000', 
+  '\u0007', 
+  '\u001B', 
 ];
 
 test('unicode: parseToolCall does not throw on each evil char', () => {
@@ -132,7 +122,7 @@ test('unicode: evil chars do not pass tool-name validation', () => {
     if (ch === '\u0000') continue;
     const tc = parser.buildToolCall(`f${ch}`, {});
     if (ch.trim() === '') {
-      // whitespace stripped by trim() -> name normalizes to 'f'
+      
       assert.ok(tc, `whitespace ${JSON.stringify(ch)} must be trimmed`);
       assert.equal(tc.name, 'f');
     } else {
@@ -174,9 +164,6 @@ test('unicode: parseToolCall does not throw on each evil char in 1KB of garbage'
   }
 });
 
-// ===========================================================================
-// 4. EXTRA BOUNDARIES
-// ===========================================================================
 test('boundaries: exactly MAX_TOOL_MARKUP_CHARS is accepted', () => {
   const filler = 'x'.repeat(parser.MAX_TOOL_MARKUP_CHARS - 100);
   const text = filler + '{"tool_call":{"name":"f","arguments":{"a":1}}}';
@@ -192,7 +179,7 @@ test('boundaries: MAX_TOOL_MARKUP_CHARS + 1 is rejected', () => {
 
 test('boundaries: exactly MAX_TOOL_ARGUMENT_CHARS of arguments', () => {
   const target = parser.MAX_TOOL_ARGUMENT_CHARS;
-  // Size the string so that JSON.stringify yields exactly `target`.
+  
   const prefix = '{"a":"';
   const suffix = '"}';
   const fillerLen = target - prefix.length - suffix.length;

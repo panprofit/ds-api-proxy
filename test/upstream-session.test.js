@@ -1,7 +1,4 @@
 'use strict';
-// Unit tests for lib/upstream-session.js. The factory takes all its
-// dependencies as arguments, so these tests never touch the network or the
-// real accounts/sessions singletons.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,7 +18,6 @@ function makeSession(overrides = {}) {
     };
 }
 
-// Build a deps object with sensible defaults; override per-test.
 function makeDeps(overrides = {}) {
     const account = overrides.account || makeAccount();
     const session = overrides.session || makeSession();
@@ -87,7 +83,7 @@ test('askDSStream: recreates the session on HTTP 400 and retries once', async ()
     };
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh-context' });
-    // One failed attempt + one successful retry with the fresh prompt.
+    
     assert.equal(calls.completions.length, 2);
     assert.equal(calls.completions[1].prompt, 'fresh-context');
     assert.equal(out.freshSessionReset, true);
@@ -121,7 +117,7 @@ test('askDSStream: retries transient 5xx with backoff on the same account', asyn
     };
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'hi', agentId: 'agent1' });
-    // Two transient failures then success: session is NOT recreated.
+    
     assert.equal(calls.completions.length, 3);
     assert.equal(calls.created, 0);
     assert.equal(out.resp.status, 200);
@@ -138,7 +134,7 @@ test('askDSStream: gives up on persistent 5xx after bounded retries', async () =
     };
     const ask = createUpstreamSession(deps);
     await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1' }), /DS upstream HTTP 502/);
-    // Initial attempt + bounded transient retries (3), then throw.
+    
     assert.equal(calls.completions.length, 4);
 });
 
@@ -152,8 +148,7 @@ test('askDSStream: a client disconnect stops transient 5xx retries', async () =>
         return { status: 503, ok: false, headers: { get: () => null }, text: async () => 'unavailable' };
     };
     const ask = createUpstreamSession(deps);
-    // Client is already gone: the transient-retry loop must not send any retry
-    // (only the initial attempt), and the last 5xx is surfaced.
+    
     await assert.rejects(
         () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
         /DS upstream HTTP 503/
@@ -181,10 +176,7 @@ test('askDSStream: recreates the session on 409/410 as well', async () => {
 });
 
 test('askDSStream: a failed retry after session recreate marks the account and throws', async () => {
-    // The first call 400s (session expired) -> the session is recreated and the
-    // fresh prompt retried. If that retry ALSO fails, the error must be mapped
-    // with the retry's status and the account marked failed a second time
-    // (once per attempt), not swallowed or attributed to the original status.
+    
     const { deps, calls, session } = makeDeps({
         session: makeSession({ id: 'stale', accountId: 'a1' }),
     });
@@ -206,11 +198,10 @@ test('askDSStream: a failed retry after session recreate marks the account and t
         () => ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh-context' }),
         /DS upstream HTTP 503/
     );
-    // Failed original attempt + failed recreate retry.
+    
     assert.equal(calls.completions.length, 2);
     assert.equal(calls.completions[1].prompt, 'fresh-context');
-    // The account was marked failed for BOTH attempts, with the recreate
-    // retry's own status/Retry-After (not the original 400's).
+    
     assert.deepEqual(failures, [
         { status: 400, label: 'completion', retryAfter: null },
         { status: 503, label: 'completion after session recreate', retryAfter: '30' },
@@ -219,8 +210,7 @@ test('askDSStream: a failed retry after session recreate marks the account and t
 });
 
 test('askDSStream: uses the recovery prompt when session was reset by rotation', async () => {
-    // Session has an id, but prepareSessionForPrompt clears it (simulating an
-    // account-rotation reset). The fresh prompt must be used.
+    
     const session = makeSession({ id: 'old', accountId: 'a1' });
     const { deps, calls } = makeDeps({
         session,
@@ -291,9 +281,7 @@ test('askDSStream: keeps fileIds when the account did not change', async () => {
 });
 
 test('askDSStream: tags the session log line when thinking mode is enabled', async () => {
-    // Thinking is no longer a standalone line; it is tagged onto the
-    // "Created new session" line so the log stays one line per completion.
-    // The tag is only emitted on session creation, not on reuse.
+    
     const logs = [];
     const { deps } = makeDeps({ log: (m) => logs.push(m) });
     const ask = createUpstreamSession(deps);
@@ -310,14 +298,12 @@ test('askDSStream: does not tag the session line when thinking is disabled', asy
     assert.ok(!logs.some(m => /\(thinking\)/.test(m)), 'did not expect a thinking tag');
 });
 
-// --- context accumulation ---------------------------------------------------
-
 test('askDSStream: context reflects the full conversation, not summed deltas', async () => {
     const { deps, session } = makeDeps({ session: makeSession({ id: 'existing', accountId: 'a1', contextTokens: 0 }) });
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'abcd', agentId: 'agent1', freshSessionPrompt: 'full history one' });
     assert.equal(session.contextTokens, estimateTokens('full history one'));
-    // A later delta must overwrite with the new full context, not add to it.
+    
     await ask({ prompt: 'a'.repeat(40), agentId: 'agent1', freshSessionPrompt: 'full history one and two' });
     assert.equal(session.contextTokens, estimateTokens('full history one and two'));
 });
@@ -337,7 +323,7 @@ test('askDSStream: accumulation also counts the fresh prompt after a session rec
     const ask = createUpstreamSession(deps);
     const out = await ask({ prompt: 'delta', agentId: 'agent1', freshSessionPrompt: 'full conversation' });
     assert.equal(out.freshSessionReset, true);
-    // Only the successfully accepted fresh prompt counts (the rejected delta did not).
+    
     assert.equal(session.contextTokens, estimateTokens('full conversation'));
 });
 
@@ -352,10 +338,6 @@ test('askDSStream: a failed completion does not accumulate context', async () =>
     assert.equal(session.contextTokens, 42);
 });
 
-// --- per-account completion throttle ----------------------------------------
-
-// Records the order of the throttle call vs. the PoW solve, so the test can
-// assert the wait happens BEFORE the time-bound PoW header is created.
 function throttleRecorder(granted = true) {
     const order = [];
     const calls = [];
@@ -372,16 +354,13 @@ test('askDSStream: throttles before solving PoW', async () => {
     deps.solvePowForPath = async () => { rec.order.push('pow'); return 'pow'; };
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'hi', agentId: 'agent1' });
-    // The throttle must run before the PoW challenge: a solved header is
-    // time-bound and would expire during a multi-second wait.
+    
     assert.deepEqual(rec.order, ['slot', 'pow']);
     assert.equal(calls.completions.length, 1);
 });
 
 test('askDSStream: creates a fresh session before solving PoW so the header stays fresh', async () => {
-    // A fresh session costs a create round-trip. Solving the time/nonce-bound
-    // PoW before it could let the challenge expire before the completion is
-    // sent, so the order must be create -> pow.
+    
     const order = [];
     const { deps } = makeDeps();
     deps.createRemoteSession = async () => { order.push('create'); return 'sess-1'; };
@@ -410,7 +389,7 @@ test('askDSStream: aborts with 429 when no completion slot is granted', async ()
     deps.solvePowForPath = async () => { powSolved = true; return 'pow'; };
     const ask = createUpstreamSession(deps);
     await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1' }), /DS upstream HTTP 429/);
-    // No slot -> no PoW challenge, no completion sent.
+    
     assert.equal(powSolved, false);
     assert.equal(calls.completions.length, 0);
 });
@@ -443,8 +422,7 @@ test('askDSStream: no pressure is computed when the rate limit is disabled (0)',
     });
     const ask = createUpstreamSession(deps);
     await ask({ prompt: 'hi', agentId: 'agent1' });
-    // DS_TOKEN_RATE_LIMIT_PER_MIN defaults to 0, so the adaptive part is off
-    // and the injected helper must not even be consulted.
+    
     assert.equal(called, false);
     assert.equal(rec.calls[0].opts.pressure, 0);
 });

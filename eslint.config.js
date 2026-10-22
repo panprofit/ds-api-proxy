@@ -1,15 +1,11 @@
 'use strict';
-// Flat ESLint config (ESLint >= 9). The project has no build step and no
-// runtime dependencies, so the config stays minimal: catch real mistakes
-// (unused vars, accidental globals, loose equality) without imposing a style
-// overhaul on the existing codebase.
 
 const js = require('@eslint/js');
 const globals = require('globals');
+const banComments = require('eslint-plugin-ban-comments').default || require('eslint-plugin-ban-comments');
 
 module.exports = [
     {
-        // Never lint generated/ignored trees.
         ignores: ['node_modules/**', '.run/**', '.auth/**'],
     },
     js.configs.recommended,
@@ -20,21 +16,19 @@ module.exports = [
             sourceType: 'commonjs',
             globals: { ...globals.node },
         },
+        plugins: { 'ban-comments': banComments },
         rules: {
-            // The proxy relies on fire-and-forget promises (remote session
-            // deletes, sweeps), so no-floating-promises would be too noisy;
-            // that invariant is covered by tests instead.
+            'ban-comments/ban-comments': ['error', { allowEslintDirectives: true, allowJSDoc: true }],
             'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
             'no-console': 'off',
             'no-empty': ['error', { allowEmptyCatch: true }],
             eqeqeq: ['error', 'always', { null: 'ignore' }],
+            'no-multiple-empty-lines': ['error', { max: 1, maxBOF: 0, maxEOF: 1 }],
             'prefer-const': 'error',
             'no-var': 'error',
         },
     },
     {
-        // Tests (and the perf budgets, which are test-support code) may
-        // intentionally keep unused generator helpers around.
         files: ['test/**/*.js', 'perf/**/*.js'],
         rules: {
             'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none', varsIgnorePattern: '^_' }],

@@ -3,10 +3,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readDSResponse, dumpSseEnabled, parseMutedBody } = require('../lib/sse');
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 function streamOf(...chunks) {
     return {
         async *[Symbol.asyncIterator]() {
@@ -35,10 +31,6 @@ function collectLog() {
 }
 
 const SESSION = () => ({ parentMessageId: 'parent-0', messageCount: 0 });
-
-// ---------------------------------------------------------------------------
-// basic content paths
-// ---------------------------------------------------------------------------
 
 test('readDSResponse: accumulates response/content fragments and message id', async () => {
     const session = SESSION();
@@ -106,8 +98,7 @@ test('readDSResponse: response/fragments/-1/content appends to last fragment', a
 });
 
 test('readDSResponse: response/fragments/-1/content appends reasoning to the last fragment', async () => {
-    // The append path has two branches (assistant output vs reasoning); the
-    // RESPONSE branch is covered above, this locks in the THINK/REASONING one.
+    
     const session = SESSION();
     const body = sse(
         { p: 'response/fragments', v: { type: 'THINK', content: 'th' } },
@@ -141,10 +132,6 @@ test('readDSResponse: full response snapshot (v.response) overrides content + fr
     assert.equal(out.finishReason, 'stop');
 });
 
-// ---------------------------------------------------------------------------
-// patch operations (response path)
-// ---------------------------------------------------------------------------
-
 test('readDSResponse: response APPEND patch operations feed fragments', async () => {
     const session = SESSION();
     const body = sse(
@@ -165,10 +152,6 @@ test('readDSResponse: non-append response patches are ignored', async () => {
     const out = await readDSResponse(streamOf(body), session, '[t]', { log: () => {} });
     assert.equal(out.content, '');
 });
-
-// ---------------------------------------------------------------------------
-// finish reason / status / model errors
-// ---------------------------------------------------------------------------
 
 test('readDSResponse: response/status non-FINISHED sets finishReason; FINISHED does not', async () => {
     const s1 = SESSION();
@@ -214,10 +197,7 @@ test('readDSResponse: model error defaults finish_reason to null', async () => {
 });
 
 test('readDSResponse: a model error does not advance the parent session', async () => {
-    // generation_err / "Server temporarily unavailable." arrives with a
-    // message id, but no usable assistant turn was produced. Advancing
-    // parentMessageId to it would make a same-session retry branch off the
-    // failed node, so the parent must stay put (and messageCount must not grow).
+    
     const session = { parentMessageId: 'parent-0', messageCount: 3 };
     const out = await readDSResponse(
         streamOf(sse(
@@ -231,10 +211,6 @@ test('readDSResponse: a model error does not advance the parent session', async 
     assert.equal(session.parentMessageId, 'parent-0', 'parent must not advance on a model error');
     assert.equal(session.messageCount, 3);
 });
-
-// ---------------------------------------------------------------------------
-// message id extraction fallbacks
-// ---------------------------------------------------------------------------
 
 test('readDSResponse: response_message_id wins over message_id', async () => {
     const session = SESSION();
@@ -263,10 +239,6 @@ test('readDSResponse: response/message_id object uses findMessageId', async () =
     assert.equal(out.messageId, 'from-obj');
 });
 
-// ---------------------------------------------------------------------------
-// session mutation / missing id
-// ---------------------------------------------------------------------------
-
 test('readDSResponse: no id keeps parent session and warns, messageCount unchanged', async () => {
     const session = { parentMessageId: 'old-parent', messageCount: 5 };
     const { log, lines } = collectLog();
@@ -287,10 +259,6 @@ test('readDSResponse: null parent reported as null in warning', async () => {
     await readDSResponse(streamOf(sse({})), session, '[agent]', { log });
     assert.ok(lines.some(l => l.includes('keeping parent=null')));
 });
-
-// ---------------------------------------------------------------------------
-// malformed events / parse errors
-// ---------------------------------------------------------------------------
 
 test('readDSResponse: malformed JSON counted, stream continues', async () => {
     const session = SESSION();
@@ -333,10 +301,6 @@ test('readDSResponse: an explicit debugSse overrides the env option', async () =
     assert.equal(lines.some(l => l.includes('JSON.parse failed')), false);
 });
 
-// ---------------------------------------------------------------------------
-// chunking / framing edge cases
-// ---------------------------------------------------------------------------
-
 test('readDSResponse: handles events split across arbitrary chunk boundaries', async () => {
     const session = SESSION();
     const body = sse(
@@ -344,7 +308,7 @@ test('readDSResponse: handles events split across arbitrary chunk boundaries', a
         { p: 'response/content', v: 'cd' },
         { response_message_id: 'split-m' },
     );
-    // Split every 7 bytes, cutting through JSON and line boundaries.
+    
     const enc = new TextEncoder();
     const bytes = enc.encode(body);
     const chunks = [];
@@ -381,10 +345,6 @@ test('readDSResponse: response/content ignores object values', async () => {
     assert.equal(out.content, 'ok');
 });
 
-// ---------------------------------------------------------------------------
-// combined scenario
-// ---------------------------------------------------------------------------
-
 test('readDSResponse: realistic mixed stream produces full result', async () => {
     const session = SESSION();
     const { log, lines } = collectLog();
@@ -406,10 +366,6 @@ test('readDSResponse: realistic mixed stream produces full result', async () => 
     assert.equal(session.messageCount, 1);
     assert.equal(lines.length, 0, `unexpected log lines: ${lines.join(' | ')}`);
 });
-
-// ---------------------------------------------------------------------------
-// raw-stream diagnostic dump (DS_DUMP_SSE / dumpRawStream)
-// ---------------------------------------------------------------------------
 
 test('dumpSseEnabled: true for "1"/"true" (any case), false otherwise', () => {
     assert.equal(dumpSseEnabled({ DS_DUMP_SSE: '1' }), true);
@@ -448,9 +404,7 @@ test('readDSResponse: no raw dump by default', async () => {
 });
 
 test('readDSResponse: dumpRawStream with zero parsed events logs a body preview', async () => {
-    // events=0 cannot distinguish an empty stream from a non-SSE (WAF/HTML)
-    // body, so the dump includes the first bytes of the raw response. A muted
-    // JSON body is a realistic zero-event case that still yields `muted`.
+    
     const session = SESSION();
     const { log, lines } = collectLog();
     const out = await readDSResponse(streamOf(MUTED_BODY), session, '[agent]', { log, dumpRawStream: true });
@@ -463,10 +417,6 @@ test('readDSResponse: dumpRawStream with zero parsed events logs a body preview'
     assert.ok(preview, `missing raw-body preview in: ${lines.join(' | ')}`);
     assert.ok(preview.includes('biz_code'), `expected the preview to carry the body: ${preview}`);
 });
-
-// ---------------------------------------------------------------------------
-// muted-body detection
-// ---------------------------------------------------------------------------
 
 const MUTED_BODY = JSON.stringify({
     code: 0,
@@ -498,7 +448,7 @@ test('readDSResponse: a muted JSON body yields zero events and sets `muted`', as
     assert.ok(out.muted);
     assert.equal(out.muted.message, 'user is muted');
     assert.equal(out.muted.muteUntil, 1791636413.054);
-    // The muted body never advances the remote session.
+    
     assert.equal(session.parentMessageId, 'parent-0');
     assert.equal(session.messageCount, 0);
     assert.ok(lines.some(l => l.includes('DS account muted')));

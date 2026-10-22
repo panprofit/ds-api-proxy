@@ -1,6 +1,4 @@
 'use strict';
-// Unit tests for lib/uploads.js (mime guessing, data-uri decoding, response
-// parsing, filename derivation).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -83,9 +81,7 @@ test('filenameForSource: uses the basename of an http(s) URL', () => {
 });
 
 test('filenameForSource: data URIs still produce a non-empty name', () => {
-    // `new URL('data:...')` parses the payload as the pathname, so this does not
-    // yield a clean "upload-<ts>.png" name. Assert only the real contract: the
-    // function never returns an empty string.
+    
     const name = filenameForSource('data:image/png;base64,AAAA', 'image/png');
     assert.ok(typeof name === 'string' && name.length > 0);
 });

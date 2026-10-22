@@ -1,14 +1,9 @@
 'use strict';
-// Direct unit tests for lib/parser-dsml.js: tag canonicalization, structural
-// scanning, attribute/value decoding and the <invoke>/<parameter> grammar.
-// Previously these functions had no dedicated file (only indirect coverage).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const d = require('../lib/parser-dsml');
-
-// --- canonicalizeToolMarkupTag ---------------------------------------------
 
 test('canonicalizeToolMarkupTag: normalizes the DSML pipe form', () => {
     assert.equal(d.canonicalizeToolMarkupTag('|DSML| invoke name="f"'), '<invoke name="f">');
@@ -27,9 +22,6 @@ test('canonicalizeToolMarkupTag: accepts the V4.1 leading-space tag names', () =
     assert.equal(d.canonicalizeToolMarkupTag(`${t} parameter name="a" string="true"`), '<parameter name="a" string="true">');
 });
 
-// The model mangles the delimiter run in production: zero, one or two pipes on
-// either side of DSML, with the closing slash possibly inside the run. Every
-// spelling must fold to the same tag.
 test('canonicalizeToolMarkupTag: accepts one-sided and bare DSML markers', () => {
     const fw = '\uFF5C';
     assert.equal(d.canonicalizeToolMarkupTag(`${fw}DSML invoke name="f"`), '<invoke name="f">');
@@ -66,8 +58,6 @@ test('canonicalizeToolMarkupTag: smart quotes / fullwidth are folded to ASCII', 
     assert.match(d.canonicalizeToolMarkupTag('invoke name=“f”'), /^<invoke name="f">$/);
 });
 
-// The native DeepSeek separator U+2581 (▁) is folded to '_' so a tag that
-// mixes the native spelling (`tool▁calls`) into DSML markup is still read.
 test('canonicalizeToolMarkupTag: folds the native U+2581 separator to _', () => {
     assert.equal(d.canonicalizeToolMarkupTag('|DSML| tool\u2581calls'), '<tool_calls>');
     assert.equal(d.canonicalizeToolMarkupTag('/|DSML| tool\u2581calls'), '</tool_calls>');
@@ -92,16 +82,12 @@ test('canonicalizeToolMarkupTag: non-semantic tags return null', () => {
     assert.equal(d.canonicalizeToolMarkupTag(''), null);
 });
 
-// --- normalizeToolMarkupTags -----------------------------------------------
-
 test('normalizeToolMarkupTags: rewrites known tags and leaves others verbatim', () => {
     const out = d.normalizeToolMarkupTags('a ＜|DSML| invoke name="f"> b <div> c');
     assert.match(out, /<invoke name="f">/);
     assert.match(out, /<div>/, 'unrecognized tags are preserved');
     assert.ok(!out.includes('＜'), 'fullwidth angle brackets are folded to ASCII');
 });
-
-// --- decodeDsmlValue / decodeDsmlParameterValue ----------------------------
 
 test('decodeDsmlValue: decodes the standard XML entities', () => {
     assert.equal(d.decodeDsmlValue('&lt;a&gt; &quot;b&quot; &apos;c&apos; &amp;'), `<a> "b" 'c' &`);
@@ -116,8 +102,6 @@ test('decodeDsmlParameterValue: falls back to entity decoding otherwise', () => 
     assert.equal(d.decodeDsmlParameterValue('a&amp;b'), 'a&b');
 });
 
-// --- getMarkupAttribute ----------------------------------------------------
-
 test('getMarkupAttribute: reads single- and double-quoted values', () => {
     assert.equal(d.getMarkupAttribute('name="read" other="x"', 'name'), 'read');
     assert.equal(d.getMarkupAttribute("name='read'", 'name'), 'read');
@@ -127,8 +111,6 @@ test('getMarkupAttribute: missing attribute returns null', () => {
     assert.equal(d.getMarkupAttribute('name="read"', 'string'), null);
     assert.equal(d.getMarkupAttribute('', 'name'), null);
 });
-
-// --- readDsmlTagAt ---------------------------------------------------------
 
 test('readDsmlTagAt: reads an opening invoke tag with attrs', () => {
     const tag = d.readDsmlTagAt('<invoke name="f">', 0);
@@ -157,8 +139,6 @@ test('readDsmlTagAt: an unterminated tag reports invalid', () => {
     assert.deepEqual(d.readDsmlTagAt('<invoke name="f"', 0), { invalid: true });
 });
 
-// --- scanDsmlStructuralTags ------------------------------------------------
-
 test('scanDsmlStructuralTags: collects recognized tags in order', () => {
     const tags = d.scanDsmlStructuralTags('<tool_calls><invoke name="f"></invoke></tool_calls>');
     assert.deepEqual(tags.map(t => t.name), ['tool_calls', 'invoke', 'invoke', 'tool_calls']);
@@ -172,8 +152,6 @@ test('scanDsmlStructuralTags: skips CDATA sections', () => {
 test('scanDsmlStructuralTags: an unterminated CDATA returns null', () => {
     assert.equal(d.scanDsmlStructuralTags('<parameter><![CDATA[oops'), null);
 });
-
-// --- parseDsmlParameter ----------------------------------------------------
 
 test('parseDsmlParameter: stores a string value by default', () => {
     const args = {};
@@ -200,8 +178,6 @@ test('parseDsmlParameter: rejects duplicate and malformed names', () => {
     assert.equal(d.parseDsmlParameter('other="y"', 'v', {}, new Set()), false);
 });
 
-// --- parseDsmlInvoke -------------------------------------------------------
-
 test('parseDsmlInvoke: parses name/parameter pairs into arguments', () => {
     const tc = d.parseDsmlInvoke('read', '<parameter name="path">/x</parameter><parameter name="n" string="false">2</parameter>');
     assert.equal(tc.name, 'read');
@@ -226,8 +202,6 @@ test('parseDsmlInvoke: an unclosed parameter is rejected', () => {
     assert.equal(d.parseDsmlInvoke('read', '<parameter name="p">1'), null);
 });
 
-// --- parseDsmlToolCall -----------------------------------------------------
-
 test('parseDsmlToolCall: parses a wrapped invoke', () => {
     const tc = d.parseDsmlToolCall('<tool_calls><invoke name="read"><parameter name="path">/x</parameter></invoke></tool_calls>', () => {});
     assert.equal(tc.name, 'read');
@@ -240,7 +214,7 @@ test('parseDsmlToolCall: parses a bare invoke without a wrapper', () => {
 });
 
 test('parseDsmlToolCall: parses an open-ended <direct name=...> tag', () => {
-    // <direct> has no closing tag; the body is everything after the tag.
+    
     const tc = d.parseDsmlToolCall('<direct name="read"><parameter name="p">1</parameter>', () => {});
     assert.equal(tc.name, 'read');
     assert.deepEqual(JSON.parse(tc.arguments), { p: '1' });
@@ -252,13 +226,10 @@ test('parseDsmlToolCall: returns null when there is no markup', () => {
 });
 
 test('parseDsmlToolCall: text outside the <tool_calls> wrapper is ignored', () => {
-    // extractToolCallScope returns only the wrapper's inner text, so anything
-    // after </tool_calls> does not affect the parse.
+    
     const tc = d.parseDsmlToolCall('<tool_calls><invoke name="f"><parameter name="p">1</parameter></invoke></tool_calls> trailing', () => {});
     assert.equal(tc.name, 'f');
 });
-
-// --- malformed-shape tolerance ---------------------------------------------
 
 const P = '\uFF5C';
 
@@ -289,15 +260,12 @@ test('parseDsmlToolCall: literal tags inside a code argument are raw text', () =
 });
 
 test('parseDsmlToolCall: recovers a tool name from a leading name parameter', () => {
-    // A malformed call that drops <invoke> and puts the tool name in a
-    // parameter named "name" is recovered; the normal shape is unaffected.
+    
     const text = `<${P}DSML${P} calls>\n<${P}DSML${P} parameter name="name" string="true">f</${P}DSML${P} parameter>\n<${P}DSML${P} parameter name="a">1</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
     const tc = d.parseDsmlToolCall(text, () => {});
     assert.equal(tc.name, 'f');
     assert.deepEqual(JSON.parse(tc.arguments), { a: '1' });
 });
-
-// --- looksLikeToolCallMarkup -----------------------------------------------
 
 test('looksLikeToolCallMarkup: true for real tag forms', () => {
     assert.equal(d.looksLikeToolCallMarkup('<tool_call>...'), true);
@@ -310,19 +278,17 @@ test('looksLikeToolCallMarkup: true for real tag forms', () => {
 });
 
 test('looksLikeToolCallMarkup: false for prose that merely mentions DSML', () => {
-    // Regression: a backticked `|DSML| calls` in prose must NOT trigger markup
-    // recovery (no `<`/`＜` tag form is present).
+    
     assert.equal(d.looksLikeToolCallMarkup('use `|DSML| calls` to invoke a tool'), false);
     assert.equal(d.looksLikeToolCallMarkup('plain text'), false);
     assert.equal(d.looksLikeToolCallMarkup(''), false);
 });
 
 test('looksLikeToolCallMarkup: ignores tag names quoted in inline code', () => {
-    // A model explaining the DSML format writes the tags in backticks. Those are
-    // illustrative, not a (truncated) call, so recovery must not rotate.
+    
     assert.equal(d.looksLikeToolCallMarkup('оборачиваются в `<tool_calls>` с тегами `<invoke>` / `<parameter>`'), false);
     assert.equal(d.looksLikeToolCallMarkup('use `<invoke name="read">` for a read'), false);
-    // A raw call next to illustrative inline code is still detected.
+    
     assert.equal(d.looksLikeToolCallMarkup('<tool_calls>\n<invoke name="bash">\nsee `<invoke>` above'), true);
 });
 

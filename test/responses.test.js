@@ -1,14 +1,9 @@
 'use strict';
-// Unit tests for lib/responses.js — Responses API request/response
-// translation. Focus: image attachment preservation through normalizeInput /
-// normalizeContentParts, which is what lets /v1/responses upload files.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const responses = require('../lib/responses');
-
-// --- normalizeContentParts --------------------------------------------------
 
 test('normalizeContentParts: text-only parts collapse to a string', () => {
     const out = responses.normalizeContentParts([
@@ -70,8 +65,6 @@ test('normalizeContentParts: images-only content omits the text part', () => {
     assert.deepEqual(out, [{ type: 'image_url', image_url: { url: 'https://x/y.png' } }]);
 });
 
-// --- normalizeInput ---------------------------------------------------------
-
 test('normalizeInput: a message with an image keeps content as an array', () => {
     const messages = responses.normalizeInput([{
         type: 'message',
@@ -107,8 +100,6 @@ test('normalizeInput: accepts a bare role/content object', () => {
     assert.ok(Array.isArray(messages[0].content));
 });
 
-// --- toInternalParams -------------------------------------------------------
-
 test('toInternalParams: image parts survive the full translation', () => {
     const internal = responses.toInternalParams({
         input: [{
@@ -125,8 +116,6 @@ test('toInternalParams: image parts survive the full translation', () => {
     const image = content.find(p => p.type === 'image_url');
     assert.equal(image.image_url.url, 'data:image/jpeg;base64,AAAA');
 });
-
-// --- parseResponsesRequest --------------------------------------------------
 
 test('parseResponsesRequest: rejects malformed JSON and non-object bodies', () => {
     assert.equal(responses.parseResponsesRequest('{').ok, false);
@@ -147,8 +136,6 @@ test('parseResponsesRequest: input may be an array of message items', () => {
     assert.equal(parsed.ok, true);
 });
 
-// --- sendResponseStream -----------------------------------------------------
-
 function makeFakeRes() {
     const chunks = [];
     const res = {
@@ -161,7 +148,7 @@ function makeFakeRes() {
         flushHeaders() {},
         write(chunk) { chunks.push(String(chunk)); },
         end() { this.ended = true; },
-        // Parse the SSE chunks into [{ event, data }] for assertions.
+        
         events() {
             const out = [];
             const raw = chunks.join('');
@@ -197,12 +184,10 @@ test('sendResponseStream: text response emits created -> deltas -> completed -> 
     assert.ok(names.includes('response.output_item.done'));
     assert.ok(names.includes('response.completed'));
     assert.ok(!names.includes('response.incomplete'));
-
-    // Deltas concatenate back to the full content.
+    
     const deltas = events.filter(e => e.event === 'response.output_text.delta').map(e => e.data.delta);
     assert.equal(deltas.join(''), 'hello world');
-
-    // The final completed event carries the assembled output.
+    
     const completed = events.find(e => e.event === 'response.completed');
     assert.equal(completed.data.response.status, 'completed');
     assert.equal(completed.data.response.output_text, 'hello world');
@@ -295,8 +280,6 @@ test('sendResponseStream: always reports previous_response_id as null', () => {
     assert.equal(created.data.response.previous_response_id, null);
 });
 
-// --- buildResponse ----------------------------------------------------------
-
 test('buildResponse: plain text message with usage and completed status', () => {
     const built = responses.buildResponse({ content: 'hi there', contextTokens: 12 });
     assert.equal(built.object, 'response');
@@ -377,8 +360,6 @@ test('buildResponse: always reports previous_response_id as null', () => {
     assert.equal(built.previous_response_id, null);
 });
 
-// --- normalizeContentParts / maybeParsePartsArray ---------------------------
-
 test('normalizeContentParts: parses a JSON-encoded parts array with images', () => {
     const out = responses.normalizeContentParts(JSON.stringify([
         { type: 'input_text', text: 'look' },
@@ -441,8 +422,6 @@ test('normalizeContentParts: bare strings inside an array are joined as text', (
 test('normalizeContentParts: non-object entries inside an array are skipped', () => {
     assert.equal(responses.normalizeContentParts([null, 7, { text: 'ok' }]), 'ok');
 });
-
-// --- normalizeInput ---------------------------------------------------------
 
 test('normalizeInput: undefined/null/string/non-array forms', () => {
     assert.deepEqual(responses.normalizeInput(undefined), []);
@@ -546,14 +525,10 @@ test('normalizeInput: skips non-object entries', () => {
 });
 
 test('normalizeInput: an unknown item type with a role falls back to a message', () => {
-    // Distinct from the untagged branch: a present-but-unrecognized `type`
-    // (forward-compat) still carries role/content, so it must not be dropped.
+    
     const out = responses.normalizeInput([{ type: 'future_item', role: 'assistant', content: 'yo' }]);
     assert.deepEqual(out, [{ role: 'assistant', content: 'yo' }]);
 });
-
-
-// --- sendResponseFailed -----------------------------------------------------
 
 test('sendResponseFailed: emits a response.failed event carrying code + message', () => {
     const res = makeFakeRes();
@@ -593,8 +568,6 @@ test('sendResponseFailed: writes SSE headers itself when none were sent', () => 
     responses.sendResponseFailed(res, { code: 'x', message: 'y' });
     assert.equal(res.headersSent, true);
 });
-
-// --- normalizeTools ---------------------------------------------------------
 
 test('normalizeTools: flattens a flat function tool into nested shape', () => {
     const out = responses.normalizeTools([{ type: 'function', name: 'read', description: 'd', parameters: { type: 'object' } }]);
@@ -643,8 +616,6 @@ test('normalizeTools: non-array input yields an empty array', () => {
     assert.deepEqual(responses.normalizeTools(undefined), []);
 });
 
-// --- parseResponsesRequest --------------------------------------------------
-
 test('parseResponsesRequest: rejects a non-object JSON array', () => {
     assert.equal(responses.parseResponsesRequest('[]').ok, false);
 });
@@ -653,8 +624,6 @@ test('parseResponsesRequest: accepts an empty body as an empty object', () => {
     const parsed = responses.parseResponsesRequest('');
     assert.equal(parsed.ok, true);
 });
-
-// --- text.format -> response_format -----------------------------------------
 
 test('toInternalParams: text.format json_object maps to response_format', () => {
     const internal = responses.toInternalParams({ input: 'hi', text: { format: { type: 'json_object' } } });

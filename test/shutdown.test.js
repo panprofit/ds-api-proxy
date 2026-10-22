@@ -1,18 +1,14 @@
 'use strict';
-// Unit tests for lib/shutdown.js. All side effects (server, semaphore, exit,
-// logs) are faked, so the shutdown path is exercised without a process, a
-// real socket, or real signals.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createShutdown, waitForDrain } = require('../lib/shutdown');
 
-// A fake semaphore whose drain resolution the test controls.
 function fakeSemaphore({ inFlight = 0 } = {}) {
     return {
         inFlight,
-        // resolves after `delayMs`; if `forever` is true, never resolves.
+        
         waitForZeroCalls: [],
         waitForZero(timeoutMs) {
             this.waitForZeroCalls.push(timeoutMs);
@@ -97,7 +93,7 @@ test('shutdown: force-closes and logs when the grace period expires', async () =
 
 test('shutdown: deletes remote sessions and waits for pending deletes to settle', async () => {
     const h = makeCtl({ resets: 2 });
-    // Start with 1 pending delete, then clear it so waitForDrain can resolve.
+    
     h.setPendingSize(1);
     setTimeout(() => h.setPendingSize(0), 10);
     await h.ctl.shutdown('SIGINT');
@@ -117,7 +113,7 @@ test('shutdown: is idempotent — a second call is a no-op', async () => {
     assert.equal(await h.ctl.shutdown('SIGTERM'), true);
     assert.equal(await h.ctl.shutdown('SIGINT'), false);
     assert.equal(h.server.closed, 1, 'server.close called only once');
-    // Only the first shutdown logged a start line.
+    
     assert.equal(h.sink.logs.filter((l) => /received/.test(l)).length, 1);
 });
 
@@ -138,8 +134,6 @@ test('shutdown: works when the server has no closeIdleConnections/closeAllConnec
     assert.equal(server.closed, 1);
     assert.equal(h.exitCode, 0);
 });
-
-// --- waitForDrain -----------------------------------------------------------
 
 test('waitForDrain: resolves true immediately when already empty', async () => {
     assert.equal(await waitForDrain(() => 0, 1000), true);

@@ -1,5 +1,4 @@
 'use strict';
-// Unit tests for lib/openai.js (token estimation, response builders, chunking).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -36,7 +35,7 @@ test('estimateTokens: non-ASCII chars are weighted heavier', () => {
 });
 
 test('estimateTokens: CJK is weighted denser than Cyrillic', () => {
-    // 4 identical-length strings: ASCII < Cyrillic < CJK token counts.
+    
     const ascii = estimateTokens('abcd');
     const cyrillic = estimateTokens('абвг');
     const cjk = estimateTokens('汉字测试');
@@ -52,30 +51,29 @@ test('estimateTokens: non-empty input never returns 0', () => {
 });
 
 test('estimateTokens: mixed text is rounded once, not per class', () => {
-    // 5 ASCII (1.25 tok) + 5 Cyrillic (2.5 tok): per-class rounding gave
-    // ceil(1.25)+ceil(2.5)=2+3=5; a single rounding gives ceil(3.75)=4.
+    
     assert.equal(estimateTokens('abcdeабвгд'), 4);
 });
 
 test('estimateTokens: astral code points count as surrogate pairs', () => {
-    // Each astral emoji is 2 JS units / 2 tokens; 3 emoji -> 6 tokens.
+    
     assert.equal(estimateTokens('\u{1F600}\u{1F600}\u{1F600}'), 6);
 });
 
 test('countTokenClasses: splits text by token class', () => {
     const counts = countTokenClasses('ab\u00e9\u6c49\u{1F600}');
-    assert.equal(counts.ascii, 2);   // a b
-    assert.equal(counts.wide, 1);    // é
-    assert.equal(counts.cjk, 1);     // 汉
-    assert.equal(counts.astral, 1);  // 😀
+    assert.equal(counts.ascii, 2);   
+    assert.equal(counts.wide, 1);    
+    assert.equal(counts.cjk, 1);     
+    assert.equal(counts.astral, 1);  
 });
 
 test('isCjkCodePoint: true for Han/Hiragana/Hangul, false for Latin/Cyrillic', () => {
     assert.equal(isCjkCodePoint('\u6c49'.codePointAt(0)), true);
-    assert.equal(isCjkCodePoint('\u3042'.codePointAt(0)), true); // あ
-    assert.equal(isCjkCodePoint('\uac00'.codePointAt(0)), true); // 가
+    assert.equal(isCjkCodePoint('\u3042'.codePointAt(0)), true); 
+    assert.equal(isCjkCodePoint('\uac00'.codePointAt(0)), true); 
     assert.equal(isCjkCodePoint('A'.codePointAt(0)), false);
-    assert.equal(isCjkCodePoint('\u0430'.codePointAt(0)), false); // Cyrillic 'а'
+    assert.equal(isCjkCodePoint('\u0430'.codePointAt(0)), false); 
 });
 
 test('TOKEN_CHARS: ASCII is the loosest class', () => {
@@ -118,7 +116,7 @@ test('buildToolCallResponseFromTokens: reports the accumulated prompt token coun
 
 test('buildTextResponseFromTokens: echoes the requested model', () => {
     assert.equal(buildTextResponseFromTokens('hi', 1, '', 'stop', 'my-model').model, 'my-model');
-    // Falls back to the default when no model was requested.
+    
     assert.equal(buildTextResponseFromTokens('hi', 1).model, 'default');
 });
 
@@ -156,8 +154,6 @@ test('splitIntoChunks: honours a custom size', () => {
 test('STREAM_CHUNK_CODE_POINTS is a positive integer', () => {
     assert.ok(Number.isInteger(STREAM_CHUNK_CODE_POINTS) && STREAM_CHUNK_CODE_POINTS > 0);
 });
-
-// --- obfuscation padding ----------------------------------------------------
 
 test('randomObfuscationPadding: returns a string of exactly the requested length', () => {
     for (const len of [1, 16, 100, 512]) {

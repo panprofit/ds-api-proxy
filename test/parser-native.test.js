@@ -1,16 +1,12 @@
 'use strict';
-// Direct unit tests for lib/parser-native.js: DeepSeek's native
-// `<|tool▁calls▁begin|> … <|tool▁calls▁end|>` marker grammar.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const n = require('../lib/parser-native');
 
-const M = n.TOOL_CALL_START; // <|tool\u2581calls\u2581begin|>
-const E = n.TOOL_CALL_END;   // <|tool\u2581calls\u2581end|>
-
-// --- fuzzy character equivalence -------------------------------------------
+const M = n.TOOL_CALL_START; 
+const E = n.TOOL_CALL_END;   
 
 test('normTagChar: folds the fullwidth pipe and the U+2581 separator', () => {
     assert.equal(n.normTagChar('\uFF5C'), '|');
@@ -24,15 +20,13 @@ test('eqTagChar: treats U+FF5C/U+2581 variants as equal to ASCII', () => {
     assert.equal(n.eqTagChar('a', 'b'), false);
 });
 
-// --- marker detection -------------------------------------------------------
-
 test('looksLikeNativeMarker: true for the canonical open/close markers', () => {
     assert.equal(n.looksLikeNativeMarker(M), true);
     assert.equal(n.looksLikeNativeMarker(E), true);
 });
 
 test('looksLikeNativeMarker: true when the separators are hallucinated', () => {
-    // ASCII underscore instead of U+2581, fullwidth pipe instead of ASCII.
+    
     assert.equal(n.looksLikeNativeMarker('<|tool_calls_begin|>'), true);
     assert.equal(n.looksLikeNativeMarker('<\uFF5Ctool\u2581calls\u2581begin\uFF5C>'), true);
 });
@@ -47,8 +41,6 @@ test('containsNativeMarker: finds the opening marker anywhere in the text', () =
     assert.equal(n.containsNativeMarker(`prefix ${M} [{}] ${E}`), true);
     assert.equal(n.containsNativeMarker('no marker here'), false);
 });
-
-// --- parsing ----------------------------------------------------------------
 
 test('parseNativeToolCalls: parses a JSON array of calls', () => {
     const body = JSON.stringify([{ name: 'get_weather', arguments: { city: '\u5317\u4eac' } }]);
@@ -92,11 +84,9 @@ test('parseNativeToolCalls: ignores a marker inside a code fence', () => {
 
 test('parseNativeToolCalls: null for a truncated body', () => {
     const body = JSON.stringify([{ name: 'f', arguments: { a: 1 } }]);
-    // Cut the array before its closing brace/bracket so nothing balances.
+    
     assert.equal(n.parseNativeToolCalls(M + body.slice(0, body.length - 3)), null);
 });
-
-// --- integration with the top-level parser ----------------------------------
 
 test('parseToolCall: routes the native marker grammar to parser-native', () => {
     const { parseToolCall } = require('../lib/parser');

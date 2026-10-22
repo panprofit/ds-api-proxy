@@ -1,9 +1,4 @@
 'use strict';
-// Process-level paths in index.js that only run under require.main === module:
-// the fatal uncaughtException policy and the main()-threw-at-boot catch.
-// index.js runs in a child process (like server-env.test.js) so process.exit
-// cannot take down the test runner; test/fixtures/process-mode-preload.js
-// injects the failure after the relevant handler is installed.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,9 +9,6 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const PRELOAD = path.join(__dirname, 'fixtures', 'process-mode-preload.js');
 
-// A real free port: PORT=0 is clamped to 1 by config.toInt(min: 1), and
-// binding port 1 fails with EACCES for a non-root user, which would make the
-// server die before the injected failure ever fires.
 function freePort() {
     return new Promise((resolve, reject) => {
         const srv = net.createServer();
@@ -75,7 +67,6 @@ test('index.js: a throw from main() at boot is reported as FATAL and exits 1', a
     assert.match(out, /injected boot failure/);
 });
 
-// Start the launcher and wait until it reports listening on its port.
 async function startAndWait() {
     const port = await freePort();
     const child = spawn(process.execPath, ['--require', PRELOAD, path.join(ROOT, 'index.js')], {
@@ -107,9 +98,7 @@ async function startAndWait() {
     return { child, done, log: () => out };
 }
 test('index.js: a throwing idle-session sweep is caught, logged and does not kill the server', async () => {
-    // The setInterval callback in main() must not let a sweep failure become an
-    // uncaughtException (which exits). DS_DEBUG=1 is required because the catch
-    // logs through debugLog(). The interval is 1000ms (the config minimum).
+    
     const { child, done, log } = await startAndWait();
     try {
         const deadline = Date.now() + 4000;

@@ -1,5 +1,4 @@
 'use strict';
-// Unit tests for lib/recovery-classify.js.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -143,11 +142,6 @@ test('classifyRecoveryFailure: context check wins over timeout', () => {
     assert.equal(classifyRecoveryFailure('context too long', true).status, 400);
 });
 
-// --- isAuthExpiredError -----------------------------------------------------
-// Regression guard: "Auth may be expired, captcha may be required, or DS
-// changed Web API" must be classified as a per-account failure so the recovery
-// loop rotates to another account instead of retrying a dead one.
-
 test('isAuthExpiredError: true on the auth_expired type', () => {
     assert.equal(isAuthExpiredError({ type: 'auth_expired' }), true);
     assert.equal(isAuthExpiredError({ type: 'authentication_error' }), true);
@@ -167,7 +161,6 @@ test('isAuthExpiredError: false for unrelated errors', () => {
     assert.equal(isAuthExpiredError({ type: 'rate_limit' }), false);
 });
 
-// --- looksLikeActionPromise ------------------------------------------------
 test('looksLikeActionPromise: true for English promises to act', () => {
     assert.equal(looksLikeActionPromise('Let me check the tests.'), true);
     assert.equal(looksLikeActionPromise("I'll run the linter now."), true);
@@ -189,10 +182,7 @@ test('looksLikeActionPromise: false for a real final answer', () => {
 });
 
 test('looksLikeActionPromise: only the tail matters (long answer wins)', () => {
-    // A long explanation that mentions "let me" early but ends with a
-    // conclusion is a real answer, not a promise. The promise phrase must
-    // sit far enough from the end to fall outside the 200-char tail window,
-    // which the filler guarantees.
+    
     const long = 'First let me explain the approach. ' + 'filler '.repeat(40) + 'In conclusion, the fix is complete.';
     assert.ok(long.length > 200);
     assert.equal(looksLikeActionPromise(long), false);

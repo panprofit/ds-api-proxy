@@ -1,7 +1,4 @@
 'use strict';
-// Tests for the SSRF guard and the remote-fetch / wasm-loader paths in
-// lib/upstream.js. `fetch` is stubbed; `dns.promises.lookup` is stubbed for the
-// paths that resolve hostnames internally (fetchRemoteFile).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -36,8 +33,6 @@ function resp({ status = 200, headers = {}, body = '', bodyChunks = null } = {})
 }
 
 const PUBLIC = [{ address: '93.184.216.34', family: 4 }];
-
-// --- isBlockedAddress -------------------------------------------------------
 
 test('isBlockedAddress: blocks loopback/private/reserved IPv4', () => {
     for (const ip of ['127.0.0.1', '10.0.0.5', '172.16.0.1', '172.31.255.255',
@@ -76,8 +71,6 @@ test('isBlockedAddress: a non-IP string is treated as unsafe', () => {
     assert.equal(upstream.isBlockedAddress(''), true);
 });
 
-// --- assertPublicUrl --------------------------------------------------------
-
 test('assertPublicUrl: rejects non-http(s) schemes', () => {
     for (const u of ['file:///etc/passwd', 'ftp://example.com/x', 'gopher://x']) {
         assert.throws(() => upstream.assertPublicUrl(u), /unsupported scheme|invalid url/);
@@ -100,8 +93,6 @@ test('assertPublicUrl: a public hostname passes the synchronous syntax check', (
     const u = upstream.assertPublicUrl('https://example.com/x');
     assert.equal(u.hostname, 'example.com');
 });
-
-// --- assertPublicUrlResolved ------------------------------------------------
 
 test('assertPublicUrlResolved: resolves a hostname and allows a public address', async () => {
     const lookup = async () => PUBLIC;
@@ -151,8 +142,6 @@ test('assertPublicUrlResolved: an IP literal skips DNS and is validated directly
     assert.equal(u.hostname, '93.184.216.34');
     assert.equal(called, false, 'literal IP should not trigger a DNS lookup');
 });
-
-// --- fetchRemoteFile --------------------------------------------------------
 
 test('fetchRemoteFile: fetches a public URL and returns buffer + mime', async () => {
     await withLookup(() => PUBLIC, async () => {
@@ -274,8 +263,6 @@ test('fetchRemoteFile: infers mime from the URL when Content-Type is absent', as
         });
     });
 });
-
-// --- loadModule -------------------------------------------------------------
 
 const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 

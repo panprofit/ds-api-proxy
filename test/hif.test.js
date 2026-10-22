@@ -1,6 +1,4 @@
 'use strict';
-// Unit tests for lib/hif.js. The network is injected; the module's cache is
-// reset per test so the cases stay independent.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

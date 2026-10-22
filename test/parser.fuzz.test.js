@@ -1,4 +1,3 @@
-// parser.fuzz.test.js
 'use strict';
 
 const test = require('node:test');
@@ -7,9 +6,6 @@ const parser = require('../lib/parser.js');
 
 const silentLog = () => {};
 
-// ---------------------------------------------------------------------------
-// Deterministic PRNG (mulberry32) — reproducible failures
-// ---------------------------------------------------------------------------
 function makeRng(seed) {
   let a = seed >>> 0;
   return function rng() {
@@ -37,9 +33,6 @@ function randomString(rng, maxLen = 20) {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Generators of "almost-valid" structures
-// ---------------------------------------------------------------------------
 const TOOL_NAMES = ['f', 'get_weather', 'a.b:c-d_e', 'x'.repeat(128), ' bad', ''];
 
 function randomArgs(rng) {
@@ -69,8 +62,7 @@ function randomDsmlToolCall(rng, opts = {}) {
   for (let i = 0; i < n; i++) {
     const pname = `p${i}`;
     const stringMode = pick(rng, ['', ' string="true"', ' string="false"']);
-    // With string="false" the parser must parse the body as JSON — generate
-    // only valid JSON values, otherwise the input is knowingly invalid.
+    
     const pval = stringMode === ' string="false"'
       ? pick(rng, ['1', 'true', 'false', 'null', '{"a":1}', '[1,2]', '"str"'])
       : pick(rng, ['1', 'hello', '{"a":1}', 'true', '']);
@@ -92,25 +84,19 @@ function randomToolCallMarkup(rng) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Invariant helpers
-// ---------------------------------------------------------------------------
 function assertValidToolCallShape(tc) {
   assert.ok(tc && typeof tc === 'object', 'tool call must be an object');
   assert.equal(typeof tc.name, 'string');
   assert.match(tc.name, /^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,127}$/);
   assert.equal(typeof tc.arguments, 'string');
   assert.ok(tc.arguments.length <= parser.MAX_TOOL_ARGUMENT_CHARS);
-  // arguments is always a valid JSON object
+  
   const parsed = JSON.parse(tc.arguments);
   assert.equal(typeof parsed, 'object');
   assert.ok(!Array.isArray(parsed));
   assert.ok(parsed !== null);
 }
 
-// ===========================================================================
-// 1. Round-trip: a generated call must parse
-// ===========================================================================
 test('fuzz: JSON tool_call round-trip', () => {
   const rng = makeRng(1);
   let ok = 0;
@@ -173,9 +159,6 @@ test('fuzz: DSML round-trip', () => {
   }
 });
 
-// ===========================================================================
-// 2. Stability invariants: re-parsing yields the same result
-// ===========================================================================
 test('fuzz: parseToolCall idempotence', () => {
   const rng = makeRng(6);
   for (let i = 0; i < 300; i++) {
@@ -196,9 +179,6 @@ test('fuzz: extractBalancedJsonObjects idempotence', () => {
   }
 });
 
-// ===========================================================================
-// 3. Never throws on random input
-// ===========================================================================
 test('fuzz: parseToolCall does not throw on random strings', () => {
   const rng = makeRng(8);
   for (let i = 0; i < 2000; i++) {
@@ -234,9 +214,6 @@ test('fuzz: parseToolCall does not throw on random non-strings', () => {
   }
 });
 
-// ===========================================================================
-// 4. Limits are not violated
-// ===========================================================================
 test('fuzz: parseToolCall never returns args longer than the limit', () => {
   const rng = makeRng(11);
   for (let i = 0; i < 500; i++) {
@@ -257,22 +234,19 @@ test('fuzz: buildToolCall does not exceed the argument limit', () => {
     if (tc) {
       assert.ok(tc.arguments.length <= parser.MAX_TOOL_ARGUMENT_CHARS);
     } else {
-      // not fitting is expected
+      
       assert.ok(JSON.stringify(args).length > parser.MAX_TOOL_ARGUMENT_CHARS - 10);
     }
   }
 });
 
-// ===========================================================================
-// 5. Mutations: corrupting valid input must not break the parser
-// ===========================================================================
 function mutate(rng, s) {
   if (s.length === 0) return s;
   const pos = randInt(rng, 0, s.length - 1);
   const kind = randInt(rng, 0, 2);
-  if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1); // delete
-  if (kind === 1) return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|', '｜', ' ', '\0']) + s.slice(pos); // insert
-  return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|']) + s.slice(pos + 1); // replace
+  if (kind === 0) return s.slice(0, pos) + s.slice(pos + 1); 
+  if (kind === 1) return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|', '｜', ' ', '\0']) + s.slice(pos); 
+  return s.slice(0, pos) + pick(rng, ['<', '>', '"', '\\', '{', '}', '|']) + s.slice(pos + 1); 
 }
 
 test('fuzz: mutations of valid calls do not break the parser', () => {
@@ -282,15 +256,12 @@ test('fuzz: mutations of valid calls do not break the parser', () => {
     const nMutations = randInt(rng, 1, 5);
     for (let j = 0; j < nMutations; j++) s = mutate(rng, s);
     assert.doesNotThrow(() => parser.parseToolCall(s, silentLog), `threw on: ${JSON.stringify(s)}`);
-    // Anything returned must be valid
+    
     const tc = parser.parseToolCall(s, silentLog);
     if (tc) assertValidToolCallShape(tc);
   }
 });
 
-// ===========================================================================
-// 6. Normalization monotonicity: normalize(normalize(x)) == normalize(x)
-// ===========================================================================
 test('fuzz: normalizeToolMarkupTags is idempotent', () => {
   const rng = makeRng(15);
   for (let i = 0; i < 1000; i++) {
@@ -301,9 +272,6 @@ test('fuzz: normalizeToolMarkupTags is idempotent', () => {
   }
 });
 
-// ===========================================================================
-// 7. decodeDsmlValue: does not increase length
-// ===========================================================================
 test('fuzz: decodeDsmlValue does not grow in length', () => {
   const rng = makeRng(16);
   for (let i = 0; i < 500; i++) {
@@ -313,9 +281,6 @@ test('fuzz: decodeDsmlValue does not grow in length', () => {
   }
 });
 
-// ===========================================================================
-// 8. parseToolCall: the returned object always has only name and arguments
-// ===========================================================================
 test('fuzz: parseToolCall returns only {name, arguments}', () => {
   const rng = makeRng(18);
   for (let i = 0; i < 1000; i++) {

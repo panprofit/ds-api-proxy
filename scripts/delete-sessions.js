@@ -1,18 +1,5 @@
 #!/usr/bin/env node
-// Delete every remote chat session for every configured account.
-//
-// DeepSeek exposes POST /chat_session/delete_all, which wipes all chat
-// sessions stored upstream for the authenticated account. This is useful after
-// a proxy run left sessions behind (e.g. a hard kill that skipped the graceful
-// shutdown cleanup) or simply to start every account from a clean slate.
-//
-// Usage:
-//   npm run sessions:delete
-//   npm run sessions:delete -- --dry-run
-//   npm run sessions:delete -- --account <id>
-//
-// Auth configs are read from DS_AUTH_DIR (see .env / .env.example). The script
-// runs against the configured upstream host.
+
 const {
     loadDSConfig,
     getAccounts,
@@ -48,8 +35,6 @@ function parseArgs(argv) {
     return opts;
 }
 
-// POST /chat_session/delete_all for a single account. Returns a structured
-// result rather than throwing, so one bad account does not abort the sweep.
 async function deleteAllSessionsForAccount(account, { dryRun = false } = {}) {
     const label = `${account.id}`;
     if (dryRun) {
@@ -70,8 +55,7 @@ async function deleteAllSessionsForAccount(account, { dryRun = false } = {}) {
             console.error(`[sessions:delete] ${label}: HTTP ${resp.status}: ${text.substring(0, 200)}`);
             return { accountId: account.id, ok: false, status: resp.status };
         }
-        // DS wraps everything in { code, msg, data: { biz_code, biz_msg } }.
-        // A non-zero biz_code means the request was rejected despite HTTP 200.
+        
         let json = null;
         try { json = text ? JSON.parse(text) : null; } catch (e) {
             console.error(`[sessions:delete] ${label}: non-JSON response: ${text.substring(0, 200)}`);
@@ -95,8 +79,7 @@ async function main() {
     if (opts.help) { usage(); return; }
 
     const remoteHost = config.get().remoteHost;
-
-    // Advisory audit: report a missing/empty DS_AUTH_DIR before doing anything.
+    
     loadDSConfig({ fatal: false });
     let accounts = getAccounts();
     if (opts.accountId) {

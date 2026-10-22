@@ -1,6 +1,4 @@
 'use strict';
-// Unit tests for lib/health.js. The report is built from injected inputs, so
-// no auth config, sockets or real accounts are involved.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,24 +23,22 @@ function fakeRes() {
     };
 }
 
-// --- buildHealthReport ------------------------------------------------------
-
 test('buildHealthReport: defaults are safe with no arguments', () => {
     const report = health.buildHealthReport();
     assert.equal(report.status, 'ok');
     assert.equal(report.shutting_down, false);
     assert.equal(typeof report.accounts.total, 'number');
-    assert.equal(report.uptime_ms, 0);          // startedAt defaults to 0
-    assert.equal(report.concurrency, undefined); // no semaphore passed
+    assert.equal(report.uptime_ms, 0);          
+    assert.equal(report.concurrency, undefined); 
 });
 
 test('buildHealthReport: counts usable vs available vs cooling accounts', () => {
     const now = 1_000_000;
     const report = health.buildHealthReport({
         accounts: [
-            acct({ cooldownUntil: 0 }),                 // usable + available
-            acct({ cooldownUntil: now + 5000 }),        // usable + cooling
-            acct({ token: '', cookie: '' }),            // not usable
+            acct({ cooldownUntil: 0 }),                 
+            acct({ cooldownUntil: now + 5000 }),        
+            acct({ token: '', cookie: '' }),            
         ],
         now,
     });
@@ -82,7 +78,7 @@ test('buildHealthReport: reports the semaphore concurrency when provided', () =>
 
 test('buildHealthReport: uptime is computed from startedAt and floored at 0', () => {
     assert.equal(health.buildHealthReport({ startedAt: 1000, now: 1500 }).uptime_ms, 500);
-    // A clock that went backwards must not report negative uptime.
+    
     assert.equal(health.buildHealthReport({ startedAt: 2000, now: 1500 }).uptime_ms, 0);
 });
 
@@ -105,8 +101,6 @@ test('buildHealthReport: a non-detailed report still reflects shutdown', () => {
     const report = health.buildHealthReport({ shuttingDown: true, detailed: false });
     assert.deepEqual(report, { status: 'shutting_down', shutting_down: true });
 });
-
-// --- handleHealth -----------------------------------------------------------
 
 test('handleHealth: writes 200 + JSON and a no-store cache header while healthy', () => {
     const res = fakeRes();
@@ -178,8 +172,7 @@ test('buildHealthReport: a null accounts list is treated as empty', () => {
 
 test('handleHealth: an explicit peerAddress overrides the socket lookup', () => {
     const res = fakeRes();
-    // A loopback peerAddress on a non-loopback socket must still be trusted,
-    // because the explicit deps value wins over req.socket.remoteAddress.
+    
     health.handleHealth({ socket: { remoteAddress: '203.0.113.5' } }, res, { peerAddress: '127.0.0.1', sessionCount: 5 });
     assert.equal(JSON.parse(res.body).sessions, 5);
 });

@@ -1,4 +1,3 @@
-// parser.test.js
 'use strict';
 
 const test = require('node:test');
@@ -6,8 +5,6 @@ const assert = require('node:assert/strict');
 const parser = require('../lib/parser.js');
 
 const silentLog = () => {};
-
-// --- regression corpus ------------------------------------------------------
 
 const CORPUS = require('./fixtures/broken-tool-calls');
 
@@ -29,9 +26,6 @@ for (const entry of CORPUS) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// extractBalancedJsonObjects
-// ---------------------------------------------------------------------------
 test('extractBalancedJsonObjects: several objects', () => {
   const text = 'x {"a":1} y {"b":2} z';
   assert.deepEqual(parser.extractBalancedJsonObjects(text), ['{"a":1}', '{"b":2}']);
@@ -51,10 +45,6 @@ test('extractBalancedJsonObjects: garbage without objects', () => {
   assert.deepEqual(parser.extractBalancedJsonObjects('no json here'), []);
 });
 
-// Regression: a stray, never-closing `{` earlier in the text (e.g. the model
-// writing prose like `{sh ...`) used to abort the whole scan, discarding a
-// later valid tool call. Seen in production dumps as long `No tool call match`
-// messages whose real call sat after the unbalanced brace.
 test('extractBalancedJsonObjects: unclosed object before a valid one does not abort the scan', () => {
   const good = '{"tool_call":{"name":"bash","arguments":{"command":"echo hi"}}}';
   const text = `Example {sh\n# comment\n${good}`;
@@ -70,9 +60,6 @@ test('extractBalancedJsonObjects: several unclosed braces before a valid one', (
   assert.deepEqual(parser.extractBalancedJsonObjects(text), [good]);
 });
 
-// Regression: the scanner used to desync inString on an escaped quote
-// inside a nested JSON-in-a-string, so a balanced object was never found and
-// the markup was falsely considered "unclosed".
 test('extractBalancedJsonObjects: escaped quotes inside a string', () => {
   const text = '{"tool_call":{"name":"bash","arguments":{"command":"echo \\"hi\\""}}}';
   const objs = parser.extractBalancedJsonObjects(text);
@@ -81,23 +68,18 @@ test('extractBalancedJsonObjects: escaped quotes inside a string', () => {
 });
 
 test('extractBalancedJsonObjects: escaped backslash inside a string', () => {
-  // "a\\\\b" -> the string contains the literal \\; brace matching must not desync.
+  
   const text = '{"s":"a\\\\b","n":1}';
   assert.deepEqual(parser.extractBalancedJsonObjects(text), [text]);
   assert.doesNotThrow(() => JSON.parse(text));
 });
 
-// ---------------------------------------------------------------------------
-// parse diagnostics
-// ---------------------------------------------------------------------------
 test('takeJsonParseError: returns the reason for the last JSON.parse error', () => {
-  // Brace-balanced candidate whose inner value is not valid JSON, so
-  // JSON.parse is attempted and throws. (A truncated candidate with no
-  // closing brace never reaches JSON.parse, so no error is recorded.)
+  
   parser.parseToolCall('{"tool_call":{"name":"edit","arguments":{"path":/x}}}', () => {});
   const err = parser.takeJsonParseError();
   assert.ok(err && typeof err === 'string', 'expected an error string');
-  // the second call clears the slot
+  
   assert.equal(parser.takeJsonParseError(), null);
 });
 
@@ -107,9 +89,6 @@ test('takeJsonParseError: null after a successful parse', () => {
   assert.equal(parser.takeJsonParseError(), null);
 });
 
-// ---------------------------------------------------------------------------
-// buildToolCall
-// ---------------------------------------------------------------------------
 test('buildToolCall: normal call', () => {
   const tc = parser.buildToolCall('get_weather', { city: 'Moscow' });
   assert.equal(tc.name, 'get_weather');
@@ -155,9 +134,6 @@ test('buildToolCall: cyclic arguments -> null', () => {
   assert.equal(parser.buildToolCall('f', a), null);
 });
 
-// ---------------------------------------------------------------------------
-// coerceToolCallObject
-// ---------------------------------------------------------------------------
 test('coerceToolCallObject: tool_call', () => {
   const tc = parser.coerceToolCallObject({ tool_call: { name: 'f', arguments: { a: 1 } } });
   assert.equal(tc.name, 'f');
@@ -204,9 +180,6 @@ test('coerceToolCallObject: null/array -> null', () => {
   assert.equal(parser.coerceToolCallObject([]), null);
 });
 
-// ---------------------------------------------------------------------------
-// parseJsonToolCandidate
-// ---------------------------------------------------------------------------
 test('parseJsonToolCandidate: successful parse', () => {
   const tc = parser.parseJsonToolCandidate(
     '{"tool_call":{"name":"f","arguments":{"x":1}}}',
@@ -221,9 +194,6 @@ test('parseJsonToolCandidate: invalid JSON -> null', () => {
   assert.equal(parser.parseJsonToolCandidate('{oops', 'test', {}, silentLog), null);
 });
 
-// ---------------------------------------------------------------------------
-// canonicalizeToolMarkupTag / normalizeToolMarkupTags
-// ---------------------------------------------------------------------------
 test('canonicalizeToolMarkupTag: DSML tool_calls', () => {
   assert.equal(parser.canonicalizeToolMarkupTag('|DSML|tool_calls'), '<tool_calls>');
 });
@@ -257,8 +227,7 @@ test('canonicalizeToolMarkupTag: short calls wrapper -> tool_calls', () => {
 });
 
 test('normalizeToolMarkupTags: plain `calls` outside angle brackets is left alone', () => {
-  // The `calls` shorthand is only a tag inside <...>. In free text it must not
-  // be rewritten, and the text must still look like non-markup.
+  
   const text = 'The function calls into the parser.';
   assert.equal(parser.normalizeToolMarkupTags(text), text);
   assert.equal(parser.looksLikeToolCallMarkup(text), false);
@@ -273,9 +242,6 @@ test('normalizeToolMarkupTags: leaves foreign tags alone', () => {
   assert.equal(parser.normalizeToolMarkupTags('<div>x</div>'), '<div>x</div>');
 });
 
-// ---------------------------------------------------------------------------
-// decodeDsmlValue / decodeDsmlParameterValue
-// ---------------------------------------------------------------------------
 test('decodeDsmlValue: all entities', () => {
   assert.equal(
     parser.decodeDsmlValue('&quot;&apos;&lt;&gt;&amp;'),
@@ -291,9 +257,6 @@ test('decodeDsmlParameterValue: plain value', () => {
   assert.equal(parser.decodeDsmlParameterValue('&lt;x&gt;'), '<x>');
 });
 
-// ---------------------------------------------------------------------------
-// getMarkupAttribute
-// ---------------------------------------------------------------------------
 test('getMarkupAttribute: double quotes', () => {
   assert.equal(parser.getMarkupAttribute(' name="foo" ', 'name'), 'foo');
 });
@@ -306,9 +269,6 @@ test('getMarkupAttribute: missing -> null', () => {
   assert.equal(parser.getMarkupAttribute('name="foo"', 'bar'), null);
 });
 
-// ---------------------------------------------------------------------------
-// readDsmlTagAt / scanDsmlStructuralTags
-// ---------------------------------------------------------------------------
 test('readDsmlTagAt: opening invoke', () => {
   const tag = parser.readDsmlTagAt('<invoke name="f">', 0);
   assert.equal(tag.name, 'invoke');
@@ -358,9 +318,6 @@ test('scanDsmlStructuralTags: tag sequence', () => {
   assert.equal(tags[1].closing, true);
 });
 
-// ---------------------------------------------------------------------------
-// parseDsmlInvoke
-// ---------------------------------------------------------------------------
 test('parseDsmlInvoke: parameters', () => {
   const tc = parser.parseDsmlInvoke(
     'f',
@@ -427,9 +384,6 @@ test('parseDsmlInvoke: CDATA in a parameter value', () => {
   assert.deepEqual(JSON.parse(tc.arguments), { x: 'a<b' });
 });
 
-// ---------------------------------------------------------------------------
-// extractToolCallScope
-// ---------------------------------------------------------------------------
 test('extractToolCallScope: tool_calls wrapper', () => {
   const scope = parser.extractToolCallScope(
     '<tool_calls><invoke name="f"></invoke></tool_calls>',
@@ -442,17 +396,13 @@ test('extractToolCallScope: no wrapper -> null', () => {
 });
 
 test('extractToolCallScope: duplicate opening wrappers are tolerated', () => {
-  // The model sometimes emits the wrapper twice; the outer opening anchors the
-  // scope and the inner duplicate is skipped by parseDsmlToolCall.
+  
   const scope = parser.extractToolCallScope(
     '<tool_calls><tool_calls><invoke name="f"></invoke></tool_calls></tool_calls>',
   );
   assert.equal(scope, '<tool_calls><invoke name="f"></invoke></tool_calls>');
 });
 
-// ---------------------------------------------------------------------------
-// parseDsmlToolCall
-// ---------------------------------------------------------------------------
 test('parseDsmlToolCall: full DSML markup', () => {
   const text =
     '|DSML|tool_calls><|DSML|invoke name="get_weather">' +
@@ -480,9 +430,6 @@ test('parseDsmlToolCall: garbage -> null', () => {
   assert.equal(parser.parseDsmlToolCall('hello world', silentLog), null);
 });
 
-// ---------------------------------------------------------------------------
-// looksLikeToolCallMarkup
-// ---------------------------------------------------------------------------
 test('looksLikeToolCallMarkup: legacy TOOL_CALL -> false', () => {
   assert.equal(parser.looksLikeToolCallMarkup('TOOL_CALL:foo {}'), false);
 });
@@ -511,9 +458,6 @@ test('looksLikeToolCallMarkup: plain text -> false', () => {
   assert.equal(parser.looksLikeToolCallMarkup('просто текст'), false);
 });
 
-// ---------------------------------------------------------------------------
-// parseToolCall (integration)
-// ---------------------------------------------------------------------------
 test('parseToolCall: strict JSON tool_call', () => {
   const tc = parser.parseToolCall(
     '{"tool_call":{"name":"f","arguments":{"a":1}}}',
@@ -533,9 +477,7 @@ test('parseToolCall: fenced JSON', () => {
 });
 
 test('parseToolCall: fenced shell block surrounded by prose is NOT a tool call', () => {
-  // Regression for the agent loop: the model narrates a command in a fenced
-  // block inside a normal answer. Synthesizing a bash call here makes the
-  // gateway execute it and the agent loops forever.
+  
   const text = 'Вот как это сделать:\n```bash\npwd && ls\n```\nГотово.';
   assert.equal(parser.parseToolCall(text, silentLog), null);
 });
@@ -594,9 +536,7 @@ test('parseToolCall: DSML marker but broken -> null', () => {
 });
 
 test('parseToolCall: valid inline JSON wins over a trailing truncated DSML copy', () => {
-  // Regression: a complete JSON call followed by a duplicate (truncated)
-  // DSML/XML rendering. The JSON is authoritative and must not be discarded
-  // just because a stray DSML marker appears later in the text.
+  
   const text =
     '{"tool_call":{"name":"edit","arguments":{"path":"lib/recovery.js"}}}' +
     '<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>\n' +
@@ -616,15 +556,6 @@ test('parseToolCall: inline JSON without a wrapper', () => {
   assert.ok(tc);
   assert.equal(tc.name, 'f');
 });
-
-// ---------------------------------------------------------------------------
-// repairJsonText
-// ---------------------------------------------------------------------------
-//
-// repairJsonText — non-destructive local JSON repair for the glitches
-// DeepSeek regularly produces: raw control characters inside strings and
-// trailing commas. Without the repair such calls fell into "malformed
-// tool-call markup" and caused a session reset / account rotation.
 
 test('repairJsonText: valid JSON is unchanged', () => {
   const input = '{"a":1,"b":[1,2]}';
@@ -660,13 +591,13 @@ test('repairJsonText: trailing comma before } and ]', () => {
 });
 
 test('repairJsonText: a comma inside a string is left alone', () => {
-  const input = '{"s":"a,}"}'; // "a,}" inside a string
+  const input = '{"s":"a,}"}'; 
   assert.equal(parser.repairJsonText(input), input);
   assert.doesNotThrow(() => JSON.parse(input));
 });
 
 test('repairJsonText: an escaped quote does not toggle the string state', () => {
-  // \" inside a string, then a raw \n must stay inside the string
+  
   const input = '{"s":"a\\"b\nc"}';
   const out = parser.repairJsonText(input);
   assert.doesNotThrow(() => JSON.parse(out));
@@ -678,10 +609,6 @@ test('repairJsonText: empty/non-string input is returned as is', () => {
   assert.equal(parser.repairJsonText(null), '');
   assert.equal(parser.repairJsonText(undefined), '');
 });
-
-// ---------------------------------------------------------------------------
-// parseJsonToolCandidate: repair during JSON.parse
-// ---------------------------------------------------------------------------
 
 test('parseJsonToolCandidate: fixes a trailing comma and logs -repaired', () => {
   const logs = [];
@@ -719,15 +646,6 @@ test('parseJsonToolCandidate: unrepairable JSON -> null', () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// repairUnescapedQuotes
-// ---------------------------------------------------------------------------
-//
-// The most damaging DeepSeek glitch: a raw `"` inside a string value (a big
-// `newText` full of `echo "..."`). It desyncs the brace scanner, so the whole
-// tool call was lost as plain text. repairJsonText cannot fix it; this pass
-// escapes the literal quotes that are not a legal end-of-value boundary.
-
 test('repairUnescapedQuotes: valid JSON is unchanged', () => {
   const input = '{"a":"b","c":"d"}';
   assert.equal(parser.repairUnescapedQuotes(input), input);
@@ -759,10 +677,6 @@ test('repairUnescapedQuotes: empty/non-string input is returned as is', () => {
   assert.equal(parser.repairUnescapedQuotes(undefined), '');
 });
 
-// ---------------------------------------------------------------------------
-// parseToolCall: repair end-to-end
-// ---------------------------------------------------------------------------
-
 test('parseToolCall: trailing comma in inline JSON', () => {
   const tc = parser.parseToolCall(
     'Ок: {"tool_call":{"name":"bash","arguments":{"command":"ls",},}}',
@@ -783,8 +697,6 @@ test('parseToolCall: raw newline in a command argument', () => {
   assert.equal(JSON.parse(tc.arguments).command, 'echo line1\nline2');
 });
 
-// The exact shape from the production log: a large `newText` full of raw
-// newlines/tabs AND unescaped quotes from `@echo "..."`.
 test('parseToolCall: raw quotes and raw newlines inside a large newText', () => {
   const input = '{"tool_call":{"name":"edit","arguments":{"path":"/x/Makefile","edits":[{"oldText":"A","newText":"# X\n\t@echo "=== DONE ==="\nclean:\n\t@echo "cleaned target/, and launcher""}]}}}';
   const tc = parser.parseToolCall(input, silentLog);
@@ -801,9 +713,6 @@ test('parseToolCall: escaped quotes inside a value still parse', () => {
   assert.equal(tc.name, 'edit');
 });
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 test('exported constants are defined and positive', () => {
   for (const key of [
     'MAX_TOOL_MARKUP_CHARS',
@@ -819,8 +728,7 @@ test('exported constants are defined and positive', () => {
 });
 
 test('exported limits are the same values as parser-limits.js', () => {
-  // lib/parser.js re-exports these from lib/parser-limits.js. Assert identity so
-  // a future duplicate definition cannot drift from the source of truth.
+  
   const limits = require('../lib/parser-limits');
   for (const key of [
     'MAX_TOOL_MARKUP_CHARS',
@@ -837,14 +745,6 @@ test('exported limits are the same values as parser-limits.js', () => {
 test('repairJsonText is exported and is a function', () => {
   assert.equal(typeof parser.repairJsonText, 'function');
 });
-
-// ---------------------------------------------------------------------------
-// repairXmlLikeKeys / parseToolCall: XML-like keys + glued literals
-// ---------------------------------------------------------------------------
-//
-// Production log shape: the model used attribute syntax for the call id and
-// glued the next key onto the id string literal, so the object never parsed
-// even after repairJsonText / repairUnescapedQuotes.
 
 test('repairXmlLikeKeys: attribute key becomes a JSON member', () => {
   const input = '{"tool_call":{ id="call_1""name":"read","arguments":{"path":"/x"}}}';
@@ -883,19 +783,6 @@ test('parseToolCall: bare arguments key glued to the previous value', () => {
   assert.deepEqual(JSON.parse(tc.arguments), { code: 'return a;' });
 });
 
-// ---------------------------------------------------------------------------
-// repairStrayClosingQuote / parseToolCall: value missing its closing quote
-// ---------------------------------------------------------------------------
-//
-// Production log shape (`[markup-dump] len=248`): the model wrote a numeric
-// value, then a stray `"` and then the object's closing braces:
-//
-//   {"tool_call":{"name":"read","arguments":{"path":"/x","limit":35"}}}
-//
-// That lone quote toggles the brace scanner's string state, so no balanced
-// object is extracted and every other repair is unreachable. The stray quote
-// must be dropped for the call to be recovered without a completion round.
-
 test('repairStrayClosingQuote: drops the quote before the trailing braces', () => {
   const input = '{"tool_call":{"name":"read","arguments":{"path":"/x","limit":35"}}}';
   const out = parser.repairStrayClosingQuote(input);
@@ -926,11 +813,6 @@ test('parseToolCall: stray-quote shape with surrounding prose (log dump len=248)
   assert.equal(args.offset, 730);
   assert.equal(args.limit, 35);
 });
-// ---------------------------------------------------------------------------
-// Fence guard: a tool marker inside a ``` block surrounded by prose is an
-// illustrative example, not a real call. A fence that is the whole message is
-// still a genuine request. Mirrors Rust's is_inside_code_fence.
-// ---------------------------------------------------------------------------
 
 test('parseToolCall: JSON tool_call inside a fence surrounded by prose is ignored', () => {
   const input = 'Пример:\n```json\n{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n```\nГотово.';

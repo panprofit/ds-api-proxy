@@ -1,12 +1,9 @@
 'use strict';
-// Unit tests for lib/account-status.js.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { parseRetryAfterMs } = require('../lib/account-status');
-
-// --- parseRetryAfterMs ------------------------------------------------------
 
 test('parseRetryAfterMs: null for falsy input', () => {
     assert.equal(parseRetryAfterMs(null), null);

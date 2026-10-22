@@ -1,7 +1,4 @@
 'use strict';
-// Detecting a rewritten conversation: when the client's `messages` array gets
-// shorter (a /compact summary replaces the previous turns), the remote DS
-// session must be dropped so it does not keep the pre-compaction context.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,9 +8,6 @@ const handlers = require('../lib/handlers');
 const sessions = require('../lib/sessions');
 const accounts = require('../lib/accounts');
 
-// These tests exercise the session-preserving branches, so they must send a
-// session id: an anonymous request (no headers) is ephemeral and the pipeline
-// would delete the session before the assertions run.
 function fakeReq() {
     return { headers: { 'x-session-id': 'dev-agent' }, socket: { remoteAddress: '127.0.0.1' }, on: () => {} };
 }

@@ -1,41 +1,5 @@
 #!/usr/bin/env node
-/*
-  DeepSeek Web login helper: opens a disposable browser profile, lets you log
-  in (or auto-fills credentials), and extracts the minimum auth metadata into
-  $DS_AUTH_DIR/<id>.json.
 
-  Two modes, same implementation:
-    npm run auth              visible browser, interactive (log in by hand)
-    npm run auth:headless     headless browser (passes --headless)
-
-  Why a browser at all
-  --------------------
-  POST /api/v0/users/login is protected by an AWS WAF JS-challenge. A plain
-  HTTP request gets `202 x-amzn-waf-action: challenge` and never reaches the
-  app; the challenge is solved by running the WAF's JS in a real browser
-  engine. There is no token-refresh endpoint upstream, so a fresh login is the
-  only way to mint credentials.
-
-  All configuration is read through lib/config.js (the single source of truth),
-  so this file never touches process.env directly. See lib/config.js for the
-  full list of DS_* variables.
-
-  Usage:
-    npm run auth
-    npm run auth:headless
-    npm run auth -- --email me@example.com
-    npm run auth:headless -- --email me@example.com
-    npm run auth:repair                     check all accounts, re-login broken ones
-    CHROME_PATH="$(which chromium)" npm run auth
-
-  Flags:
-    --email, -e <email>   auto-fill the login form; password is prompted
-    --headless, -H        run the browser headless
-    --repair              validate every account and offer a headless re-login
-    --account <id>        with --repair: only this account
-    --yes, -y             with --repair: skip the per-account confirmation
-    --help, -h            show this help
-*/
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -56,28 +20,17 @@ function isEmailShape(value) {
     return EMAIL_RE.test(String(value || '').trim());
 }
 
-// Name the saved auth file after the account id: the email hash when the login
-// email is known, otherwise the legacy token+cookie hash. Re-authenticating the
-// same account therefore overwrites its file, and the file name matches the id
-// used in logs, --account and the persisted state.
 function authFileName(email, auth) {
     const accountEmail = String(email || auth?.email || '').trim();
     if (accountEmail) return accounts.accountIdFromEmail(accountEmail);
     return accounts.accountIdFromCredentials(auth);
 }
 
-// Best-effort recovery of the login email from a legacy auth file name. Older
-// versions named files after the email slug, so an email-shaped basename still
-// yields the address; the current hashed names (and anything else) yield ''.
 function emailFromFileName(file) {
     const base = path.basename(String(file || ''), '.json');
     return isEmailShape(base) ? base : '';
 }
 
-// CloudFront rejects any request whose User-Agent contains "HeadlessChrome"
-// with HTTP 403, so a plain --headless run never reaches the login form. In
-// headless mode we present this ordinary desktop Chrome UA instead (see the
-// CDP setup in main).
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 function parseArgs(argv) {
@@ -172,7 +125,7 @@ function shellPatternSafe(s) {
 }
 
 function killExistingBrowser() {
-    // pkill lives at /usr/bin/pkill on both Linux and macOS.
+    
     if (!['linux', 'darwin'].includes(process.platform)) return;
     const port = config.get().authCdpPort;
     const patterns = [`--remote-debugging-port=${port}`, profileDir].map(shellPatternSafe);
@@ -217,9 +170,6 @@ function ask(q) {
     return new Promise((resolve) => rl.question(q, (ans) => { rl.close(); activeRl = null; resolve(ans); }));
 }
 
-// Close the pending readline prompt. Without this, losing the Promise.race in
-// the ENTER prompt leaves readline attached to stdin and keeps the Node event
-// loop alive, so the process hangs after cleanup instead of exiting.
 function closeAsk() {
     if (activeRl) {
         try { activeRl.close(); } catch {}
@@ -227,8 +177,6 @@ function closeAsk() {
     }
 }
 
-// Prompt for the password without echoing it. Uses raw mode on a TTY; when
-// stdin is not a TTY (piped input) it falls back to a normal line read.
 function askHidden(q) {
     return new Promise((resolve) => {
         const stdin = process.stdin;
@@ -340,18 +288,14 @@ function parseMaybeJson(s) {
     try { return JSON.parse(s); } catch { return null; }
 }
 
-// A DS bearer token is a long opaque string (JWT / hex). Reject anything that
-// is obviously NOT one, so a metadata value such as a numeric expiry timestamp
-// stored under a *token*-looking key cannot be mistaken for the credential.
 function looksLikeToken(value) {
     const v = String(value || '').trim();
     if (v.length < 20) return false;
-    // A pure number is a timestamp/counter (e.g. token_expire), never a token.
+    
     if (/^\d+$/.test(v)) return false;
     return true;
 }
 
-// Keys that merely *contain* "token" but hold metadata, not the credential.
 const TOKEN_METADATA_KEY = /(expire|expiry|expires|time|ttl|timestamp|issued|refresh|version)/i;
 
 function normalizeToken(raw) {
@@ -362,7 +306,7 @@ function normalizeToken(raw) {
         value = parsed.value || parsed.token || parsed.access_token || parsed.accessToken || '';
     }
     value = String(value || '').trim();
-    // Handle a double-encoded string (a JSON string wrapping the token).
+    
     if (/^".*"$/.test(value)) {
         const unwrapped = parseMaybeJson(value);
         if (typeof unwrapped === 'string') value = unwrapped.trim();
@@ -370,8 +314,6 @@ function normalizeToken(raw) {
     return looksLikeToken(value) ? value : '';
 }
 
-// Fill an <input> the React way: use the native value setter so React's
-// synthetic event system sees the change, then dispatch input/change events.
 async function setInputValue(cdp, selectorExpr, value) {
     const expr = `(() => {
         const el = ${selectorExpr};
@@ -388,7 +330,6 @@ async function setInputValue(cdp, selectorExpr, value) {
     return r.result?.value;
 }
 
-// Poll until the sign-in form is rendered (the SPA loads it asynchronously).
 async function waitForLoginForm(cdp, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -403,7 +344,7 @@ async function waitForLoginForm(cdp, timeoutMs) {
 }
 
 async function submitLogin(cdp) {
-    // Prefer a submit button; fall back to dispatching Enter on the password field.
+    
     const expr = `(() => {
         const byType = document.querySelector('button[type=submit]');
         if (byType) { byType.click(); return 'submit-button'; }
@@ -449,8 +390,7 @@ async function readPageAuth(cdp) {
         for (const store of stores) {
             for (const [k, v] of Object.entries(store)) {
                 if (!/token/i.test(k)) continue;
-                // Skip metadata keys like token_expire_time; only a key that
-                // plausibly holds the credential itself is considered.
+                
                 if (TOKEN_METADATA_KEY.test(k)) continue;
                 token = normalizeToken(v);
                 if (token) break;
@@ -476,11 +416,7 @@ async function readPageAuth(cdp) {
             }
         }
     }
-
-    // Fall back to a known-good wasm URL: the sha3 module is only fetched when
-    // the first message is sent, so it may be absent from `resources` if the
-    // user logged in but never sent one. upstream.js requires a non-empty
-    // wasmUrl to solve PoW, so this fallback keeps the saved config usable.
+    
     const wasmUrl =
         (pageState.resources || []).find((u) => /sha3.*\.wasm/.test(u)) ||
         'https://fe-static.deepseek.com/chat/static/sha3_wasm_bg.7b9ca65ddd.wasm';
@@ -488,10 +424,6 @@ async function readPageAuth(cdp) {
     return { token, cookie, wasmUrl };
 }
 
-// Open the disposable browser and capture credentials. Returns
-// { ok: true, filePath } on success, or { ok: false, reason } when nothing was
-// saved (browser closed, credentials not found). Throws on setup errors
-// (missing DS_AUTH_DIR / browser). Shared by the normal login and --repair.
 async function runLoginFlow({ headless = false, email = '', password = '' } = {}) {
     const cfg = config.get();
     if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
@@ -524,33 +456,20 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         '--disable-infobars',
         '--disable-dev-shm-usage',
     ];
-    // --no-sandbox is required for headless in restricted environments
-    // (containers/CI without user namespaces), where the Chromium zygote
-    // aborts with sys_chroot()/Zygote errors and the DevTools endpoint never
-    // comes up. This is a one-shot local login helper, not a browsing session,
-    // so the sandbox trade-off is acceptable. Visible mode keeps the sandbox
-    // unless running as root.
+    
     if (headless) args.push('--headless=new', '--disable-gpu', '--no-sandbox');
     else if (process.getuid && process.getuid() === 0) args.push('--no-sandbox');
-    // Start on a blank page and navigate via CDP (see below). Passing the
-    // sign-in URL as a browser argument would send its first request with the
-    // default HeadlessChrome User-Agent, which CloudFront answers with HTTP
-    // 403 before the page (and the WAF challenge) ever loads.
+    
     args.push('about:blank');
 
     const browser = spawn(browserPath, args, { stdio: 'ignore', detached: true });
     browser.unref();
-
-    // Track manual browser close (user clicks the X) so we can stop waiting and
-    // always clean up the disposable profile instead of leaving it behind.
+    
     let browserClosed = false;
     const browserExitPromise = new Promise((resolve) => {
         browser.on('exit', () => { browserClosed = true; closeAsk(); resolve(); });
     });
-
-    // Declared outside try so finally can always close the CDP WebSocket. An
-    // open CDP socket keeps the Node event loop alive, which would make the
-    // process hang after an early return (e.g. manual browser close).
+    
     let cdp = null;
 
     try {
@@ -563,10 +482,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         await cdp.send('Network.enable');
 
         if (headless) {
-            // Mask the headless fingerprint: a desktop UA (else CloudFront
-            // 403s) and no navigator.webdriver. The WAF challenge is still
-            // solved by the real JS engine; this only stops the request being
-            // rejected on sight.
+            
             await cdp.send('Network.setUserAgentOverride', {
                 userAgent: DESKTOP_UA,
                 acceptLanguage: 'en-US,en;q=0.9',
@@ -576,9 +492,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 source: 'Object.defineProperty(navigator, "webdriver", { get: () => undefined });',
             });
         }
-        // Navigate through CDP so the UA override above applies to the very
-        // first request. The AWS WAF JS-challenge then runs before the SPA
-        // renders, so allow a moment before polling for the form.
+        
         await cdp.send('Page.navigate', { url: signInUrl() });
         await sleep(1500);
 
@@ -589,7 +503,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 throw new Error('Sign-in form did not appear; the page may be blocked (CloudFront/WAF) or the layout changed.');
             }
             console.log('[auth] filling credentials...');
-            // The email/phone field has no name attribute; target by placeholder.
+            
             const emailSelector = `document.querySelector('input[placeholder*="Phone"], input[placeholder*="email" i], input[type=text]')`;
             const passwordSelector = `document.querySelector('input[type=password]')`;
             const r1 = await setInputValue(cdp, emailSelector, email);
@@ -603,8 +517,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         } else {
             console.log('\n[auth] Browser is open. Log in to DeepSeek in THIS separate window.');
             console.log('[auth] After logging in, send a short message to DeepSeek, for example: hi');
-            // Race the ENTER prompt against the browser being closed manually,
-            // so we never hang on the prompt after the user closes the window.
+            
             await Promise.race([
                 ask('[auth] Once you are logged in and have sent a test message, press ENTER here: '),
                 browserExitPromise,
@@ -614,8 +527,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
                 return { ok: false, reason: 'browser-closed' };
             }
         }
-
-        // Wait for a successful login: token + cookie present.
+        
         const deadline = Date.now() + cfg.loginTimeoutMs;
         let auth = null;
         let lastHref = '';
@@ -648,8 +560,7 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
         const authDir = path.resolve(cfg.authDir);
         fs.mkdirSync(authDir, { recursive: true });
         const accountEmail = String(email || '').trim();
-        // Persist the login identifier so the loader can key the account by a
-        // stable email hash instead of the rotating token+cookie pair.
+        
         if (accountEmail) auth.email = accountEmail;
         const fileName = authFileName(accountEmail, auth);
         if (accountEmail) {
@@ -668,13 +579,6 @@ async function runLoginFlow({ headless = false, email = '', password = '' } = {}
     }
 }
 
-// Probe one account against the cheapest authenticated endpoint. Returns:
-//   { status: 'ok' }                       credentials work
-//   { status: 'expired', detail }          auth expired / captcha / WAF block
-//   { status: 'error', detail }            network or unexpected upstream error
-// We use /chat/create_pow_challenge: it requires a valid session (so it detects
-// expired auth / captcha) but has no side effects (unlike /chat_session/create,
-// which would leak a remote session we do not clean up).
 async function probeAccount(account) {
     let resp;
     try {
@@ -696,9 +600,7 @@ async function probeAccount(account) {
     let json = null;
     try { json = text ? JSON.parse(text) : null; }
     catch { return { status: 'error', detail: 'non-JSON response (WAF/captcha page?)' }; }
-    // HTTP 200 without a challenge means the credentials are unusable. This
-    // mirrors lib/upstream.solvePowForPath, which throws auth_expired for the
-    // same condition, so repair and the proxy agree on what "expired" means.
+    
     if (!json?.data?.biz_data?.challenge) {
         const bizCode = json?.data?.biz_code;
         const msg = json?.data?.biz_msg || json?.msg || 'no PoW challenge in response';
@@ -707,9 +609,6 @@ async function probeAccount(account) {
     return { status: 'ok' };
 }
 
-// Validate every loaded account and, for each broken one, offer to re-login in
-// headless mode (requires a browser + --email for that account, or falls back
-// to asking the operator).
 async function runRepair(opts) {
     const cfg = config.get();
     if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
@@ -748,17 +647,13 @@ async function runRepair(opts) {
         process.exitCode = 1;
         return;
     }
-
-    // A browser is required for re-login, but only check for one lazily (after
-    // the operator confirms) so a missing browser does not abort the whole run.
+    
     const browserPath = resolveBrowserPath(cfg);
     const email = opts.email.trim();
 
     for (const r of expired) {
         const label = `${path.basename(r.account.file)} (id=${r.account.id})`;
-        // The email is stored in the auth config (or, for legacy files, in the
-        // email-shaped file name). Never ask for what the script already knows;
-        // --email overrides it for a file saved under an unhelpful name.
+        
         const acctEmail = email || r.account.config?.email || emailFromFileName(r.account.file);
         if (!acctEmail) {
             console.error(`[auth:repair] ${label}: no email in the auth config; add 'email' to the file or pass --email. Skipping.`);
@@ -778,8 +673,7 @@ async function runRepair(opts) {
 
         let login;
         try {
-            // Always headless: repair is unattended and the operator is at the
-            // terminal for the password, not sitting at a browser window.
+            
             login = await runLoginFlow({ headless: true, email: acctEmail, password });
         } catch (e) {
             console.error(`[auth:repair] ${label}: re-login failed: ${e.message}`);
@@ -789,9 +683,7 @@ async function runRepair(opts) {
             console.error(`[auth:repair] ${label}: re-login did not produce credentials (${login.reason}).`);
             continue;
         }
-        // The new file may be written under a different name than the broken
-        // one (e.g. the legacy file name was a hash). Verify the freshly saved file
-        // itself, then remove the stale file if it is now a different path.
+        
         const fresh = { id: accounts.accountIdForConfig(login.auth), file: login.filePath, config: login.auth, headers: accounts.buildBaseHeaders(login.auth) };
         process.stdout.write(`[auth:repair] ${label}: verifying new credentials... `);
         const verify = await probeAccount(fresh);
@@ -833,19 +725,14 @@ async function main() {
     if (headless && !explicitEmail) {
         throw new Error('--headless requires --email (there is no visible window to log in by hand).');
     }
-
-    // A typed email only names the saved account; autofill stays opt-in via
-    // --email because the form must be interacted with manually otherwise.
+    
     let email = explicitEmail;
     if (!headless && !email) {
         const typed = (await ask('[auth] Email to save with this account (blank to skip): ')).trim();
         if (isEmailShape(typed)) email = typed;
         else if (typed) console.warn('[auth] That does not look like an email; continuing without it.');
     }
-
-    // Password is always prompted, never read from the environment. Read it
-    // before opening the browser so the terminal is free and the profile is
-    // only created once credentials are in hand.
+    
     let password = '';
     if (explicitEmail) {
         password = await askHidden(`[auth] Password for ${explicitEmail}: `);
@@ -856,7 +743,6 @@ async function main() {
     if (!result.ok) process.exitCode = 2;
 }
 
-// On Ctrl+C / termination, clean up the disposable browser profile and process.
 let shuttingDown = false;
 function handleSignal(sig) {
     if (shuttingDown) return;

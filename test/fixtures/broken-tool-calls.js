@@ -1,17 +1,7 @@
 'use strict';
-// Corpus of real-world-shaped tool-call markup for the parser regression net.
-//
-// Each entry: { name, input, call } where `call` is:
-//   - { name, args }  -> parseToolCall(input) must return that call
-//   - null            -> parseToolCall(input) must return null (either genuinely
-//                        unparsable, or a truncation the recovery loop -- not
-//                        the parser -- is responsible for repairing)
-//
-// Add the motivating input here whenever a repair rule in lib/json-repair.js or
-// lib/parser-dsml.js is added, so it cannot silently regress.
 
 module.exports = [
-    // --- strict / well-formed ---------------------------------------------
+    
     {
         name: 'strict JSON tool_call',
         input: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}',
@@ -57,8 +47,7 @@ module.exports = [
         input: '<tool_calls>\n<invoke name="bash">\n<parameter name="command" string="true">cd x; echo "a"</invoke>\n</invoke>\n</tool_calls>',
         call: { name: 'bash', args: { command: 'cd x; echo "a"' } },
     },
-
-    // --- JSON repairs ------------------------------------------------------
+    
     {
         name: 'trailing comma in arguments',
         input: '{"tool_call":{"name":"read","arguments":{"path":"/t",}}}',
@@ -104,8 +93,7 @@ module.exports = [
         input: '{"tool_call":{"name":"read"}}',
         call: { name: 'read', args: {} },
     },
-
-    // --- rejects / truncations handed to the recovery loop -----------------
+    
     {
         name: 'plain prose mentioning a tool',
         input: 'I will read the file for you now.',

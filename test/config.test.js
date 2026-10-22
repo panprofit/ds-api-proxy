@@ -1,5 +1,4 @@
 'use strict';
-// Unit tests for the centralized config module.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -92,7 +91,7 @@ test('config.load: DS_ACCOUNT_STATE_FLUSH_MS default, override and clamp', () =>
 });
 
 test('config.load: token-rate adaptive throttle defaults, override and clamp', () => {
-    // Off by default: the adaptive part must be opted into explicitly.
+    
     assert.equal(config.load({}).tokenRateLimitPerMin, 0);
     assert.equal(config.load({ DS_TOKEN_RATE_LIMIT_PER_MIN: '6000' }).tokenRateLimitPerMin, 6000);
     assert.equal(config.load({ DS_TOKEN_RATE_LIMIT_PER_MIN: '-5' }).tokenRateLimitPerMin, 0);
@@ -124,7 +123,7 @@ test('config.get / reload round-trip', () => {
     const reloaded = config.reload({ PORT: '1234' });
     assert.equal(reloaded.port, 1234);
     assert.equal(config.get().port, 1234);
-    // restore
+    
     config.reload({});
     assert.ok(before);
 });

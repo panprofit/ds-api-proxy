@@ -1,7 +1,4 @@
 'use strict';
-// Conformance cases derived from deepseek-recipe 0.2.0 (MIT). They pin the
-// request/parser behavior ds-api-proxy mirrors; see
-// test/fixtures/recipe-conformance.js for the source cases.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

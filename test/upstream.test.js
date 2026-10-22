@@ -1,7 +1,4 @@
 'use strict';
-// Unit tests for lib/upstream.js. Network calls are exercised by stubbing the
-// global `fetch`; the module reads accounts via ./accounts, so we also stub the
-// remote host and upload cache. No real network access happens here.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -31,8 +28,6 @@ function jsonResponse(body, { status = 200, headers = {} } = {}) {
         text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
     };
 }
-
-// --- buildCompletionPayload -------------------------------------------------
 
 test('buildCompletionPayload: builds the exact DS request body', () => {
     const body = upstream.buildCompletionPayload({
@@ -84,8 +79,6 @@ test('dsChatCompletionWithPow: forwards thinkingEnabled into the payload', async
     assert.equal(seenBody.thinking_enabled, true);
 });
 
-// --- dsFetch ----------------------------------------------------------------
-
 test('dsFetch: prefixes the remote host and API base', async () => {
     let seenUrl = null;
     await withFetch(async (url) => { seenUrl = url; return jsonResponse({}); }, async () => {
@@ -103,7 +96,6 @@ test('dsFetch: attaches an AbortSignal timeout by default', async () => {
     assert.equal(seenSignal.constructor.name, 'AbortSignal');
 });
 
-// A caller-supplied signal must not disable the fetch timeout: both are live.
 test('dsFetch: keeps the fetch timeout when the caller passes a signal', async () => {
     const caller = new AbortController();
     let seenSignal = null;
@@ -129,8 +121,6 @@ test('dsFetch: an explicit timeoutMs replaces the ancillary default', async () =
     assert.deepEqual(observed, [7777]);
 });
 
-// --- dsChatCompletionWithPow ------------------------------------------------
-
 test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     let seenOpts = null;
     await withFetch(async (url, opts) => { seenOpts = { url, opts }; return jsonResponse({}); }, async () => {
@@ -144,8 +134,7 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.equal(seenOpts.opts.headers['X-DS-PoW-Response'], 'POW');
     assert.equal(seenOpts.opts.headers['X-Test'], '1');
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
-    // dsFetch attaches the signal (combining the caller signal and the
-    // timeout) rather than letting the completion run unbounded.
+    
     assert.equal(seenOpts.opts.signal.constructor.name, 'AbortSignal');
 });
 
@@ -164,16 +153,13 @@ test('dsChatCompletionWithPow: bounds the call by the request deadline, not the 
         });
         assert.ok(seenSignal);
         assert.equal(seenSignal.constructor.name, 'AbortSignal');
-        // The generic DS_FETCH_TIMEOUT_MS must not be applied on top of the
-        // completion's own deadline.
+        
         assert.deepEqual(observed, [123456]);
     } finally {
         AbortSignal.timeout = originalTimeout;
         config.reload({});
     }
 });
-
-// --- createRemoteSession ----------------------------------------------------
 
 test('createRemoteSession: returns the session id without deleting other sessions', async () => {
     const calls = [];
@@ -184,8 +170,7 @@ test('createRemoteSession: returns the session id without deleting other session
         const id = await upstream.createRemoteSession({ id: 'acct', headers: {} }, {}, 'test');
         assert.equal(id, 'sess-9');
     });
-    // Must NOT wipe unrelated sessions on the account: creating a new session
-    // for one agent must not destroy other agents' live sessions.
+    
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, `${DS_BASE}/chat_session/create`);
     assert.ok(!calls.some(c => c.url.endsWith('/chat_session/delete_all')));
@@ -200,10 +185,6 @@ test('createRemoteSession: throws when no id is returned', async () => {
     });
 });
 
-// Regression: an "ok" response without a session id, or a 401/403, means the
-// account is unusable (expired auth / captcha). The error must be tagged
-// `auth_expired` so runWithRecovery rotates to a different account instead of
-// failing the whole request.
 test('createRemoteSession: tags a missing session id as auth_expired', async () => {
     await withFetch(async () => jsonResponse({}), async () => {
         await assert.rejects(
@@ -221,8 +202,6 @@ test('createRemoteSession: tags HTTP 401 as auth_expired', async () => {
         );
     });
 });
-
-// --- deleteRemoteSession ----------------------------------------------------
 
 test('deleteRemoteSession: POSTs the session id and returns true on success', async () => {
     let seen = null;
@@ -262,8 +241,6 @@ test('deleteRemoteSession: swallows network errors and returns false', async () 
     });
 });
 
-// --- waitForFileReady -------------------------------------------------------
-
 test('waitForFileReady: resolves once the file reports SUCCESS', async () => {
     let n = 0;
     await withFetch(async () => {
@@ -285,8 +262,6 @@ test('waitForFileReady: throws on a failure status', async () => {
         );
     });
 });
-
-// --- assertPublicUrl --------------------------------------------------------
 
 test('assertPublicUrl: accepts public http(s) URLs', () => {
     assert.ok(upstream.assertPublicUrl('https://example.com/a.png'));
@@ -370,8 +345,6 @@ test('assertPublicUrlResolved: rejects when DNS fails', async () => {
     );
 });
 
-// --- resolveMessageAttachments ----------------------------------------------
-
 test('resolveMessageAttachments: uploads image_url parts and returns ids', async () => {
     uploadCache.getCache().clear();
     const account = { id: 'acct1', headers: {}, config: {} };
@@ -389,9 +362,7 @@ test('resolveMessageAttachments: uploads image_url parts and returns ids', async
         }
         return jsonResponse({});
     }, async () => {
-        // Stub solvePowForPath's WebAssembly dependency via a fake solver is not
-        // possible here; instead assert the unsupported-scheme failure path,
-        // which never reaches the network.
+        
         const res = await upstream.resolveMessageAttachments(
             [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'file:///x.png' } }] }],
             account,
@@ -504,21 +475,18 @@ test('resolveMessageAttachments: skips parts with no url and non-image parts', a
     assert.deepEqual(res, { fileIds: [], uploads: [], failures: [] });
 });
 
-// --- uploadCacheKey ---------------------------------------------------------
-
 test('uploadCacheKey: same content under different names dedupes to one key', () => {
     const account = { id: 'acct1' };
     const buffer = Buffer.from('same-bytes');
     const a = upstream.uploadCacheKey({ account, buffer, mime: 'image/png' });
-    // filename is not part of the key at all, so an identical buffer/mime yields
-    // an identical key regardless of what the file is called.
+    
     const b = upstream.uploadCacheKey({ account, buffer, mime: 'image/png' });
     assert.equal(a, b);
 });
 
 test('uploadCacheKey: identical name/size/mime but different content does NOT collide', () => {
     const account = { id: 'acct1' };
-    // Same byte length, different bytes.
+    
     const a = upstream.uploadCacheKey({ account, buffer: Buffer.from('AAAA'), mime: 'image/png' });
     const b = upstream.uploadCacheKey({ account, buffer: Buffer.from('BBBB'), mime: 'image/png' });
     assert.notEqual(a, b);
@@ -550,8 +518,6 @@ test('uploadCacheKey: a token refresh does not evict cached uploads for the same
     assert.equal(before, after);
 });
 
-// --- uploadFileToDS size guard ----------------------------------------------
-
 test('uploadFileToDS: rejects empty buffers', async () => {
     await assert.rejects(
         () => upstream.uploadFileToDS({ buffer: Buffer.alloc(0), filename: 'a.png', account: { id: 'a', headers: {} } }),
@@ -567,16 +533,8 @@ test('uploadFileToDS: rejects oversized buffers', async () => {
     );
 });
 
-// --- fetchRemoteFile --------------------------------------------------------
-//
-// fetchRemoteFile calls assertPublicUrlResolved() first, which skips DNS for
-// IP literals (see the `net.isIP(host)` early return). Using 8.8.8.8 as the
-// host therefore keeps these tests fully offline while still exercising the
-// real SSRF guard + size-capping + redirect logic.
-
 function binaryResponse(buffer, { status = 200, headers = {} } = {}) {
-    // fetch Response shape needed by readBodyWithLimit: headers.get + body
-    // (async-iterable) or arrayBuffer().
+    
     return {
         ok: status >= 200 && status < 300,
         status,
@@ -707,8 +665,6 @@ test('fetchRemoteFile: rejects a redirect to a private address (SSRF on hop)', a
     });
 });
 
-// --- loadModule / solvePOW --------------------------------------------------
-
 test('loadModule: throws without a wasmUrl', async () => {
     await assert.rejects(() => upstream.loadModule(''), /missing wasmUrl/);
 });
@@ -726,8 +682,7 @@ test('loadModule: throws on invalid WASM bytes and does not cache the failure', 
     const wasmUrl = 'https://8.8.8.8/bad-pow.wasm';
     await withFetch(async () => binaryResponse(Buffer.from('not-wasm')), async () => {
         await assert.rejects(() => upstream.loadModule(wasmUrl));
-        // A failed compile must be evicted from the module cache so a retry
-        // can fetch fresh bytes instead of reusing a rejected promise.
+        
         await assert.rejects(() => upstream.loadModule(wasmUrl));
     });
 });
@@ -742,8 +697,6 @@ test('buildCompletionPayload: searchEnabled overrides the default', () => {
         true
     );
 });
-
-// --- refreshAccountToken ----------------------------------------------------
 
 test('refreshAccountToken: stores the rotated token in memory for later calls', async () => {
     config.reload({ DS_TOKEN_REFRESH_INTERVAL_MS: '60000' });

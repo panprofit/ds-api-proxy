@@ -1,9 +1,4 @@
 'use strict';
-// Covers the remote-session-delete wiring in index.js (trackDelete /
-// deleteRemoteSessionForAccount), which the server tests never reach: the
-// deleter is registered at module load, so requiring index.js in-process
-// exercises it without starting a listener. upstream.deleteRemoteSession is
-// swapped BEFORE the require, because index.js destructures it at load time.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -16,7 +11,6 @@ const accounts = require('../lib/accounts');
 const config = require('../lib/config');
 const sessions = require('../lib/sessions');
 
-// Swap the upstream delete before index.js captures the reference.
 const calls = [];
 let behaviour = async () => true;
 upstream.deleteRemoteSession = async (account, headers, sessionId) => {
@@ -24,14 +18,12 @@ upstream.deleteRemoteSession = async (account, headers, sessionId) => {
     return behaviour(account, headers, sessionId);
 };
 
-// Load one real account from a throwaway auth dir so getAccountById() resolves.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-index-'));
 fs.writeFileSync(path.join(tmp, 'a.json'), JSON.stringify({ token: 't', cookie: 'c' }));
 config.reload({ DS_AUTH_DIR: tmp });
 accounts.loadDSConfig({ fatal: false });
 const account = accounts.getAccounts()[0];
 
-// Registering the deleter happens as a side effect of the require.
 require('../index');
 
 function makeSessionWithRemote(accountId) {

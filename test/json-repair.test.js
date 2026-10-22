@@ -1,7 +1,4 @@
 'use strict';
-// Direct unit tests for lib/json-repair.js: balanced-JSON extraction, the
-// repair heuristics and the candidate -> tool-call coercion. These previously
-// had no dedicated file (only indirect coverage via parser.test.js).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,14 +6,12 @@ const assert = require('node:assert/strict');
 const jr = require('../lib/json-repair');
 const { MAX_TOOL_ARGUMENT_CHARS, MAX_TOOL_JSON_CANDIDATES } = require('../lib/parser-limits');
 
-// --- extractBalancedJsonObjects --------------------------------------------
-
 test('extractBalancedJsonObjects: finds multiple objects in order', () => {
     assert.deepEqual(jr.extractBalancedJsonObjects('{"a":1} and {"b":2}'), ['{"a":1}', '{"b":2}']);
 });
 
 test('extractBalancedJsonObjects: a stray unclosed opener is skipped', () => {
-    // A leading `{sh ...` must not discard a later valid object.
+    
     const out = jr.extractBalancedJsonObjects('{sh ... then {"ok":true}');
     assert.deepEqual(out, ['{"ok":true}']);
 });
@@ -30,8 +25,6 @@ test('extractBalancedJsonObjects: honours the maxObjects cap', () => {
 test('extractBalancedJsonObjects: empty string yields no objects', () => {
     assert.deepEqual(jr.extractBalancedJsonObjects(''), []);
 });
-
-// --- repairJsonText --------------------------------------------------------
 
 test('repairJsonText: escapes raw control characters inside strings', () => {
     const broken = '{"a":"line1\nline2"}';
@@ -55,8 +48,6 @@ test('repairJsonText: returns the input unchanged when nothing applies', () => {
     assert.equal(jr.repairJsonText(''), '');
 });
 
-// --- repairUnescapedQuotes -------------------------------------------------
-
 test('repairUnescapedQuotes: escapes a data quote inside a value', () => {
     const broken = '{"tool_call":{"name":"bash","arguments":{"command":"echo "hi""}}}';
     const out = jr.repairUnescapedQuotes(broken);
@@ -67,8 +58,6 @@ test('repairUnescapedQuotes: leaves already-valid JSON unchanged', () => {
     const ok = '{"a":"b"}';
     assert.equal(jr.repairUnescapedQuotes(ok), ok);
 });
-
-// --- repairXmlLikeKeys -----------------------------------------------------
 
 test('repairXmlLikeKeys: turns attr syntax into JSON members', () => {
     const out = jr.repairXmlLikeKeys('{ id="call_1"}');
@@ -95,8 +84,6 @@ test('repairXmlLikeKeys: quotes a bare key glued to the previous value', () => {
     });
 });
 
-// --- repairStrayClosingQuote -----------------------------------------------
-
 test('repairStrayClosingQuote: drops a stray quote before the closers', () => {
     const broken = '{"tool_call":{"name":"read","arguments":{"limit":35"}}}';
     const out = jr.repairStrayClosingQuote(broken);
@@ -107,8 +94,6 @@ test('repairStrayClosingQuote: ignores text without a tool-call shape', () => {
     const prose = 'hello 35"} world';
     assert.equal(jr.repairStrayClosingQuote(prose), prose);
 });
-
-// --- repairNestedStringValue -----------------------------------------------
 
 test('repairNestedStringValue: re-escapes a nested body with raw quotes', () => {
     const broken = '{"tool_call":{"name":"bash","arguments":{"command":"node -e ' +
@@ -124,8 +109,6 @@ test('repairNestedStringValue: leaves a valid nested object alone', () => {
     assert.equal(jr.repairNestedStringValue(ok), ok);
 });
 
-// --- completeJsonClosers ---------------------------------------------------
-
 test('completeJsonClosers: appends the missing closers', () => {
     assert.equal(jr.completeJsonClosers('{"a":{"b":1}'), '{"a":{"b":1}}');
     assert.equal(jr.completeJsonClosers('{"a":[1,2'), '{"a":[1,2]}');
@@ -138,13 +121,11 @@ test('completeJsonClosers: null when not a plausible truncated body', () => {
     assert.equal(jr.completeJsonClosers('{"a":"open'), null, 'ends inside a string');
 });
 
-// --- splitConcatenatedToolCalls --------------------------------------------
-
 test('splitConcatenatedToolCalls: splits two glued calls into a comma-joined pair', () => {
     const a = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
     const b = '{"tool_call":{"name":"bash","arguments":{"command":"ls"}}}';
     const out = jr.splitConcatenatedToolCalls(a + b);
-    // Repaired output is a comma-joined sequence of balanced objects.
+    
     const objs = jr.extractBalancedJsonObjects(out);
     assert.equal(objs.length, 2);
 });
@@ -153,8 +134,6 @@ test('splitConcatenatedToolCalls: a single call is returned unchanged', () => {
     const one = '{"tool_call":{"name":"read","arguments":{}}}';
     assert.equal(jr.splitConcatenatedToolCalls(one), one);
 });
-
-// --- buildToolCall ---------------------------------------------------------
 
 test('buildToolCall: serializes object arguments', () => {
     const tc = jr.buildToolCall('read', { path: '/x' });
@@ -181,8 +160,6 @@ test('buildToolCall: null/undefined arguments become an empty object', () => {
     assert.deepEqual(jr.buildToolCall('read', null), { name: 'read', arguments: '{}' });
 });
 
-// --- coerceToolCallObject --------------------------------------------------
-
 test('coerceToolCallObject: unwraps tool_call / function_call / tool_calls[]', () => {
     assert.equal(jr.coerceToolCallObject({ tool_call: { name: 'a', arguments: {} } }).name, 'a');
     assert.equal(jr.coerceToolCallObject({ function_call: { name: 'b', arguments: {} } }).name, 'b');
@@ -198,8 +175,6 @@ test('coerceToolCallObject: bare objects only when allowBare', () => {
     assert.equal(jr.coerceToolCallObject({ name: 'a', arguments: {} }), null);
     assert.equal(jr.coerceToolCallObject({ name: 'a', arguments: {} }, { allowBare: true }).name, 'a');
 });
-
-// --- parseJsonToolCandidate + diagnostics ----------------------------------
 
 test('parseJsonToolCandidate: parses a direct call and clears the error slot', () => {
     jr.resetJsonParseError();

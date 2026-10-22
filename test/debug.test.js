@@ -1,6 +1,4 @@
 'use strict';
-// Unit tests for lib/debug.js: the DS_DEBUG switch and the two log helpers.
-// Every case injects an env object, so the real process.env is never touched.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

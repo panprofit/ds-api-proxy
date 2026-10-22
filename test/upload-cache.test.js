@@ -1,6 +1,4 @@
 'use strict';
-// Unit tests for lib/upload-cache.js. The module owns a singleton Map, so
-// each test clears it first.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -69,8 +67,7 @@ test('upload-cache: UPLOAD_CACHE_TTL_MS is a positive finite number', () => {
 });
 
 test('upload-cache: sweep() honors a config.reload() of DS_UPLOAD_CACHE_TTL_MS', () => {
-    // The default TTL is hours; reload it to something tiny and confirm sweep()
-    // reads the live value rather than the load-time snapshot.
+    
     reset();
     const now = Date.now();
     uploadCache.set('edge', { id: 'f1', cachedAt: now - 60_000 });

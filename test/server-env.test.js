@@ -1,7 +1,4 @@
 'use strict';
-// Startup behaviour of index.js when the environment is misconfigured or
-// partially set. The server runs in a child process so process.exit cannot
-// take down the test runner.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,7 +8,6 @@ const net = require('node:net');
 
 const SERVER = path.join(__dirname, '..', 'index.js');
 
-// Pick a free TCP port by binding an ephemeral listener, then releasing it.
 function freePort() {
     return new Promise((resolve, reject) => {
         const srv = net.createServer();
@@ -23,7 +19,6 @@ function freePort() {
     });
 }
 
-// Start the real server on `port` and wait until it logs that it is listening.
 async function startServer(port, extraEnv = {}) {
     const child = spawn(process.execPath, [SERVER], {
         env: {
@@ -49,9 +44,7 @@ async function startServer(port, extraEnv = {}) {
 }
 
 test('server: reports a bad DS_AUTH_DIR at startup but still listens', async () => {
-    // /nonexistent is not a valid auth dir. The startup audit must call that
-    // out (so a misconfiguration is obvious immediately), yet the server must
-    // still start: requests are rejected later with a clear 503, not a crash.
+    
     const port = await freePort();
     const { child, log } = await startServer(port);
     try {
@@ -91,18 +84,6 @@ test('server: warns that CORS denies all origins on a non-loopback bind', async 
         child.kill('SIGTERM');
     }
 });
-
-// --- Router smoke tests (live server) ---------------------------------------
-//
-// server.smoke.test.js asserts the router *source* has the right shape by
-// grepping index.js. These tests instead boot the real server and exercise
-// the routing table over HTTP, so a regression in the actual request handling
-// (wrong status, missing CORS header, skipped body limit) is caught even when
-// the source still looks right.
-//
-// No auth accounts exist (DS_AUTH_DIR=/nonexistent), but every case below is
-// rejected *before* the code path that needs an account: routing, CORS
-// preflight, body-size and JSON validation all run first.
 
 async function withServer(fn, extraEnv = {}) {
     const port = await freePort();
@@ -169,8 +150,7 @@ test('router: OPTIONS preflight returns 204 with CORS headers', async () => {
 });
 
 test('router: OPTIONS is answered even for an unknown path', async () => {
-    // CORS is applied before routing, so a browser preflight never gets a bare
-    // 404 without CORS headers (which the browser reports as a CORS error).
+    
     await withServer(async (base) => {
         const res = await fetch(`${base}/nope`, { method: 'OPTIONS' });
         assert.equal(res.status, 204);
@@ -218,9 +198,7 @@ test('router: a JSON array body is 400 on both endpoints', async () => {
 });
 
 test('router: a body over DS_MAX_BODY_BYTES returns 413 payload_too_large', async () => {
-    // readRequestBody() must drain-and-report rather than destroy the socket,
-    // otherwise the router's 413 never reaches the client. The client should
-    // read a real HTTP response with the payload_too_large error body.
+    
     await withServer(async (base) => {
         const res = await fetch(`${base}/v1/chat/completions`, {
             method: 'POST',

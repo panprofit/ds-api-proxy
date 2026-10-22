@@ -1,7 +1,4 @@
 'use strict';
-// Unit tests for the extracted request handlers. These exercise the pure-ish
-// pieces (agent-id resolution, body reading) without starting the HTTP server
-// or loading auth config.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,8 +6,6 @@ const { EventEmitter } = require('node:events');
 
 const handlers = require('../lib/handlers');
 const sessions = require('../lib/sessions');
-
-// --- resolveAgentId ---------------------------------------------------------
 
 function fakeReq({ headers = {}, remoteAddress = '10.0.0.9' } = {}) {
     return { headers, socket: { remoteAddress } };
@@ -53,8 +48,6 @@ test('resolveAgentId: ignoreAgentSession forces ephemeral even when a session he
     }
 });
 
-// --- resolveThinkingEnabled ------------------------------------------------
-
 test('resolveThinkingEnabled: absent reasoning_effort -> disabled', () => {
     assert.equal(handlers.resolveThinkingEnabled({}), false);
     assert.equal(handlers.resolveThinkingEnabled({ messages: [] }), false);
@@ -95,8 +88,6 @@ test('parseChatRequest: rejects unknown thinking and effort values', () => {
     }
 });
 
-// --- readRequestBody --------------------------------------------------------
-
 function requestWith(chunks, { errorAfter = false } = {}) {
     const req = new EventEmitter();
     process.nextTick(() => {
@@ -120,8 +111,7 @@ test('readRequestBody: marks tooLarge past the cap', async () => {
 });
 
 test('readRequestBody: a size violation does not destroy the socket', async () => {
-    // The router needs the connection alive to write its 413; destroying it
-    // here would make the client see ECONNRESET instead of a status code.
+    
     const req = requestWith(['xxxxx', 'yyyyy']);
     let destroyed = false;
     req.destroy = () => { destroyed = true; };
@@ -148,17 +138,13 @@ test('readRequestBody: a stream error is reported as errored, not tooLarge', asy
 });
 
 test('readRequestBody: times out without destroying the socket (router writes the 408)', async () => {
-    // A client that opens the request but never finishes the body must not hold
-    // the handler forever: the read times out and the caller is told timedOut
-    // so it can reply 408. The socket must stay open for that reply, so
-    // readRequestBody stops reading and drains instead of destroying it.
+    
     const req = new EventEmitter();
     let destroyed = false;
     req.destroy = () => { destroyed = true; };
     let resumed = false;
     req.resume = () => { resumed = true; };
-    // readRequestBody's timeout timer is unref'd, so keep the loop alive with a
-    // real (ref'd) timer while we await the read timeout.
+    
     const keepAlive = setInterval(() => {}, 1000);
     let result;
     try {
@@ -173,8 +159,6 @@ test('readRequestBody: times out without destroying the socket (router writes th
     assert.equal(destroyed, false, 'the socket must survive so the router can send 408');
     assert.equal(resumed, true, 'the remaining body should be drained after a timeout');
 });
-
-// --- parseChatRequest -------------------------------------------------------
 
 test('parseChatRequest: rejects a non-object body', () => {
     for (const bad of ['"str"', '42', 'true', 'null']) {
@@ -217,16 +201,14 @@ test('parseChatRequest: skips null/non-object message entries', () => {
 });
 
 test('readRequestBody: measures the cap in bytes, not UTF-16 code units', async () => {
-    // A 2-byte char is 1 JS string unit but 2 bytes; a 4-byte emoji is 2 units
-    // but 4 bytes. The cap must count bytes.
-    const twoByte = '\u00e9'; // 2 bytes, .length === 1
+    
+    const twoByte = '\u00e9'; 
     const { tooLarge } = await handlers.readRequestBody(requestWith([twoByte.repeat(4)]), 6);
     assert.equal(tooLarge, true, '8 bytes should exceed a 6-byte cap');
 });
 
 test('readRequestBody: preserves multibyte chars split across chunk boundaries', async () => {
-    // Emoji split byte-wise across two chunks. Decoding each chunk separately
-    // would corrupt it; buffering then decoding must not.
+    
     const emoji = Buffer.from('\u{1F600}', 'utf8');
     const a = emoji.subarray(0, 2);
     const b = emoji.subarray(2);
@@ -237,8 +219,6 @@ test('readRequestBody: preserves multibyte chars split across chunk boundaries',
     assert.equal(tooLarge, false);
     assert.equal(body, '\u{1F600}');
 });
-
-// --- sendOpenAIStream -------------------------------------------------------
 
 function fakeRes() {
     return {
@@ -370,8 +350,6 @@ test('sendOpenAIStream: a length finish_reason is preserved', () => {
     assert.equal(final.choices[0].finish_reason, 'length');
 });
 
-// --- startStreamKeepAlive ---------------------------------------------------
-
 test('startStreamKeepAlive: disabled for interval 0', () => {
     const res = fakeRes();
     const stop = handlers.startStreamKeepAlive(res, 0);
@@ -401,8 +379,6 @@ test('startStreamKeepAlive: a throwing write does not crash the timer', async ()
     await new Promise(r => setTimeout(r, 20));
     stop();
 });
-
-// --- applyCors --------------------------------------------------------------
 
 const config = require('../lib/config');
 
@@ -434,14 +410,12 @@ test('applyCors: denies all browser origins on a non-loopback bind with no allow
         const res = fakeRes();
         handlers.applyCors({ headers: { origin: 'https://app.example' } }, res);
         assert.equal(res.headers['Access-Control-Allow-Origin'], undefined);
-        // Vary is still emitted so shared caches keep variants separate.
+        
         assert.equal(res.headers['Vary'], 'Origin');
     } finally {
         config.reload();
     }
 });
-
-// --- writeError -------------------------------------------------------------
 
 function errorRes() {
     const res = fakeRes();
@@ -504,8 +478,7 @@ test('writeError: an aborted SSE write does not throw', () => {
 });
 
 test('writeError: a timeout resets the active session and reports it', () => {
-    // A timeout with an active session must surface the failed session details
-    // so the operator can see which conversation was dropped.
+    
     const res = errorRes();
     const session = sessions.createSession();
     session.id = 'remote-9';
@@ -522,8 +495,6 @@ test('writeError: a timeout resets the active session and reports it', () => {
     assert.equal(json.error.account, 'acct-1');
     assert.equal(session.id, null, 'the failed session must be reset');
 });
-
-// --- sendOpenAIStream: obfuscation padding --------------------------------
 
 test('sendOpenAIStream: no obfuscation field by default', () => {
     const res = fakeRes();
@@ -548,7 +519,7 @@ test('sendOpenAIStream: obfuscation pads every choice-bearing chunk', () => {
     const withChoices = chunks.filter(c => c.choices && c.choices.length > 0);
     assert.ok(withChoices.length > 0);
     assert.ok(withChoices.every(c => typeof c.obfuscation === 'string' && c.obfuscation.length > 0));
-    // The padding is top-level, never inside delta.
+    
     assert.ok(withChoices.every(c => c.choices[0].delta.obfuscation === undefined));
 });
 
@@ -568,8 +539,6 @@ test('sendOpenAIStream: obfuscation padding is random per chunk', () => {
     assert.ok(new Set(pads).size > 1, 'padding must differ between chunks');
 });
 
-// --- resolveSearchEnabled --------------------------------------------------
-
 test('resolveSearchEnabled: web_search_options forces search on', () => {
     assert.equal(handlers.resolveSearchEnabled({ web_search_options: {} }, { defaultSearchEnabled: false }), true);
     assert.equal(handlers.resolveSearchEnabled({ web_search_options: {} }, { defaultSearchEnabled: true }), true);
@@ -584,8 +553,6 @@ test('resolveSearchEnabled: null web_search_options does not force on', () => {
     assert.equal(handlers.resolveSearchEnabled({ web_search_options: null }, { defaultSearchEnabled: false }), false);
 });
 
-// --- normalizeStop ----------------------------------------------------------
-
 test('normalizeStop: string -> single-element array', () => {
     assert.deepEqual(handlers.normalizeStop('STOP'), ['STOP']);
 });
@@ -599,8 +566,6 @@ test('normalizeStop: absent / invalid -> []', () => {
     assert.deepEqual(handlers.normalizeStop(null), []);
     assert.deepEqual(handlers.normalizeStop(42), []);
 });
-
-// --- resolveTools / resolveToolChoice ---------------------------------------
 
 test('resolveTools: keeps the tools array and maps legacy functions', () => {
     const tools = [{ type: 'function', function: { name: 'a' } }];

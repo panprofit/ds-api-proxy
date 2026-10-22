@@ -1,7 +1,4 @@
 'use strict';
-// Unit tests for lib/metrics.js. The counters are a tiny dependency-free
-// singleton, so these tests only check the increment/snapshot contract that the
-// /health report and the request path rely on.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -29,7 +26,7 @@ test('createMetrics: inc increments a known counter and ignores unknown names', 
     const m = createMetrics();
     m.inc('requests');
     m.inc('requests', 4);
-    m.inc('not-a-counter', 100); // must be a no-op, not create a key
+    m.inc('not-a-counter', 100); 
     const snap = m.snapshot();
     assert.equal(snap.requests, 5);
     assert.equal(Object.prototype.hasOwnProperty.call(snap, 'not-a-counter'), false);

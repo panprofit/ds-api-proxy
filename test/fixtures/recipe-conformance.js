@@ -1,10 +1,5 @@
 'use strict';
-// Behavioral fixtures derived from deepseek-recipe 0.2.0 (MIT).
-//
-// They pin the protocol semantics ds-api-proxy mirrors. The tests load these
-// cases directly; no Rust code or model weights are involved.
 
-// Chat Completions resolution: `thinking` > reasoning_effort > default off.
 const thinking = [
     { name: 'default-off', params: {}, enabled: false },
     { name: 'effort-none', params: { reasoning_effort: 'none' }, enabled: false },
@@ -22,7 +17,6 @@ const thinking = [
     { name: 'thinking-enabled-wins', params: { thinking: { type: 'enabled' }, reasoning_effort: 'none' }, enabled: true },
 ];
 
-// Responses resolution: reasoning.effort > top-level reasoning_effort > default.
 const responsesThinking = [
     { name: 'default-off', params: {}, enabled: false },
     { name: 'nested-none', params: { reasoning: { effort: 'none' } }, enabled: false },
@@ -33,8 +27,6 @@ const responsesThinking = [
     { name: 'nested-none-wins', params: { reasoning: { effort: 'none' }, reasoning_effort: 'max' }, enabled: false },
 ];
 
-// Numeric effort scores from the V4.1 template (low=50, high/xhigh=75,
-// max=100); enabled thinking without an effort defaults to high.
 const effortScores = [
     { name: 'none', params: { reasoning_effort: 'none' }, score: null },
     { name: 'minimal', params: { reasoning_effort: 'minimal' }, score: 50 },
@@ -48,8 +40,6 @@ const effortScores = [
     { name: 'thinking-disabled', params: { thinking: { type: 'disabled' }, reasoning_effort: 'max' }, score: null },
 ];
 
-// Strict schema normalization: required lists every property, additional
-// properties are forbidden, and $defs survive so $ref stays resolvable.
 const strictSchemas = [
     {
         name: 'flat-object',
@@ -116,7 +106,6 @@ const invalidStrictSchemas = [
     { name: 'unknown-required', schema: { type: 'object', properties: { x: { type: 'string' } }, required: ['y'] }, error: "Required property 'y'" },
 ];
 
-// V4.1 response-format block for structured output.
 const responseFormats = [
     {
         name: 'json-object',
@@ -130,8 +119,6 @@ const responseFormats = [
     },
 ];
 
-// DSML spellings from the V4.1 template. V4.1 writes a leading space before
-// the tag name; the parser also accepts the older spelling without it.
 const D = '\uFF5CDSML\uFF5C';
 
 const dsml = [

@@ -1,10 +1,4 @@
 'use strict';
-// Coverage-focused tests for the PoW challenge solver and the attachment
-// upload path in lib/upstream.js. Those branches were previously reachable
-// only through higher-level flows, so they sat uncovered. A tiny real WASM
-// module (POW_WASM_HEX) stubs the pow-wasm ABI solvePOW() calls, which lets
-// solvePOW()/solvePowForPath()/uploadFileToDS() run end-to-end with only the
-// global fetch stubbed — no network and no production wasm.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -32,12 +26,6 @@ function jsonResponse(body, { status = 200, headers = {} } = {}) {
     };
 }
 
-// Minimal valid WASM exposing the three exports solvePOW() uses:
-//   __wbindgen_export_0(n, align) -> 16   (a scratch pointer)
-//   __wbindgen_add_to_stack_pointer(d) -> 0
-//   wasm_solve(sp, cP, lC, pP, lP, difficulty) -> writes code=1, answer=42.0
-// Built once by hand and committed as a constant so the test stays
-// dependency-free.
 const POW_WASM_HEX =
     '0061736d0100000001150360027f7f017f60017f017f60067f7f7f7f7f7f000304030001020503010001' +
     '074f04066d656d6f72790200135f5f7762696e6467656e5f6578706f72745f3000001f5f5f7762696e64' +
@@ -71,8 +59,6 @@ function powChallenge() {
     };
 }
 
-// --- readDSJsonResponse -----------------------------------------------------
-
 test('readDSJsonResponse: an empty body yields json=null without throwing', async () => {
     const out = await upstream.readDSJsonResponse(jsonResponse('', { status: 200 }), 'create', { id: 'a', failures: 0 });
     assert.equal(out.json, null);
@@ -87,8 +73,6 @@ test('readDSJsonResponse: a non-JSON body marks the account and throws', async (
     );
     assert.equal(account.failures, 1);
 });
-
-// --- solvePowForPath / solvePOW --------------------------------------------
 
 test('solvePowForPath: solves the challenge and returns a base64 PoW header', async () => {
     const calls = [];
@@ -141,8 +125,6 @@ test('solvePowForPath: a missing wasmUrl throws with guidance', async () => {
     });
 });
 
-// --- deleteRemoteSession: 401 cooldown --------------------------------------
-
 test('deleteRemoteSession: a 401 marks the account for cooldown', async () => {
     const account = { id: 'acct', failures: 0, cooldownUntil: 0 };
     await withFetch(async () => jsonResponse('unauthorized', { status: 401, headers: { 'retry-after': '3' } }), async () => {
@@ -152,8 +134,6 @@ test('deleteRemoteSession: a 401 marks the account for cooldown', async () => {
     assert.equal(account.failures, 1);
     assert.ok(account.cooldownUntil > Date.now());
 });
-
-// --- buildUploadBody / uploadFileToDS ---------------------------------------
 
 test('buildUploadBody: puts the buffer in the `file` field with the filename', async () => {
     const form = await upstream.buildUploadBody(Buffer.from('data'), 'a.png', 'image/png');
@@ -187,8 +167,7 @@ test('uploadFileToDS: uploads, polls to SUCCESS, and serves the second call from
         assert.equal(res.file.status, 'SUCCESS');
     });
     assert.equal(calls.filter(u => u.endsWith('/file/upload_file')).length, 1);
-
-    // Second identical upload must hit the cache: no further fetch.
+    
     const res2 = await upstream.uploadFileToDS({ buffer: Buffer.from('PNG'), filename: 'a.png', mime: 'image/png', account });
     assert.equal(res2.id, 'file-1');
 });
@@ -247,8 +226,6 @@ test('uploadFileToDS: a failing fetch_files poll does not lose the file id', asy
     });
 });
 
-// --- waitForFileReady -------------------------------------------------------
-
 test('waitForFileReady: aborts when shouldAbort() returns true', async () => {
     await assert.rejects(
         () => upstream.waitForFileReady('f1', { headers: {} }, '', { shouldAbort: () => true }),
@@ -268,8 +245,6 @@ test('waitForFileReady: retries after a transient poll error, then succeeds', as
     });
 });
 
-// --- fetchFilesFromDS -------------------------------------------------------
-
 test('fetchFilesFromDS: a 401 marks the account and throws', async () => {
     const account = { id: 'acct-ff', headers: {}, failures: 0, cooldownUntil: 0 };
     await withFetch(async () => jsonResponse('nope', { status: 401, headers: { 'retry-after': '1' } }), async () => {
@@ -286,7 +261,7 @@ test('waitForFileReady: logs and retries while the file is not visible yet', asy
     let n = 0;
     await withFetch(async () => {
         n++;
-        // First poll: the file list is empty (file not visible yet).
+        
         if (n === 1) return jsonResponse({ data: { biz_data: { files: [] } } });
         return jsonResponse({ data: { biz_data: { files: [{ id: 'f1', status: 'SUCCESS' }] } } });
     }, async () => {

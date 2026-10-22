@@ -116,12 +116,14 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
   for the tests that import them and do NOT track `reload()`.
 - Modules are singletons where noted (`accounts`, `sessions`); tests must
   snapshot/restore their mutable arrays rather than re-require the module graph.
-- Comments explain *why*, not *what*. Match the surrounding density: this repo
-  is heavily commented on purpose.
-- **Comments must justify their existence.** It is strictly FORBIDDEN to write
-  comments on the principle of "a comment is useful if the information is true
-  and relevant". Use this rule instead: no comment by default — a comment must
-  earn the right to exist.
+- **Comments are BANNED.** Any comment of any kind (`//`, `/* */`, `/** */`,
+  inline or block, TODO/FIXME included) is an ESLint error
+  (`ban-comments/ban-comments`) and must not be added. Express intent through
+  naming, structure and tests instead. The only tolerated exceptions are ESLint
+  directives (`// eslint-disable-next-line ...`, `/* global ... */`), which the
+  rule allows so rules can still be switched off pointwise.
+- `eslint.config.js` itself carries no comments either — it is linted by the
+  same rule.
 - Keep public exports stable; if you remove one, remove its tests and the
   `module.exports` entry in the same change.
 

@@ -1,9 +1,4 @@
 'use strict';
-// Integration tests for lib/server.js. A real http.Server is built from
-// injected fakes (semaphore, requestDeps, shutdown hooks) and driven through
-// the private request listener, so the router, the fatal-before-listen error
-// policy and the overload/drain/body-read branches are exercised without auth
-// config or upstream calls. The listen test binds an ephemeral loopback port.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +7,6 @@ const { EventEmitter } = require('node:events');
 const config = require('../lib/config');
 const { createServer } = require('../lib/server');
 
-// A semaphore whose acquire() result the test controls.
 function fakeSemaphore({ full = false } = {}) {
     return {
         inFlight: full ? 1 : 0,
@@ -43,7 +37,6 @@ function fakeRes() {
     return res;
 }
 
-// A fake request that emits its body chunks on the next tick.
 function fakeReq({ method = 'POST', url = '/v1/chat/completions', host = 'localhost', chunks = ['{}'], fail = false } = {}) {
     const req = new EventEmitter();
     req.method = method;
@@ -77,7 +70,6 @@ function build(overrides = {}) {
     return { srv, logs, errors, exits };
 }
 
-// Invoke the private request listener directly.
 async function dispatch(srv, req, res) {
     const listener = srv.server.listeners('request')[0];
     await listener(req, res);
@@ -123,8 +115,7 @@ test('createServer: POST /v1/models is 405', async () => {
 test('createServer: a malformed request URL is 400 instead of a hung socket', async () => {
     const { srv } = build();
     const res = fakeRes();
-    // `//[` makes `new URL(req.url, base)` throw. The async request handler must
-    // catch it and answer, not leak an unhandledRejection and stall the client.
+    
     await dispatch(srv, fakeReq({ url: '//[' }), res);
     assert.equal(res.statusCode, 400);
     assert.equal(JSON.parse(res.body()).error.type, 'invalid_request_error');
@@ -174,10 +165,9 @@ test('createServer: a stalled body read is 408', async () => {
         req.headers = { host: 'localhost' };
         req.socket = { remoteAddress: '127.0.0.1' };
         req.resume = () => {};
-        // Emit a chunk but never `end`, so the body-read timer fires.
+        
         process.nextTick(() => req.emit('data', Buffer.from('{')));
-        // Keep the event loop alive: readRequestBody unrefs its timeout, so
-        // with nothing else pending the loop would exit before it fires.
+        
         const keepAlive = setInterval(() => {}, 5);
         try {
             await dispatch(srv, req, res);
@@ -223,7 +213,7 @@ test('createServer: listen works without a callback', async () => {
     const { srv } = build();
     await new Promise((resolve) => {
         srv.listen();
-        // Poll `listening` until the bind callback flips it.
+        
         const t = setInterval(() => { if (srv.listening) { clearInterval(t); resolve(); } }, 5);
     });
     assert.equal(srv.listening, true);
