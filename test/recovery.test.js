@@ -133,7 +133,7 @@ test('runWithRecovery: a single account retries an empty response in a fresh ses
     });
 });
 
-test('runWithRecovery: a single account retries a reasoning-only response in a fresh session', async () => {
+test('runWithRecovery: a single account continues a reasoning-only response before retrying fresh', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
         await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
@@ -141,15 +141,18 @@ test('runWithRecovery: a single account retries a reasoning-only response in a f
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
-                    { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: 'stop', modelError: null },
-                    { content: 'final answer', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'still thinking', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'final answer', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
                 ]),
             });
             ctx.session.accountId = a1.id;
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'final answer');
-            assert.equal(calls.length, 2, 'the sole account gets one same-account retry');
+            assert.equal(calls.length, 3);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[2].prompt, calls[0].prompt, 'the fresh retry re-sends the original prompt');
             assert.equal(a1.failures, 0);
         });
     });
@@ -196,25 +199,28 @@ test('runWithRecovery: a completion timeout is recoverable and rotates to the ne
     });
 });
 
-test('runWithRecovery: reasoning-only response rotates the account without cooling it', async () => {
-
+test('runWithRecovery: reasoning-only response continues in the same session without rotating', async () => {
     const a1 = makeAccount('a1');
-    const a2 = makeAccount('a2');
-    await withAccounts([a1, a2], async () => {
+    await withAccounts([a1], async () => {
         await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
-                askDSStream: askStub([a1, a2], calls),
+                askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
                     { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                 ]),
             });
+            ctx.session.accountId = a1.id;
+            ctx.session.id = 'remote-1';
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'Final answer.');
 
             assert.equal(calls.length, 2);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.match(calls[1].freshSessionPrompt, /provide the final answer now/i);
+            assert.equal(ctx.session.id, 'remote-1', 'the remote session is kept');
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
         });
@@ -1029,26 +1035,60 @@ test('backoffDelay: scales and caps at 3x', () => {
     assert.equal(backoffDelay(4, 100), 300);
 });
 
-test('runWithRecovery: reasoning-only response rotates instead of re-prompting', async () => {
+test('runWithRecovery: a reasoning-only continuation error falls back to rotation', async () => {
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
         await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
-                askDSStream: askStub([a1, a2], calls),
+                askDSStream: async (args) => {
+                    calls.push(args);
+                    if (calls.length === 2) throw new Error('continuation boom');
+                    return {
+                        resp: { body: {} }, account: calls.length === 1 ? a1 : a2,
+                        promptUsed: args.prompt || 'p', freshSessionReset: false,
+                    };
+                },
                 readDSResponse: sseOnce([
                     { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
                     { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                 ]),
             });
+            ctx.session.accountId = a1.id;
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'Final answer.');
-            assert.equal(calls.length, 2);
+            assert.equal(calls.length, 3);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[2].prompt, calls[0].prompt);
+        });
+    });
+});
 
-            assert.equal(calls[1].prompt, calls[0].prompt);
-            assert.doesNotMatch(calls[1].prompt, /final answer/i);
+test('runWithRecovery: a reasoning-only continuation that stays empty rotates the account', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1, a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'still thinking', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'Final answer.', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'Final answer.');
+            assert.equal(calls.length, 3);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[2].prompt, calls[0].prompt);
+            assert.equal(a1.cooldownUntil, 0);
+            assert.equal(a1.failures, 0);
         });
     });
 });
