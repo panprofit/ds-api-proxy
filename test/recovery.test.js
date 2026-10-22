@@ -631,6 +631,46 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
         });
     });
 });
+
+test('runWithRecovery: a successful reasoning-only SSE resets the upstream-retry counter', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({
+            DS_MAX_UPSTREAM_RETRIES: '1',
+            DS_MAX_SAME_ACCOUNT_RETRIES: '1',
+            DS_RECOVERY_RETRY_DELAY_MS: '0',
+        }, async () => {
+            let created = 0;
+            const seenSessionIds = [];
+            const accountStub = async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                session.accountId = a1.id;
+                if (!session.id) session.id = 'sess-' + (++created);
+                seenSessionIds.push(session.id);
+                return { resp: { body: {} }, account: a1, promptUsed: args.prompt || 'p', freshSessionReset: false };
+            };
+            const transient = () => ({
+                content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err',
+                modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+            });
+            const reasoningOnly = () => ({
+                content: '', reasoningContent: 'thinking', messageId: 'm2', finishReason: 'stop', modelError: null,
+            });
+            const results = [transient(), reasoningOnly(), transient(), transient(), transient(), transient()];
+            let i = 0;
+            const ctx = baseCtx({
+                askDSStream: accountStub,
+                readDSResponse: async () => results[Math.min(i++, results.length - 1)],
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'upstream_unavailable');
+            assert.equal(out.error.body.upstream_retries, 1);
+            assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-2', 'sess-2', 'sess-3']);
+        });
+    });
+});
+
 test('runWithRecovery: parses a strict JSON tool call', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const content = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
