@@ -391,3 +391,27 @@ test('runCompletionCheck: CONTINUE adopts the follow-up tool call and reasoning'
         assert.equal(state.modelError, 'transient');
     });
 });
+
+test('runWithRecovery: a throwing follow-up keeps the original answer instead of failing', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            let n = 0;
+            const ctx = baseCtx({
+                askDSStream: async (args) => {
+                    calls.push(args);
+                    if (n++ === 1) throw new Error('upstream exploded');
+                    return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args?.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([
+                    SHORT,
+                    { content: 'CONTINUE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, SHORT.content);
+            assert.equal(calls.length, 2);
+        });
+    });
+});
