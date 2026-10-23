@@ -67,6 +67,7 @@ in normal work; `npm run test:coverage` exists but is strict (99% lines,
 | `lib/recovery-failures.js` | terminal failure handlers (auth-expired, muted, transient outage, context-too-long, recoverable give-up) |
 | `lib/recovery-util.js` | shared retry-delay / config helpers for the recovery passes |
 | `lib/recovery-classify.js` | response classification (refusal, context-too-long, ...) |
+| `lib/recovery-completion-check.js` | post-completion DONE/CONTINUE verdict pass |
 | `lib/upstream-session.js` | one completion attempt + expired-session recreation |
 | `lib/upstream.js` | DS network layer (uploads, chat, session delete) |
 | `lib/upstream-fetch.js` | SSRF guard + size-capped remote file download |
@@ -119,7 +120,8 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
   snapshot/restore their mutable arrays rather than re-require the module graph.
 - **Comments are BANNED.** Any comment of any kind (`//`, `/* */`, `/** */`,
   inline or block, TODO/FIXME included) is an ESLint error
-  (`ban-comments/ban-comments`) and must not be added. Express intent through
+  (`ban-comments/ban-comments`) and must not be added. JSDoc blocks are the
+  only exception (`allowJSDoc: true` in `eslint.config.js`). Express intent through
   naming, structure and tests instead. The only tolerated exceptions are ESLint
   directives (`// eslint-disable-next-line ...`, `/* global ... */`), which the
   rule allows so rules can still be switched off pointwise.
