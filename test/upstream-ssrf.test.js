@@ -6,6 +6,8 @@ const dns = require('node:dns');
 
 const upstream = require('../lib/upstream');
 
+const rf = (url, maxBytes) => upstream.fetchRemoteFile(url, maxBytes, { request: async (u) => globalThis.fetch(u) });
+
 const realFetch = globalThis.fetch;
 
 async function withFetch(impl, fn) {
@@ -148,7 +150,7 @@ test('fetchRemoteFile: fetches a public URL and returns buffer + mime', async ()
         await withFetch(async () => resp({
             status: 200, headers: { 'content-type': 'image/png' }, body: 'PNGDATA',
         }), async () => {
-            const out = await upstream.fetchRemoteFile('https://example.com/a.png', 1024);
+            const out = await rf('https://example.com/a.png', 1024);
             assert.equal(out.buffer.toString(), 'PNGDATA');
             assert.equal(out.mime, 'image/png');
         });
@@ -158,7 +160,7 @@ test('fetchRemoteFile: fetches a public URL and returns buffer + mime', async ()
 test('fetchRemoteFile: rejects a private literal before any fetch', async () => {
     let fetched = 0;
     await withFetch(async () => { fetched++; return resp({}); }, async () => {
-        await assert.rejects(() => upstream.fetchRemoteFile('http://127.0.0.1/x'), /blocked/);
+        await assert.rejects(() => rf('http://127.0.0.1/x'), /blocked/);
     });
     assert.equal(fetched, 0, 'no fetch for a blocked literal');
 });
@@ -167,7 +169,7 @@ test('fetchRemoteFile: rejects a hostname that resolves to a private IP', async 
     await withLookup(() => [{ address: '10.1.2.3', family: 4 }], async () => {
         let fetched = 0;
         await withFetch(async () => { fetched++; return resp({}); }, async () => {
-            await assert.rejects(() => upstream.fetchRemoteFile('https://evil.example/x', 1024), /blocked/);
+            await assert.rejects(() => rf('https://evil.example/x', 1024), /blocked/);
         });
         assert.equal(fetched, 0, 'no fetch when DNS points private');
     });
@@ -183,7 +185,7 @@ test('fetchRemoteFile: follows a redirect and re-validates the new host', async 
             }
             return resp({ status: 200, headers: { 'content-type': 'image/jpeg' }, body: 'JPG' });
         }, async () => {
-            const out = await upstream.fetchRemoteFile('https://example.com/a', 1024);
+            const out = await rf('https://example.com/a', 1024);
             assert.equal(out.buffer.toString(), 'JPG');
             assert.equal(out.mime, 'image/jpeg');
             assert.deepEqual(seen, ['https://example.com/a', 'https://cdn.example/b.png']);
@@ -200,7 +202,7 @@ test('fetchRemoteFile: blocks a redirect pointing at a private literal', async (
             return resp({ status: 200, body: 'SECRET' });
         }, async () => {
             await assert.rejects(
-                () => upstream.fetchRemoteFile('https://example.com/a', 1024),
+                () => rf('https://example.com/a', 1024),
                 /blocked/
             );
         });
@@ -211,7 +213,7 @@ test('fetchRemoteFile: gives up after too many redirects', async () => {
     await withLookup(() => PUBLIC, async () => {
         await withFetch(async () => resp({ status: 302, headers: { location: 'https://example.com/next' } }), async () => {
             await assert.rejects(
-                () => upstream.fetchRemoteFile('https://example.com/a', 1024),
+                () => rf('https://example.com/a', 1024),
                 /too many redirects/
             );
         });
@@ -222,7 +224,7 @@ test('fetchRemoteFile: surfaces a non-2xx final status', async () => {
     await withLookup(() => PUBLIC, async () => {
         await withFetch(async () => resp({ status: 404 }), async () => {
             await assert.rejects(
-                () => upstream.fetchRemoteFile('https://example.com/missing', 1024),
+                () => rf('https://example.com/missing', 1024),
                 /HTTP 404/
             );
         });
@@ -233,7 +235,7 @@ test('fetchRemoteFile: rejects an oversized Content-Length without reading the b
     await withLookup(() => PUBLIC, async () => {
         await withFetch(async () => resp({ status: 200, headers: { 'content-length': '999999' }, body: 'x' }), async () => {
             await assert.rejects(
-                () => upstream.fetchRemoteFile('https://example.com/big', 1000),
+                () => rf('https://example.com/big', 1000),
                 /exceeds/
             );
         });
@@ -248,7 +250,7 @@ test('fetchRemoteFile: enforces the cap while streaming a chunked body', async (
             bodyChunks: [Buffer.alloc(600), Buffer.alloc(600)],
         }), async () => {
             await assert.rejects(
-                () => upstream.fetchRemoteFile('https://example.com/stream', 1000),
+                () => rf('https://example.com/stream', 1000),
                 /exceeds/
             );
         });
@@ -258,7 +260,7 @@ test('fetchRemoteFile: enforces the cap while streaming a chunked body', async (
 test('fetchRemoteFile: infers mime from the URL when Content-Type is absent', async () => {
     await withLookup(() => PUBLIC, async () => {
         await withFetch(async () => resp({ status: 200, headers: {}, body: 'x' }), async () => {
-            const out = await upstream.fetchRemoteFile('https://example.com/pic.png', 1024);
+            const out = await rf('https://example.com/pic.png', 1024);
             assert.equal(out.mime, 'image/png');
         });
     });
@@ -299,5 +301,57 @@ test('loadModule: does not cache a failed compile', async () => {
         await assert.rejects(() => upstream.loadModule('https://example.com/bad.wasm'));
         await assert.rejects(() => upstream.loadModule('https://example.com/bad.wasm'));
         assert.equal(fetches, 2, 'a failed compile must not be cached');
+    });
+});
+
+test('resolvePublicTarget: returns the pinned address for a hostname', async () => {
+    const out = await upstream.resolvePublicTarget('https://example.com/a', { lookup: async () => PUBLIC });
+    assert.equal(out.url.hostname, 'example.com');
+    assert.equal(out.address, '93.184.216.34');
+});
+
+test('resolvePublicTarget: pins a literal IP without DNS', async () => {
+    const out = await upstream.resolvePublicTarget('https://8.8.8.8/a');
+    assert.equal(out.address, '8.8.8.8');
+});
+
+test('pinnedRequest: dials the pinned address instead of re-resolving the name', async () => {
+    const https = require('node:https');
+    const realRequest = https.request;
+    let seen = null;
+    let lookupArgs = null;
+    https.request = (options, onResponse) => {
+        seen = options;
+        const req = {
+            on() { return req; },
+            end() {
+                options.lookup(options.hostname, { all: false }, (err, address, family) => {
+                    lookupArgs = { err, address, family };
+                    onResponse({ statusCode: 200, headers: { 'content-type': 'text/plain' }, destroy() {} });
+                });
+            },
+        };
+        return req;
+    };
+    try {
+        const resp = await upstream.pinnedRequest('https://example.com/a?b=1', { address: '93.184.216.34', timeoutMs: 1000 });
+        assert.equal(resp.status, 200);
+        assert.equal(seen.hostname, 'example.com');
+        assert.equal(seen.servername, 'example.com');
+        assert.equal(seen.path, '/a?b=1');
+        assert.equal(seen.headers.host, 'example.com');
+        assert.deepEqual(lookupArgs, { err: null, address: '93.184.216.34', family: 4 });
+    } finally {
+        https.request = realRequest;
+    }
+});
+
+test('fetchRemoteFile: the request is pinned to the validated address', async () => {
+    await withLookup(() => PUBLIC, async () => {
+        const seen = [];
+        await upstream.fetchRemoteFile('https://example.com/a.png', 1024, {
+            request: async (url, { address }) => { seen.push({ url, address }); return resp({ status: 200, body: 'x' }); },
+        });
+        assert.deepEqual(seen, [{ url: 'https://example.com/a.png', address: '93.184.216.34' }]);
     });
 });

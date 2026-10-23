@@ -7,6 +7,8 @@ const config = require('../lib/config');
 const uploadCache = require('../lib/upload-cache');
 const upstream = require('../lib/upstream');
 
+const rf = (url, maxBytes) => upstream.fetchRemoteFile(url, maxBytes, { request: async (u) => globalThis.fetch(u) });
+
 const DS_BASE = `https://${config.get().remoteHost}/api/v0`;
 
 const realFetch = globalThis.fetch;
@@ -602,7 +604,7 @@ test('fetchRemoteFile: downloads a public URL and derives mime from content-type
         seenUrl = url;
         return binaryResponse(payload, { headers: { 'content-type': 'image/png; charset=binary' } });
     }, async () => {
-        const out = await upstream.fetchRemoteFile('https://8.8.8.8/photo.png');
+        const out = await rf('https://8.8.8.8/photo.png');
         assert.equal(seenUrl, 'https://8.8.8.8/photo.png');
         assert.equal(out.mime, 'image/png');
         assert.deepEqual(out.buffer, payload);
@@ -611,7 +613,7 @@ test('fetchRemoteFile: downloads a public URL and derives mime from content-type
 
 test('fetchRemoteFile: falls back to guessMimeFromName when content-type is absent', async () => {
     await withFetch(async () => binaryResponse(Buffer.from('x')), async () => {
-        const out = await upstream.fetchRemoteFile('https://8.8.8.8/photo.jpg');
+        const out = await rf('https://8.8.8.8/photo.jpg');
         assert.equal(out.mime, 'image/jpeg');
     });
 });
@@ -621,7 +623,7 @@ test('fetchRemoteFile: rejects when content-length exceeds the cap', async () =>
         headers: { 'content-length': '9999' },
     }), async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png', 10),
+            () => rf('https://8.8.8.8/a.png', 10),
             /file is 9999 bytes, exceeds 10/
         );
     });
@@ -631,7 +633,7 @@ test('fetchRemoteFile: rejects when the streamed body exceeds the cap and cancel
     const resp = streamingResponse(['aaaa', 'bbbb', 'cccc'], { headers: { 'content-type': 'image/png' } });
     await withFetch(async () => resp, async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png', 5),
+            () => rf('https://8.8.8.8/a.png', 5),
             /exceeds 5 bytes/
         );
     });
@@ -640,7 +642,7 @@ test('fetchRemoteFile: rejects when the streamed body exceeds the cap and cancel
 
 test('fetchRemoteFile: accumulates a streamed body under the cap', async () => {
     await withFetch(async () => streamingResponse(['aa', 'bb'], { headers: { 'content-type': 'image/png' } }), async () => {
-        const out = await upstream.fetchRemoteFile('https://8.8.8.8/a.png', 100);
+        const out = await rf('https://8.8.8.8/a.png', 100);
         assert.equal(out.buffer.toString(), 'aabb');
     });
 });
@@ -648,7 +650,7 @@ test('fetchRemoteFile: accumulates a streamed body under the cap', async () => {
 test('fetchRemoteFile: throws on a non-OK HTTP status', async () => {
     await withFetch(async () => binaryResponse('nope', { status: 404 }), async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png'),
+            () => rf('https://8.8.8.8/a.png'),
             /HTTP 404/
         );
     });
@@ -663,7 +665,7 @@ test('fetchRemoteFile: follows a redirect and re-checks the target', async () =>
         }
         return binaryResponse(Buffer.from('real'), { headers: { 'content-type': 'image/png' } });
     }, async () => {
-        const out = await upstream.fetchRemoteFile('https://8.8.8.8/start.png');
+        const out = await rf('https://8.8.8.8/start.png');
         assert.deepEqual(calls, ['https://8.8.8.8/start.png', 'https://8.8.8.8/real.png']);
         assert.equal(out.buffer.toString(), 'real');
     });
@@ -672,7 +674,7 @@ test('fetchRemoteFile: follows a redirect and re-checks the target', async () =>
 test('fetchRemoteFile: rejects a redirect with no Location header', async () => {
     await withFetch(async () => binaryResponse('', { status: 301 }), async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png'),
+            () => rf('https://8.8.8.8/a.png'),
             /HTTP 301/
         );
     });
@@ -681,7 +683,7 @@ test('fetchRemoteFile: rejects a redirect with no Location header', async () => 
 test('fetchRemoteFile: rejects after too many redirects', async () => {
     await withFetch(async () => binaryResponse('', { status: 302, headers: { location: 'https://8.8.8.8/next.png' } }), async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png'),
+            () => rf('https://8.8.8.8/a.png'),
             /too many redirects/
         );
     });
@@ -690,7 +692,7 @@ test('fetchRemoteFile: rejects after too many redirects', async () => {
 test('fetchRemoteFile: rejects a redirect to a private address (SSRF on hop)', async () => {
     await withFetch(async () => binaryResponse('', { status: 302, headers: { location: 'http://127.0.0.1/secret' } }), async () => {
         await assert.rejects(
-            () => upstream.fetchRemoteFile('https://8.8.8.8/a.png'),
+            () => rf('https://8.8.8.8/a.png'),
             /blocked host/
         );
     });
