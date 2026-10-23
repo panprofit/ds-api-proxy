@@ -14,6 +14,7 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.completionTimeoutMs, 0);
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.maxSameAccountRetries, 1);
+    assert.equal(c.maxContinuation, 2);
     assert.equal(c.accountCooldownMs, 5 * 60 * 1000);
     assert.equal(c.tokenRefreshIntervalMs, 50 * 60 * 1000);
     assert.equal(c.accountMinCompletionIntervalMs, 6000);

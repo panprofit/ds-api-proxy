@@ -216,9 +216,12 @@ requests rotate to another account:
   behind "all accounts cooling down";
 - a **recoverable failure** (malformed tool markup, empty response, unknown
   tool name) — rotated immediately, without parking the account. With exactly
-  one configured account, an empty or reasoning-only response first gets
+  one configured account, an empty response first gets
   `DS_MAX_SAME_ACCOUNT_RETRIES` attempt(s) in a fresh remote session instead of
-  ending the request immediately;
+  ending the request immediately. A reasoning-only turn is continued in the
+  same session for as long as the model keeps emitting new reasoning; once it
+  stops, the streamed reasoning is returned as the final result rather than
+  treated as a failure. The client can abort the stream at any time;
 
 A transient upstream outage (`finish_reason=generation_err`) is not the account's
 fault: the same account is retried in place (`DS_MAX_UPSTREAM_RETRIES`) and only
