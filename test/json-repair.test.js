@@ -213,3 +213,17 @@ test('parseJsonToolCandidate: empty input returns null without touching the slot
     assert.equal(jr.parseJsonToolCandidate('', 't', {}, () => {}), null);
     assert.equal(jr.takeJsonParseError(), null);
 });
+
+test('repairUnescapedQuotes: many consecutive quotes stay linear in time', () => {
+    const input = '{"tool_call":{"name":"x","arguments":{"a":"' + '"'.repeat(50000) + '"}}}';
+    const startedAt = process.hrtime.bigint();
+    const out = jr.repairUnescapedQuotes(input);
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    assert.notEqual(out, input, 'the run of quotes is escaped');
+    assert.ok(elapsedMs < 1000, `took ${elapsedMs.toFixed(1)}ms`);
+});
+
+test('repairUnescapedQuotes: escapes an inner quote and unescapes a trailing one', () => {
+    assert.equal(jr.repairUnescapedQuotes('{"a":"x"y"}'), '{"a":"x\\"y"}');
+    assert.equal(jr.repairUnescapedQuotes('{"a":"b"}'), '{"a":"b"}');
+});
