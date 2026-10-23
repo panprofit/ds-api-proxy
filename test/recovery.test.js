@@ -356,9 +356,11 @@ test('runWithRecovery: no thinking fallback without reasoning or tools', async (
             });
             await runWithRecovery(ctx);
 
-            assert.equal(calls.length, 2);
+            assert.equal(calls.length, 4);
             assert.equal(calls[0].thinkingEnabled, true);
-            assert.equal(calls[1].thinkingEnabled, true);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[2].thinkingEnabled, true);
+            assert.equal(calls[3].thinkingEnabled, true);
         });
     });
 });
@@ -638,7 +640,7 @@ test('runWithRecovery: new reasoning before a generation_err resets the upstream
             assert.equal(out.ok, false);
             assert.equal(out.error.body.type, 'upstream_unavailable');
             assert.equal(out.error.body.upstream_retries, 1);
-            assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-2']);
+            assert.deepEqual(seenSessionIds, ['sess-1', 'sess-1', 'sess-1', 'sess-1', 'sess-2']);
         });
     });
 });
@@ -1223,6 +1225,63 @@ async function withConfig(overrides, fn) {
         config.reload();
     }
 }
+
+test('runWithRecovery: transient outage after reasoning continues instead of resending the prompt', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({
+            DS_MAX_UPSTREAM_RETRIES: '3',
+            DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0',
+        }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    {
+                        content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'generation_err',
+                        modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+                    },
+                    { content: 'the answer', reasoningContent: 'thinking again', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'the answer');
+            assert.equal(calls.length, 2);
+            assert.equal(calls[1].prompt, 'continue');
+        });
+    });
+});
+
+test('runWithRecovery: transient outage after reasoning falls back to the same-session retry when continuation is empty', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({
+            DS_MAX_UPSTREAM_RETRIES: '3',
+            DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0',
+        }, async () => {
+            const calls = [];
+            const transient = () => ({
+                content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'generation_err',
+                modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+            });
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    transient(),
+                    transient(),
+                    { content: 'recovered', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'recovered');
+            assert.equal(calls.length, 3);
+            assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[2].prompt, 'SYS\n\nUser: hi');
+        });
+    });
+});
 
 test('runWithRecovery: auto-continuation appends the continuation and updates finishReason', async () => {
     await withAccounts([makeAccount('a1')], async () => {
