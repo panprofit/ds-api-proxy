@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+'use strict';
 
 const {
     getOrCreateAgentSession, prepareSessionForPrompt,
@@ -9,7 +10,7 @@ const {
 const {
     selectAccountForSession, markAccountFailure,
     loadDSConfig, auditAuthDir, getAccountById,
-    waitForCompletionSlot,
+    waitForCompletionSlot, flushAccountState,
 } = require('./lib/accounts');
 const {
     dsChatCompletionWithPow, solvePowForPath,
@@ -85,6 +86,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         semaphore,
         requestDeps,
         resetAllRemoteSessions,
+        flushAccountState,
         pendingDeletesSize: () => pendingDeletes.size,
         startedAt,
         port: PORT,

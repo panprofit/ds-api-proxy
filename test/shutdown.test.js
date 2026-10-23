@@ -68,6 +68,21 @@ function makeCtl(overrides = {}) {
     };
 }
 
+test('shutdown: flushes account state before exiting', async () => {
+    let flushed = 0;
+    const h = makeCtl({ extra: { flushState: () => { flushed++; } } });
+    await h.ctl.shutdown('SIGTERM');
+    assert.equal(flushed, 1);
+    assert.equal(h.exitCode, 0);
+});
+
+test('shutdown: a throwing flush does not block the exit', async () => {
+    const h = makeCtl({ extra: { flushState: () => { throw new Error('disk full'); } } });
+    await h.ctl.shutdown('SIGTERM');
+    assert.equal(h.exitCode, 0);
+    assert.ok(h.sink.errors.some((m) => /could not flush/.test(m)));
+});
+
 test('shutdown: closes the server, drains, and exits 0 when drained', async () => {
     const h = makeCtl();
     const ok = await h.ctl.shutdown('SIGTERM');
