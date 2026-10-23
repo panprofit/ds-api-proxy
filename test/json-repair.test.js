@@ -26,6 +26,17 @@ test('extractBalancedJsonObjects: empty string yields no objects', () => {
     assert.deepEqual(jr.extractBalancedJsonObjects(''), []);
 });
 
+test('extractBalancedJsonObjects: a long unmatched-brace prefix is bounded, not quadratic', () => {
+    const text = '{'.repeat(64 * 1024) + '}';
+    assert.deepEqual(jr.extractBalancedJsonObjects(text), []);
+});
+
+test('extractBalancedJsonObjects: finds a valid object after many unmatched braces', () => {
+    const good = '{"a":1}';
+    const text = '{'.repeat(200) + good;
+    assert.deepEqual(jr.extractBalancedJsonObjects(text), [good]);
+});
+
 test('repairJsonText: escapes raw control characters inside strings', () => {
     const broken = '{"a":"line1\nline2"}';
     const out = jr.repairJsonText(broken);

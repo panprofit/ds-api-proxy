@@ -69,6 +69,14 @@ test('perf: extractBalancedJsonObjects on 10KB < 100ms for 100 iterations', () =
   assert.ok(ms < PERF_BUDGET(100), `too slow: ${ms.toFixed(1)}ms`);
 });
 
+test('perf: extractBalancedJsonObjects on 64KB of unmatched braces < 200ms for 20 iterations', () => {
+  const big = '{'.repeat(64 * 1024) + '}';
+  const run = () => timeIt(() => parser.extractBalancedJsonObjects(big), 20);
+  run();
+  const ms = bestOf(run);
+  assert.ok(ms < PERF_BUDGET(200), `too slow: ${ms.toFixed(1)}ms`);
+});
+
 test('perf: normalizeToolMarkupTags on 10KB < 100ms for 100 iterations', () => {
   const rng = makeRng(102);
   const big = randomString(rng, 10240);
