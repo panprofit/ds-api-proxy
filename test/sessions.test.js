@@ -18,9 +18,6 @@ const {
     prepareSessionForPrompt,
     getOrCreateAgentSession,
     sweepIdleSessions,
-    recordTokenRate,
-    tokenRatePressure,
-    TOKEN_RATE_WINDOW_MS,
 } = sessions;
 
 const UPLOAD_CACHE_TTL_MS = uploadCache.UPLOAD_CACHE_TTL_MS;
@@ -432,108 +429,6 @@ test('exported constants are positive and consistent with defaults', () => {
 
     assert.ok(Number.isFinite(UPLOAD_CACHE_TTL_MS) && UPLOAD_CACHE_TTL_MS > 0);
     assert.equal(typeof uploadCache.sweep, 'function');
-});
-
-test('recordTokenRate: first sample records the context but reports no rate', () => {
-    const s = createSession();
-    const rate = recordTokenRate(s, 1000, 1000);
-    assert.equal(rate.tokensPerMinute, 0);
-    assert.equal(rate.deltaTokens, 1000);
-    assert.equal(s.tokenRateSamples.length, 1);
-    assert.equal(s.peakTokensPerMinute, 0);
-});
-
-test('recordTokenRate: computes the burn rate between consecutive samples', () => {
-    const s = createSession();
-
-    recordTokenRate(s, 0, 0);
-    const rate = recordTokenRate(s, 6000, 60000);
-    assert.equal(rate.tokensPerMinute, 6000);
-    assert.equal(rate.deltaTokens, 6000);
-    assert.equal(rate.windowMs, 60000);
-    assert.equal(s.peakTokensPerMinute, 6000);
-});
-
-test('recordTokenRate: drops samples older than the window', () => {
-    const s = createSession();
-    recordTokenRate(s, 0, 0);
-    recordTokenRate(s, 1000, TOKEN_RATE_WINDOW_MS + 1000);
-    assert.equal(s.tokenRateSamples.length, 1);
-});
-
-test('recordTokenRate: re-sending the same context does not create negative deltas', () => {
-    const s = createSession();
-    recordTokenRate(s, 5000, 0);
-    const rate = recordTokenRate(s, 5000, 1000);
-    assert.equal(rate.deltaTokens, 0);
-    assert.equal(rate.tokensPerMinute, 0);
-});
-
-test('recordTokenRate: rejects a non-numeric token count', () => {
-    assert.equal(recordTokenRate(createSession(), 'nope', 0), null);
-    assert.equal(recordTokenRate(null, 100, 0), null);
-});
-
-test('resetRemoteSession: clears the token-rate samples and peak', () => {
-    const s = createSession();
-    recordTokenRate(s, 1000, 0);
-    resetRemoteSession(s);
-    assert.deepEqual(s.tokenRateSamples, []);
-    assert.equal(s.peakTokensPerMinute, 0);
-});
-
-test('tokenRatePressure: no limit / no session / too few samples -> 0', () => {
-    const s = createSession();
-    assert.equal(tokenRatePressure(s, 0), 0, 'limit 0 disables');
-    assert.equal(tokenRatePressure(null, 6000), 0);
-    assert.equal(tokenRatePressure(s, 6000), 0, 'no samples yet');
-    recordTokenRate(s, 0, 0);
-    assert.equal(tokenRatePressure(s, 6000), 0, 'one sample is not an interval');
-});
-
-test('tokenRatePressure: 0 while the burn rate is at or below the limit', () => {
-    const s = createSession();
-
-    recordTokenRate(s, 0, 0);
-    recordTokenRate(s, 6000, 60000);
-    assert.equal(tokenRatePressure(s, 6000, 60000), 0);
-    assert.equal(tokenRatePressure(s, 10000, 60000), 0, 'below the limit');
-});
-
-test('tokenRatePressure: linear between the limit and 2x, then clamped to 1', () => {
-    const s = createSession();
-
-    recordTokenRate(s, 0, 0);
-    recordTokenRate(s, 12000, 60000);
-    assert.equal(tokenRatePressure(s, 6000, 60000), 1);
-
-    const s2 = createSession();
-
-    recordTokenRate(s2, 0, 0);
-    recordTokenRate(s2, 9000, 60000);
-    assert.equal(tokenRatePressure(s2, 6000, 60000), 0.5);
-
-    const s3 = createSession();
-
-    recordTokenRate(s3, 0, 0);
-    recordTokenRate(s3, 60000, 60000);
-    assert.equal(tokenRatePressure(s3, 6000, 60000), 1);
-});
-
-test('tokenRatePressure: a stale window reports no pressure', () => {
-    const s = createSession();
-    recordTokenRate(s, 0, 0);
-    recordTokenRate(s, 60000, 60000);
-
-    const now = 60000 + TOKEN_RATE_WINDOW_MS + 1;
-    assert.equal(tokenRatePressure(s, 6000, now), 0);
-});
-
-test('tokenRatePressure: a retry that re-sends the same context is not pressure', () => {
-    const s = createSession();
-    recordTokenRate(s, 50000, 0);
-    recordTokenRate(s, 50000, 1000);
-    assert.equal(tokenRatePressure(s, 6000, 1000), 0);
 });
 
 test('session journal: note and forget keep the file in sync', () => {

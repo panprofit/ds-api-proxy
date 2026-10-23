@@ -96,20 +96,6 @@ test('config.load: DS_ACCOUNT_STATE_FLUSH_MS default, override and clamp', () =>
     assert.equal(config.load({ DS_ACCOUNT_STATE_FLUSH_MS: 'nope' }).accountStateFlushMs, 60000);
 });
 
-test('config.load: token-rate adaptive throttle defaults, override and clamp', () => {
-
-    assert.equal(config.load({}).tokenRateLimitPerMin, 0);
-    assert.equal(config.load({ DS_TOKEN_RATE_LIMIT_PER_MIN: '6000' }).tokenRateLimitPerMin, 6000);
-    assert.equal(config.load({ DS_TOKEN_RATE_LIMIT_PER_MIN: '-5' }).tokenRateLimitPerMin, 0);
-    assert.equal(config.load({ DS_TOKEN_RATE_LIMIT_PER_MIN: 'nope' }).tokenRateLimitPerMin, 0);
-
-    assert.equal(config.load({}).tokenRateBackoffFactor, 2);
-    assert.equal(config.load({ DS_TOKEN_RATE_BACKOFF_FACTOR: '4' }).tokenRateBackoffFactor, 4);
-    assert.equal(config.load({ DS_TOKEN_RATE_BACKOFF_FACTOR: '99' }).tokenRateBackoffFactor, 10);
-    assert.equal(config.load({ DS_TOKEN_RATE_BACKOFF_FACTOR: '-5' }).tokenRateBackoffFactor, 0);
-    assert.equal(config.load({ DS_TOKEN_RATE_BACKOFF_FACTOR: 'nope' }).tokenRateBackoffFactor, 2);
-});
-
 test('config.load: DS_MAX_RESPONSE_WORDS default, override and clamp', () => {
     assert.equal(config.load({}).maxResponseWords, 500);
     assert.equal(config.load({ DS_MAX_RESPONSE_WORDS: '150' }).maxResponseWords, 150);

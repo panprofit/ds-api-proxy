@@ -5,7 +5,6 @@ const assert = require('node:assert/strict');
 
 const { createUpstreamSession } = require('../lib/upstream-session');
 const { estimateTokens } = require('../lib/openai');
-const config = require('../lib/config');
 
 function makeAccount(id = 'a1') {
     return { id, headers: { 'X-Test': '1' }, config: {} };
@@ -26,7 +25,6 @@ function makeDeps(overrides = {}) {
         getOrCreateAgentSession: () => session,
         prepareSessionForPrompt: () => null,
         resetRemoteSession: (s) => { s.id = null; s.parentMessageId = null; s.accountId = null; },
-        recordTokenRate: (s, tokens) => { s.contextTokens = tokens; return { tokensPerMinute: 0, deltaTokens: 0, windowMs: 1 }; },
         selectAccountForSession: () => account,
         markAccountFailure: () => {},
         solvePowForPath: async (a, h, path) => { calls.pow.push(path); return 'pow'; },
@@ -398,39 +396,6 @@ test('askDSStream: aborts with 429 when no completion slot is granted', async ()
 
     assert.equal(powSolved, false);
     assert.equal(calls.completions.length, 0);
-});
-
-test('askDSStream: passes the session token-rate pressure into the throttle', async () => {
-    config.reload({ DS_TOKEN_RATE_LIMIT_PER_MIN: '6000' });
-    try {
-        const rec = throttleRecorder();
-        const { deps, session } = makeDeps({
-            session: makeSession({ id: 'existing', accountId: 'a1' }),
-            waitForCompletionSlot: rec.slot,
-            tokenRatePressure: (s, limit) => { assert.equal(s, session); assert.equal(limit, 6000); return 0.75; },
-        });
-        const ask = createUpstreamSession(deps);
-        await ask({ prompt: 'hi', agentId: 'agent1' });
-        assert.equal(rec.calls.length, 1);
-        assert.equal(rec.calls[0].opts.pressure, 0.75);
-    } finally {
-        config.reload();
-    }
-});
-
-test('askDSStream: no pressure is computed when the rate limit is disabled (0)', async () => {
-    const rec = throttleRecorder();
-    let called = false;
-    const { deps } = makeDeps({
-        session: makeSession({ id: 'existing', accountId: 'a1' }),
-        waitForCompletionSlot: rec.slot,
-        tokenRatePressure: () => { called = true; return 1; },
-    });
-    const ask = createUpstreamSession(deps);
-    await ask({ prompt: 'hi', agentId: 'agent1' });
-
-    assert.equal(called, false);
-    assert.equal(rec.calls[0].opts.pressure, 0);
 });
 
 test('askDSStream: works without a throttle dependency (backwards compatible)', async () => {

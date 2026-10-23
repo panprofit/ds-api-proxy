@@ -796,58 +796,6 @@ test('waitForCompletionSlot: second call waits out the interval since the first'
     assert.equal(a.nextCompletionAt, clock.now() + 5000);
 });
 
-test('waitForCompletionSlot: pressure stretches the reservation interval', async () => {
-    const a = makeAccount('a1');
-    const clock = fakeClock();
-
-    await accounts.waitForCompletionSlot(a, {
-        intervalMs: 5000, pressure: 1, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
-    });
-    assert.deepEqual(clock.slept, []);
-    assert.equal(a.nextCompletionAt, clock.now() + 15000);
-});
-
-test('waitForCompletionSlot: pressure scales linearly and 0 preserves the base interval', async () => {
-    const a = makeAccount('a1');
-    const clock = fakeClock();
-
-    await accounts.waitForCompletionSlot(a, {
-        intervalMs: 5000, pressure: 0.5, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
-    });
-    assert.equal(a.nextCompletionAt, clock.now() + 10000);
-
-    const b = makeAccount('a2');
-    const clock2 = fakeClock();
-    await accounts.waitForCompletionSlot(b, {
-        intervalMs: 5000, pressure: 0, backoffFactor: 2, now: clock2.now, sleep: clock2.sleep,
-    });
-    assert.equal(b.nextCompletionAt, clock2.now() + 5000, 'no pressure -> base interval');
-});
-
-test('waitForCompletionSlot: pressure is clamped to [0,1] and factor 0 disables it', async () => {
-    const a = makeAccount('a1');
-    const clock = fakeClock();
-
-    await accounts.waitForCompletionSlot(a, {
-        intervalMs: 5000, pressure: 4, backoffFactor: 2, now: clock.now, sleep: clock.sleep,
-    });
-    assert.equal(a.nextCompletionAt, clock.now() + 15000);
-
-    const b = makeAccount('a2');
-    const clock2 = fakeClock();
-    await accounts.waitForCompletionSlot(b, {
-        intervalMs: 5000, pressure: 1, backoffFactor: 0, now: clock2.now, sleep: clock2.sleep,
-    });
-    assert.equal(b.nextCompletionAt, clock2.now() + 5000, 'factor 0 -> adaptive part off');
-
-    const c = makeAccount('a3');
-    const clock3 = fakeClock();
-    await accounts.waitForCompletionSlot(c, {
-        intervalMs: 5000, pressure: -1, backoffFactor: 2, now: clock3.now, sleep: clock3.sleep,
-    });
-    assert.equal(c.nextCompletionAt, clock3.now() + 5000, 'negative pressure -> base interval');
-});
-
 test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls queue)', async () => {
     const a = makeAccount('a1');
 

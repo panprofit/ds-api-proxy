@@ -4,7 +4,7 @@
 const {
     getOrCreateAgentSession, prepareSessionForPrompt,
     resetRemoteSession, sweepIdleSessions, setRemoteSessionDeleter,
-    resetAllRemoteSessions, recordTokenRate, tokenRatePressure,
+    resetAllRemoteSessions,
     noteRemoteSession, forgetRemoteSession, takeOrphanedRemoteSessions,
 } = require('./lib/sessions');
 const {
@@ -65,8 +65,6 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
         prepareSessionForPrompt,
         resetRemoteSession,
         noteRemoteSession,
-        recordTokenRate,
-        tokenRatePressure,
         selectAccountForSession,
         markAccountFailure,
         solvePowForPath,
