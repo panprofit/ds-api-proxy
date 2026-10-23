@@ -79,7 +79,6 @@ function baseCtx(overrides = {}) {
         stop: null,
         toolChoice: null,
         clientGone: () => false,
-        deadlineHit: () => false,
         rotationDeadlineHit: () => false,
         log: () => {},
         ctl,
@@ -229,7 +228,6 @@ function checkDeps(overrides = {}) {
         searchEnabled: false,
         abortSignal: null,
         clientGone: () => false,
-        deadlineHit: () => false,
         log: () => {},
         askDSStream: async () => ({ resp: { body: {} } }),
         readDSResponse: async () => ({ content: 'DONE' }),
@@ -262,10 +260,6 @@ test('runCompletionCheck: skips work when the request is already gone', async ()
         assert.equal(await runCompletionCheck(state, checkDeps({ clientGone: () => true, askDSStream: deps.askDSStream })), null);
         assert.equal(calls, 0);
         assert.equal(state.completionChecked, true);
-
-        const deadlineState = checkState();
-        assert.equal(await runCompletionCheck(deadlineState, checkDeps({ deadlineHit: () => true, askDSStream: deps.askDSStream })), null);
-        assert.equal(calls, 0);
     });
 });
 

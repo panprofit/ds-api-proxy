@@ -378,15 +378,13 @@ test('askDSStream: creates a fresh session before solving PoW so the header stay
     assert.deepEqual(order, ['create', 'pow']);
 });
 
-test('askDSStream: forwards deadlineHit and clientGone into the throttle', async () => {
+test('askDSStream: forwards clientGone into the throttle', async () => {
     const rec = throttleRecorder();
     const { deps } = makeDeps({ waitForCompletionSlot: rec.slot });
     const ask = createUpstreamSession(deps);
-    const deadlineHit = () => true;
     const clientGone = () => false;
-    await ask({ prompt: 'hi', agentId: 'agent1', deadlineHit, clientGone });
+    await ask({ prompt: 'hi', agentId: 'agent1', clientGone });
     assert.equal(rec.calls.length, 1);
-    assert.equal(rec.calls[0].opts.deadlineHit, deadlineHit);
     assert.equal(rec.calls[0].opts.clientGone, clientGone);
 });
 
@@ -467,16 +465,14 @@ test('askDSStream: refreshes the account token before creating a session', async
     assert.deepEqual(order, ['refresh', 'create']);
 });
 
-test('askDSStream: skips the token refresh when the deadline is hit or the client is gone', async () => {
-    for (const opts of [{ deadlineHit: () => true }, { clientGone: () => true }]) {
-        let refreshed = false;
-        const { deps } = makeDeps({
-            refreshAccountToken: async () => { refreshed = true; return true; },
-        });
-        const ask = createUpstreamSession(deps);
-        await ask({ prompt: 'hello', agentId: 'agent1', ...opts });
-        assert.equal(refreshed, false);
-    }
+test('askDSStream: skips the token refresh when the client is gone', async () => {
+    let refreshed = false;
+    const { deps } = makeDeps({
+        refreshAccountToken: async () => { refreshed = true; return true; },
+    });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hello', agentId: 'agent1', clientGone: () => true });
+    assert.equal(refreshed, false);
 });
 
 test('askDSStream: refreshes client headers before creating a session and can be skipped', async () => {
@@ -492,6 +488,6 @@ test('askDSStream: refreshes client headers before creating a session and can be
     let refreshed = false;
     const skipped = makeDeps({ refreshClientHeaders: async () => { refreshed = true; } });
     const askSkipped = createUpstreamSession(skipped.deps);
-    await askSkipped({ prompt: 'hello', agentId: 'agent1', deadlineHit: () => true });
+    await askSkipped({ prompt: 'hello', agentId: 'agent1', clientGone: () => true });
     assert.equal(refreshed, false);
 });

@@ -49,7 +49,6 @@ function withDeps() {
         askDSStream: async (args) => ({ resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false }),
         readDSResponse: async () => ({ content: 'hello', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
         resolveMessageAttachments: async () => ({ fileIds: [], uploads: [], failures: [] }),
-        requestDeadlineMs: 5000,
     };
 }
 

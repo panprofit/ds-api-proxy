@@ -105,7 +105,6 @@ test('classifyRecoveryFailure: context-too-long -> 400', () => {
 });
 
 test('classifyRecoveryFailure: timeout -> 504', () => {
-    assert.deepEqual(classifyRecoveryFailure(null, true), { status: 504, type: 'request_timeout' });
     assert.deepEqual(classifyRecoveryFailure({ type: 'request_timeout' }), { status: 504, type: 'request_timeout' });
 });
 
@@ -139,7 +138,7 @@ test('classifyRecoveryFailure: DS outage -> 503 upstream_unavailable', () => {
 });
 
 test('classifyRecoveryFailure: context check wins over timeout', () => {
-    assert.equal(classifyRecoveryFailure('context too long', true).status, 400);
+    assert.equal(classifyRecoveryFailure({ type: 'request_timeout', content: 'context too long' }).status, 400);
 });
 
 test('isAuthExpiredError: true on the auth_expired type', () => {

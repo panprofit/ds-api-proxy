@@ -136,8 +136,8 @@ test('dsChatCompletionWithPow: sends the PoW header and payload', async () => {
     assert.deepEqual(JSON.parse(seenOpts.opts.body).chat_session_id, 's1');
 });
 
-test('dsChatCompletionWithPow: bounds the call by the completion timeout, not the request deadline', async () => {
-    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_COMPLETION_TIMEOUT_MS: '234567', DS_FETCH_TIMEOUT_MS: '1000' });
+test('dsChatCompletionWithPow: bounds the call by the completion timeout', async () => {
+    config.reload({ DS_COMPLETION_TIMEOUT_MS: '234567', DS_FETCH_TIMEOUT_MS: '1000' });
     const originalTimeout = AbortSignal.timeout;
     const observed = [];
     AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };
@@ -160,7 +160,7 @@ test('dsChatCompletionWithPow: bounds the call by the completion timeout, not th
 });
 
 test('dsChatCompletionWithPow: the completion stream has no default timeout', async () => {
-    config.reload({ DS_REQUEST_DEADLINE_MS: '123456', DS_FETCH_TIMEOUT_MS: '1000' });
+    config.reload({ DS_FETCH_TIMEOUT_MS: '1000' });
     const originalTimeout = AbortSignal.timeout;
     const observed = [];
     AbortSignal.timeout = (ms) => { observed.push(ms); return originalTimeout.call(AbortSignal, ms); };

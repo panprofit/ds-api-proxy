@@ -11,7 +11,6 @@ test('config.load: defaults when env is empty', () => {
     assert.equal(c.host, '127.0.0.1');
     assert.equal(c.maxConcurrent, 10);
     assert.equal(c.authDir, './.auth');
-    assert.equal(c.requestDeadlineMs, 120000);
     assert.equal(c.completionTimeoutMs, 0);
     assert.equal(c.maxUpstreamRetries, 3);
     assert.equal(c.maxSameAccountRetries, 1);
@@ -47,14 +46,12 @@ test('config.load: parses and overrides from env', () => {
         PORT: '9999',
         HOST: '0.0.0.0',
         DS_MAX_CONCURRENT: '5',
-        DS_REQUEST_DEADLINE_MS: '1000',
         DS_SESSION_TTL_MS: '1234',
         DS_AUTH_DIR: '/auth',
     });
     assert.equal(c.port, 9999);
     assert.equal(c.host, '0.0.0.0');
     assert.equal(c.maxConcurrent, 5);
-    assert.equal(c.requestDeadlineMs, 1000);
     assert.equal(c.sessionTtlMs, 1234);
     assert.equal(c.authDir, '/auth');
 });

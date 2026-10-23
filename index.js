@@ -79,10 +79,7 @@ function buildRuntime({ startedAt = Date.now() } = {}) {
 
     const semaphore = createSemaphore(config.maxConcurrent);
 
-    const requestDeps = {
-        askDSStream, readDSResponse,
-        requestDeadlineMs: config.requestDeadlineMs,
-    };
+    const requestDeps = { askDSStream, readDSResponse };
 
     const { server, shutdownCtl, listen } = createServer({
         semaphore,

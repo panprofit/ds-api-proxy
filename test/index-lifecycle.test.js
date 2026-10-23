@@ -103,7 +103,7 @@ test('index.js: buildRuntime wires a sweep interval and a listen callback', asyn
     const runtime = index.buildRuntime({ startedAt: 1 });
     assert.equal(typeof runtime.listen, 'function');
     assert.equal(typeof runtime.semaphore.waitForZero, 'function');
-    assert.equal(runtime.requestDeps.requestDeadlineMs > 0, true);
+    assert.equal(typeof runtime.requestDeps.askDSStream, 'function');
     if (runtime.shutdownCtl && typeof runtime.shutdownCtl.shutdown === 'function') {
         assert.equal(runtime.shutdownCtl.shuttingDown, false);
     }

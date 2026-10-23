@@ -148,8 +148,8 @@ Data flow: request -> `handlers.runCompletionPipeline` -> `runWithRecovery` ->
 - Every upstream call goes through `dsFetch`. Only completions take a
   per-account throttle slot (`accounts.waitForCompletionSlot`); ancillary calls
   (PoW, session create/delete, uploads, fetch_files) must NOT reserve one.
-- Long waits must honor `deadlineHit()` and `clientGone()`; otherwise an aborted
-  client holds resources until `fetchTimeoutMs`.
+- Long waits must honor `clientGone()`; otherwise an aborted client holds
+  resources until `fetchTimeoutMs`.
 - Errors crossing the recovery boundary must be typed via `createTypedError` /
   `createUpstreamHttpError` (`lib/http.js`) so classification and rotation work.
 

@@ -682,7 +682,7 @@ test('waitForAvailableAccount: returns true immediately when an account is ready
     assert.equal(ok, true);
 });
 
-test('waitForAvailableAccount: returns false when the deadline is already hit', async () => {
+test('waitForAvailableAccount: returns false when shouldStop is true', async () => {
     setAccounts([makeAccount('a1', { cooldownUntil: Date.now() + 60000 })]);
     const ok = await waitForAvailableAccount(() => true, { maxWaitMs: 1000, pollMs: 10 });
     assert.equal(ok, false);
@@ -695,12 +695,30 @@ test('waitForAvailableAccount: resolves true as soon as a cooldown expires', asy
     assert.equal(ok, true);
 });
 
-test('waitForAvailableAccount: gives up after maxWaitMs if nothing becomes available', async () => {
+test('waitForAvailableAccount: stops polling once shouldStop flips', async () => {
+    setAccounts([makeAccount('a1', { cooldownUntil: Date.now() + 300 })]);
+    const start = Date.now();
+    const ok = await waitForAvailableAccount(() => Date.now() - start >= 50, { maxWaitMs: 1000, pollMs: 10 });
+    assert.equal(ok, false);
+    assert.ok(Date.now() - start >= 40, 'should have polled until shouldStop flipped');
+    assert.ok(Date.now() - start < 1000, 'should not wait until the cooldown expires');
+});
+
+test('waitForAvailableAccount: returns immediately when no cooldown can expire within maxWaitMs', async () => {
     setAccounts([makeAccount('a1', { cooldownUntil: Date.now() + 60000 })]);
     const start = Date.now();
-    const ok = await waitForAvailableAccount(() => false, { maxWaitMs: 60, pollMs: 10 });
+    const ok = await waitForAvailableAccount(() => false, { maxWaitMs: 1000, pollMs: 10 });
     assert.equal(ok, false);
-    assert.ok(Date.now() - start >= 50, 'should have waited roughly maxWaitMs');
+    assert.ok(Date.now() - start < 100, 'should not wait for a cooldown beyond the budget');
+});
+
+test('waitForAvailableAccount: returns immediately when every account is unusable', async () => {
+    setAccounts([makeAccount('a1', { cooldownUntil: 0 })]);
+    accounts.getAccounts()[0].authExpired = true;
+    const start = Date.now();
+    const ok = await waitForAvailableAccount(() => false, { maxWaitMs: 1000, pollMs: 10 });
+    assert.equal(ok, false);
+    assert.ok(Date.now() - start < 100, 'auth-expired accounts never become available by waiting');
 });
 
 test('waitForAvailableAccount: stops early when the client is gone', async () => {
@@ -845,27 +863,11 @@ test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls
     assert.deepEqual(slept, [5000, 10000]);
 });
 
-test('waitForCompletionSlot: a long wait does not spend the whole deadline budget', async () => {
-    const a = makeAccount('a1');
-    a.nextCompletionAt = 0;
-    const clock = fakeClock();
-    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
-
-    const ok = await accounts.waitForCompletionSlot(a, { intervalMs: 5000, maxWaitMs: 1000, now: clock.now, sleep: clock.sleep });
-    assert.equal(ok, false);
-    assert.deepEqual(clock.slept, []);
-});
-
-test('waitForCompletionSlot: deadlineHit and clientGone abort the wait', async () => {
+test('waitForCompletionSlot: clientGone aborts the wait', async () => {
     const a1 = makeAccount('a1');
     const clock1 = fakeClock();
     await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep });
-    assert.equal(await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep, deadlineHit: () => true }), false);
-
-    const a2 = makeAccount('a2');
-    const clock2 = fakeClock();
-    await accounts.waitForCompletionSlot(a2, { intervalMs: 5000, now: clock2.now, sleep: clock2.sleep });
-    assert.equal(await accounts.waitForCompletionSlot(a2, { intervalMs: 5000, now: clock2.now, sleep: clock2.sleep, clientGone: () => true }), false);
+    assert.equal(await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep, clientGone: () => true }), false);
 });
 
 test('resetAccountState clears nextCompletionAt too', () => {
