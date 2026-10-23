@@ -105,7 +105,7 @@ test('shouldCheckCompletion: false while the feature is off', () => {
 
 test('runWithRecovery: a final short answer is kept and the model is asked once', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')], calls),
@@ -125,7 +125,7 @@ test('runWithRecovery: a final short answer is kept and the model is asked once'
 
 test('runWithRecovery: CONTINUE nudges the model into the tool call', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const toolJson = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
             const ctx = baseCtx({
@@ -147,7 +147,7 @@ test('runWithRecovery: CONTINUE nudges the model into the tool call', async () =
 
 test('runWithRecovery: an unparsable verdict fails open', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')], calls),
@@ -167,7 +167,7 @@ test('runWithRecovery: an unparsable verdict fails open', async () => {
 
 test('runWithRecovery: CONTINUE with no usable tool call keeps the original answer', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')], calls),
@@ -187,7 +187,7 @@ test('runWithRecovery: CONTINUE with no usable tool call keeps the original answ
 
 test('runWithRecovery: a long answer is not checked', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_COMPLETION_CHECK: '1', DS_COMPLETION_CHECK_MAX_CHARS: '50', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_COMPLETION_CHECK: '1', DS_COMPLETION_CHECK_MAX_CHARS: '50', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const long = 'Let me walk through everything. '.repeat(10);
             const ctx = baseCtx({
@@ -253,7 +253,7 @@ test('shouldCheckCompletion: guards every disqualifying state', async () => {
 });
 
 test('runCompletionCheck: skips work when the request is already gone', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         let calls = 0;
         const state = checkState();
         const deps = checkDeps({ askDSStream: async () => { calls++; return { resp: { body: {} } }; } });
@@ -264,7 +264,7 @@ test('runCompletionCheck: skips work when the request is already gone', async ()
 });
 
 test('runCompletionCheck: forwards refreshed file ids from the verdict call', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const state = checkState();
         const deps = checkDeps({
             askDSStream: async () => ({ resp: { body: {} }, fileIds: ['f2'], fileIdsAccountId: 'a2' }),
@@ -277,7 +277,7 @@ test('runCompletionCheck: forwards refreshed file ids from the verdict call', as
 });
 
 test('runCompletionCheck: keeps the old file-id account when the call omits one', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const state = checkState();
         const deps = checkDeps({
             askDSStream: async () => ({ resp: { body: {} }, fileIds: ['f2'] }),
@@ -290,7 +290,7 @@ test('runCompletionCheck: keeps the old file-id account when the call omits one'
 });
 
 test('runCompletionCheck: skips the verdict read after account rotation', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const logs = [];
         const state = checkState();
         const deps = checkDeps({
@@ -308,7 +308,7 @@ test('runCompletionCheck: skips the verdict read after account rotation', async 
 });
 
 test('runCompletionCheck: an empty verdict response keeps the answer', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const state = checkState();
         const deps = checkDeps({ readDSResponse: async () => null });
         assert.equal(await runCompletionCheck(state, deps), null);
@@ -317,7 +317,7 @@ test('runCompletionCheck: an empty verdict response keeps the answer', async () 
 });
 
 test('runCompletionCheck: a failing verdict call fails open', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const logs = [];
         const state = checkState();
         const deps = checkDeps({
@@ -331,7 +331,7 @@ test('runCompletionCheck: a failing verdict call fails open', async () => {
 });
 
 test('runCompletionCheck: CONTINUE with an empty follow-up keeps the answer', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const responses = [
             { content: 'CONTINUE' },
             null,
@@ -344,7 +344,7 @@ test('runCompletionCheck: CONTINUE with an empty follow-up keeps the answer', as
 });
 
 test('runCompletionCheck: CONTINUE with non-tool text keeps the answer', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const responses = [
             { content: 'CONTINUE' },
             { content: 'I would read the file next.' },
@@ -359,7 +359,7 @@ test('runCompletionCheck: CONTINUE with non-tool text keeps the answer', async (
 });
 
 test('runCompletionCheck: CONTINUE with a disallowed tool keeps the answer', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const responses = [
             { content: 'CONTINUE' },
             { content: '{"tool_call":{"name":"write","arguments":{}}}' },
@@ -372,7 +372,7 @@ test('runCompletionCheck: CONTINUE with a disallowed tool keeps the answer', asy
 });
 
 test('runCompletionCheck: CONTINUE adopts the follow-up tool call and reasoning', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         const responses = [
             { content: 'CONTINUE' },
             {

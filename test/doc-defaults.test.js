@@ -32,7 +32,6 @@ const DOC_KEY_TO_CONFIG_FIELD = {
     DS_TOKEN_RATE_BACKOFF_FACTOR: 'tokenRateBackoffFactor',
     DS_CONTINUATION_SIZE_THRESHOLD: 'continuationSizeThreshold',
     DS_MAX_RESPONSE_WORDS: 'maxResponseWords',
-    DS_RECOVERY_RETRY_DELAY_MS: 'recoveryRetryDelayMs',
     DS_IGNORE_AGENT_SESSION: 'ignoreAgentSession',
     DS_SESSION_TTL_MS: 'sessionTtlMs',
     DS_MAX_SESSIONS: 'maxSessions',

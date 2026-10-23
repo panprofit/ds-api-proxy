@@ -109,27 +109,28 @@ test('runWithRecovery: empty response rotates the account instead of retrying it
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        const calls = [];
-        const ctx = baseCtx({
-            askDSStream: askStub([a1, a2], calls),
-            readDSResponse: sseOnce([
-                { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null },
-                { content: 'recovered', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-            ]),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null },
+                    { content: 'recovered', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'recovered');
+
+            assert.equal(calls.length, 2);
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(out.fullContent, 'recovered');
-
-        assert.equal(calls.length, 2);
-
     });
 });
 
 test('runWithRecovery: a single account retries an empty response in a fresh session', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
@@ -152,7 +153,7 @@ test('runWithRecovery: a single account retries an empty response in a fresh ses
 test('runWithRecovery: a single account continues reasoning-only turns until a visible answer', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
@@ -177,7 +178,7 @@ test('runWithRecovery: a single account continues reasoning-only turns until a v
 test('runWithRecovery: same-account retries are bounded by DS_MAX_SAME_ACCOUNT_RETRIES', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_SAME_ACCOUNT_RETRIES: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
@@ -195,7 +196,7 @@ test('runWithRecovery: a completion timeout is recoverable and rotates to the ne
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: async (args) => {
@@ -218,7 +219,7 @@ test('runWithRecovery: a completion timeout is recoverable and rotates to the ne
 test('runWithRecovery: reasoning-only response continues in the same session without rotating', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const deltas = [];
             let reads = 0;
@@ -257,20 +258,21 @@ test('runWithRecovery: empty response rotates without parking the account', asyn
 
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-
-        const accountStub = async (args) => {
-            const session = sessions.getOrCreateAgentSession(args.agentId);
-            session.accountId = a1.id;
-            return { resp: { body: {} }, account: a1, promptUsed: args?.prompt || 'p', freshSessionReset: false };
-        };
-        const ctx = baseCtx({
-            askDSStream: accountStub,
-            readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const accountStub = async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                session.accountId = a1.id;
+                return { resp: { body: {} }, account: a1, promptUsed: args?.prompt || 'p', freshSessionReset: false };
+            };
+            const ctx = baseCtx({
+                askDSStream: accountStub,
+                readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(a1.cooldownUntil, 0, 'empty response must not park the account');
+            assert.equal(a1.failures, 0, 'empty response must not count a failure');
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, false);
-        assert.equal(a1.cooldownUntil, 0, 'empty response must not park the account');
-        assert.equal(a1.failures, 0, 'empty response must not count a failure');
     });
 });
 
@@ -278,16 +280,18 @@ test('runWithRecovery: DS generation_err outage does not cool down the account',
 
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        const ctx = baseCtx({
-            askDSStream: askStub([a1]),
-            readDSResponse: async () => ({
-                content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err',
-                modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
-            }),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const ctx = baseCtx({
+                askDSStream: askStub([a1]),
+                readDSResponse: async () => ({
+                    content: '', reasoningContent: '', messageId: 'm1', finishReason: 'generation_err',
+                    modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+                }),
+            });
+            await runWithRecovery(ctx);
+            assert.equal(a1.cooldownUntil, 0, 'account must not be cooled down for a DS outage');
+            assert.equal(a1.failures, 0, 'account must not accrue failures for a DS outage');
         });
-        await runWithRecovery(ctx);
-        assert.equal(a1.cooldownUntil, 0, 'account must not be cooled down for a DS outage');
-        assert.equal(a1.failures, 0, 'account must not accrue failures for a DS outage');
     });
 });
 
@@ -296,7 +300,7 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             let rr = 0;
             const accountStub = async (args) => {
@@ -339,7 +343,7 @@ test('runWithRecovery: DS generation_err retries the SAME account before giving 
 test('runWithRecovery: no thinking fallback without reasoning or tools', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '0', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 tools: [],
@@ -363,7 +367,7 @@ test('runWithRecovery: DS generation_err retries the last turn in the SAME remot
 
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             let created = 0;
             const seenSessionIds = [];
             const accountStub = async (args) => {
@@ -394,7 +398,7 @@ test('runWithRecovery: DS generation_err falls back to one fresh-session attempt
 
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             let created = 0;
             const seenSessionIds = [];
             const accountStub = async (args) => {
@@ -425,7 +429,7 @@ test('runWithRecovery: DS generation_err falls back to one fresh-session attempt
 test('runWithRecovery: DS generation_err stops immediately with 0 retries configured', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '0', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
@@ -451,29 +455,31 @@ test('runWithRecovery: a muted body parks the account until mute_until and rotat
     const muteUntilSec = Math.floor(Date.now() / 1000) + 3600;
     const muted = { message: 'user is muted', muteUntil: muteUntilSec };
     await withAccounts([a1, a2], async () => {
-        let first = true;
-        const ctx = baseCtx({
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            let first = true;
+            const ctx = baseCtx({
 
-            askDSStream: async (args) => {
-                const session = sessions.getOrCreateAgentSession(args.agentId);
-                const acct = first ? a1 : a2;
-                session.accountId = acct.id;
-                first = false;
-                return { resp: { body: {} }, account: acct, promptUsed: args?.prompt || 'p', freshSessionReset: false };
-            },
+                askDSStream: async (args) => {
+                    const session = sessions.getOrCreateAgentSession(args.agentId);
+                    const acct = first ? a1 : a2;
+                    session.accountId = acct.id;
+                    first = false;
+                    return { resp: { body: {} }, account: acct, promptUsed: args?.prompt || 'p', freshSessionReset: false };
+                },
 
-            readDSResponse: sseOnce([
-                { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted },
-                { content: 'after rotation', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-            ]),
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null, muted },
+                    { content: 'after rotation', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'after rotation');
+
+            const remaining = a1.cooldownUntil - Date.now();
+            assert.ok(remaining > 3500 * 1000, `expected ~1h park, got ${remaining}ms`);
+            assert.equal(a1.failures, 1);
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(out.fullContent, 'after rotation');
-
-        const remaining = a1.cooldownUntil - Date.now();
-        assert.ok(remaining > 3500 * 1000, `expected ~1h park, got ${remaining}ms`);
-        assert.equal(a1.failures, 1);
     });
 });
 
@@ -525,14 +531,16 @@ test('runWithRecovery: exhausting the account budget returns an error, not an em
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        const ctx = baseCtx({
-            askDSStream: askStub([a1, a2]),
-                readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const ctx = baseCtx({
+                askDSStream: askStub([a1, a2]),
+                    readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.ok(out.error, 'expected a terminal error body');
+            assert.equal(out.error.body.account_attempts, 2);
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, false);
-        assert.ok(out.error, 'expected a terminal error body');
-        assert.equal(out.error.body.account_attempts, 2);
     });
 });
 
@@ -541,7 +549,7 @@ test('runWithRecovery: rotation stops once the rotation budget elapses', async (
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_ROTATION_BUDGET_MS: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ROTATION_BUDGET_MS: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const ctx = baseCtx({
                         askDSStream: askStub([a1, a2]),
                 readDSResponse: async () => ({ content: '', reasoningContent: '', messageId: null, finishReason: null, modelError: null }),
@@ -558,7 +566,7 @@ test('runWithRecovery: rotating to another account resets the transient-retry co
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             let rr = 0;
             const accountStub = async (args) => {
                 const session = sessions.getOrCreateAgentSession(args.agentId);
@@ -601,7 +609,7 @@ test('runWithRecovery: reasoning alone does not reset the upstream-retry counter
         await withConfig({
             DS_MAX_UPSTREAM_RETRIES: '1',
             DS_MAX_SAME_ACCOUNT_RETRIES: '1',
-            DS_RECOVERY_RETRY_DELAY_MS: '0',
+            DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0',
         }, async () => {
             let created = 0;
             const seenSessionIds = [];
@@ -678,7 +686,7 @@ test('runWithRecovery: unknown tool rotates the account immediately', async () =
     const a2 = makeAccount('a2');
     accountsArr.push(a1, a2);
     try {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const unknown = '{"tool_call":{"name":"nope","arguments":{}}}';
             const valid = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
             const calls = [];
@@ -724,20 +732,22 @@ test('runWithRecovery: tool_choice required rotates then accepts a call', async 
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        const calls = [];
-        const ctx = baseCtx({
-            tools: [{ type: 'function', function: { name: 'read' } }],
-            toolChoice: 'required',
-            askDSStream: askStub([a1, a2], calls),
-            readDSResponse: sseOnce([
-                { content: 'I cannot call a tool.', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                { content: '{"tool_call":{"name":"read","arguments":{"path":"a"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-            ]),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                toolChoice: 'required',
+                askDSStream: askStub([a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: 'I cannot call a tool.', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"a"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 2);
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(out.toolCall.name, 'read');
-        assert.equal(calls.length, 2);
     });
 });
 
@@ -846,7 +856,7 @@ test('runWithRecovery: malformed markup on the only account reports all-cooling 
 test('runWithRecovery: malformed markup re-prompts the same session before rotating', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const malformed = '<tool_call>{"name":"read","arguments":{"path":';
             const ctx = baseCtx({
@@ -875,7 +885,7 @@ test('runWithRecovery: malformed markup still broken after the re-prompt rotates
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const malformed = '<tool_call>{"name":"read","arguments":{"path":';
             const ctx = baseCtx({
@@ -926,41 +936,43 @@ test('runWithRecovery: auth_expired rotates to the next account and succeeds', a
     accountsArr.length = 0;
     accountsArr.push(makeAccount('a1'), makeAccount('a2'));
     try {
-        const calls = [];
-        let rr = 0;
-        const accountStub = async (args) => {
-            const session = sessions.getOrCreateAgentSession(args.agentId);
-            let account;
-            if (session.accountId) {
-                account = accountsArr.find(a => a.id === session.accountId) || accountsArr[0];
-            } else {
-                account = accountsArr[rr % accountsArr.length];
-                rr++;
-                session.accountId = account.id;
-            }
-            calls.push({ accountId: account.id });
-            if (account.id === 'a1') {
-                const err = new Error('Could not create DS chat session (HTTP 401). Auth may be expired/captcha-blocked.');
-                err.type = 'auth_expired';
-                err.status = 401;
-                throw err;
-            }
-            if (!session.id) { session.id = `sess-${account.id}`; session.messageCount = 0; }
-            return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
-        };
-        const ctx = baseCtx({
-            askDSStream: accountStub,
-            readDSResponse: sseOnce([{ content: 'ok from a2', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            let rr = 0;
+            const accountStub = async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                let account;
+                if (session.accountId) {
+                    account = accountsArr.find(a => a.id === session.accountId) || accountsArr[0];
+                } else {
+                    account = accountsArr[rr % accountsArr.length];
+                    rr++;
+                    session.accountId = account.id;
+                }
+                calls.push({ accountId: account.id });
+                if (account.id === 'a1') {
+                    const err = new Error('Could not create DS chat session (HTTP 401). Auth may be expired/captcha-blocked.');
+                    err.type = 'auth_expired';
+                    err.status = 401;
+                    throw err;
+                }
+                if (!session.id) { session.id = `sess-${account.id}`; session.messageCount = 0; }
+                return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
+            };
+            const ctx = baseCtx({
+                askDSStream: accountStub,
+                readDSResponse: sseOnce([{ content: 'ok from a2', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'ok from a2');
+
+            assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
+
+            const a1 = accountsArr.find(a => a.id === 'a1');
+            assert.equal(a1.authExpired, true, 'a1 should be disabled after the auth error');
+            assert.equal(a1.cooldownUntil, 0, 'auth expiry must not create a cooldown');
         });
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(out.fullContent, 'ok from a2');
-
-        assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
-
-        const a1 = accountsArr.find(a => a.id === 'a1');
-        assert.equal(a1.authExpired, true, 'a1 should be disabled after the auth error');
-        assert.equal(a1.cooldownUntil, 0, 'auth expiry must not create a cooldown');
     } finally {
         accountsArr.length = 0;
         accountsArr.push(...saved);
@@ -1094,16 +1106,19 @@ test('runWithRecovery: context-too-long skips empty retries (deterministic failu
     });
 });
 
-test('backoffDelay: scales and caps at 3x', () => {
+test('backoffDelay: doubles on every consecutive retry', () => {
     const { backoffDelay } = require('../lib/recovery');
     assert.equal(backoffDelay(1, 100), 100);
-    assert.equal(backoffDelay(4, 100), 300);
+    assert.equal(backoffDelay(2, 100), 200);
+    assert.equal(backoffDelay(3, 100), 400);
+    assert.equal(backoffDelay(4, 100), 800);
+    assert.equal(backoffDelay(0, 100), 100);
 });
 
 test('runWithRecovery: a reasoning-only continuation error keeps the streamed reasoning', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: async (args) => {
@@ -1133,7 +1148,7 @@ test('runWithRecovery: a reasoning-only continuation error keeps the streamed re
 test('runWithRecovery: several reasoning-only blocks are streamed before the final answer', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([a1], calls),
@@ -1211,7 +1226,7 @@ async function withConfig(overrides, fn) {
 
 test('runWithRecovery: auto-continuation appends the continuation and updates finishReason', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_CONTINUATION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_CONTINUATION: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')], calls),
@@ -1236,7 +1251,7 @@ test('runWithRecovery: rotation re-uploads attachments and the continuation uses
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_MAX_CONTINUATION: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_CONTINUATION: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 fileIds: ['f1'],
@@ -1274,7 +1289,7 @@ test('runWithRecovery: rotation re-uploads attachments and the continuation uses
 
 test('runWithRecovery: a refusal continuation is not appended', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_CONTINUATION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_CONTINUATION: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')]),
                 readDSResponse: sseOnce([
@@ -1291,7 +1306,7 @@ test('runWithRecovery: a refusal continuation is not appended', async () => {
 
 test('runWithRecovery: continuation that rotates account is skipped and session reset', async () => {
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_CONTINUATION: '2', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_CONTINUATION: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             let call = 0;
             const ctx = baseCtx({
                 askDSStream: async (args) => {
@@ -1391,7 +1406,7 @@ test('runWithRecovery: a reused session forwards only pending turns', async () =
 test('runWithRecovery: a session with no accepted turn is treated as fresh', async () => {
 
     await withAccounts([makeAccount('a1')], async () => {
-        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 askDSStream: askStub([makeAccount('a1')], calls),
@@ -1580,7 +1595,7 @@ test('runWithRecovery: a native <tool_result> echo rotates to the next account a
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const echo = '<tool_result>\nFAKE OUTPUT\n</tool_result>';
             const ctx = baseCtx({
@@ -1627,7 +1642,7 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
 test('runWithRecovery: a generation_err abort after reasoning re-prompts the same session for the tool call', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 thinkingEnabled: true,
@@ -1656,7 +1671,7 @@ test('runWithRecovery: a generation_err abort after reasoning re-prompts the sam
 test('runWithRecovery: a re-prompt that yields nothing falls through to the normal recovery', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0', DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0', DS_MAX_UPSTREAM_RETRIES: '0' }, async () => {
             const calls = [];
             const ctx = baseCtx({
                 thinkingEnabled: true,
@@ -1703,7 +1718,7 @@ test('runWithRecovery: a native <tool_result> echo rotates to the next account a
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
-        await withConfig({ DS_RECOVERY_RETRY_DELAY_MS: '0' }, async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
             const calls = [];
             const echo = '<tool_result>\nFAKE OUTPUT\n</tool_result>';
             const ctx = baseCtx({
