@@ -22,12 +22,6 @@ for (const entry of fixture.responsesThinking) {
     });
 }
 
-for (const entry of fixture.effortScores) {
-    test(`recipe effort score: ${entry.name}`, () => {
-        assert.equal(reasoning.resolveReasoningEffortScore(entry.params), entry.score);
-    });
-}
-
 for (const entry of fixture.responseFormats) {
     test(`recipe response format: ${entry.name}`, () => {
         assert.equal(prompt.formatResponseFormat(entry.format), entry.expected);

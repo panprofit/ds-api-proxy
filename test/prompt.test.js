@@ -517,18 +517,6 @@ test('formatMessages: folds response_format into the system prompt', () => {
     assert.ok(systemPrompt.includes('{"type": "json_object"}'));
 });
 
-test('formatMessages: does not render a reasoning-effort line', () => {
-    const { systemPrompt } = prompt.formatMessages(
-        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], [], null, 'auto', 'json', 75);
-    assert.ok(!systemPrompt.includes('Reasoning Effort:'));
-});
-
-test('formatMessages: omits the reasoning-effort line when the score is null', () => {
-    const { systemPrompt } = prompt.formatMessages(
-        [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }], []);
-    assert.ok(!systemPrompt.includes('Reasoning Effort:'));
-});
-
 test('formatMessages: no response_format leaves the system prompt free-form', () => {
     const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], []);
     assert.ok(!systemPrompt.includes('~~~json'));

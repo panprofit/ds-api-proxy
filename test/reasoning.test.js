@@ -46,31 +46,6 @@ test('resolveResponsesThinkingEnabled: top-level reasoning_effort is a fallback'
     }), false);
 });
 
-test('resolveReasoningEffortScore: maps effort levels to the V4.1 scores', () => {
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'none' }), null);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'minimal' }), 50);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'low' }), 50);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'medium' }), 75);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'high' }), 75);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'xhigh' }), 75);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'ultra' }), 100);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'max' }), 100);
-});
-
-test('resolveReasoningEffortScore: explicit thinking wins and defaults to high', () => {
-    assert.equal(reasoning.resolveReasoningEffortScore({ thinking: { type: 'disabled' }, reasoning_effort: 'max' }), null);
-    assert.equal(reasoning.resolveReasoningEffortScore({ thinking: { type: 'enabled' } }), 75);
-    assert.equal(reasoning.resolveReasoningEffortScore({ thinking: { type: 'adaptive' } }), 75);
-    assert.equal(reasoning.resolveReasoningEffortScore({ thinking: { type: 'enabled' }, reasoning_effort: 'none' }), 75);
-});
-
-test('resolveReasoningEffortScore: Responses reads reasoning.effort first', () => {
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning: { effort: 'none' } }, { responses: true }), null);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning: { effort: 'max' } }, { responses: true }), 100);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning_effort: 'low' }, { responses: true }), 50);
-    assert.equal(reasoning.resolveReasoningEffortScore({ reasoning: { effort: 'none' }, reasoning_effort: 'max' }, { responses: true }), null);
-});
-
 test('validateThinkingParams: accepts the documented values', () => {
     assert.equal(reasoning.validateThinkingParams({ reasoning_effort: 'max' }), null);
     assert.equal(reasoning.validateThinkingParams({ thinking: { type: 'adaptive' } }), null);

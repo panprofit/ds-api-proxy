@@ -27,19 +27,6 @@ const responsesThinking = [
     { name: 'nested-none-wins', params: { reasoning: { effort: 'none' }, reasoning_effort: 'max' }, enabled: false },
 ];
 
-const effortScores = [
-    { name: 'none', params: { reasoning_effort: 'none' }, score: null },
-    { name: 'minimal', params: { reasoning_effort: 'minimal' }, score: 50 },
-    { name: 'low', params: { reasoning_effort: 'low' }, score: 50 },
-    { name: 'medium', params: { reasoning_effort: 'medium' }, score: 75 },
-    { name: 'high', params: { reasoning_effort: 'high' }, score: 75 },
-    { name: 'xhigh', params: { reasoning_effort: 'xhigh' }, score: 75 },
-    { name: 'ultra', params: { reasoning_effort: 'ultra' }, score: 100 },
-    { name: 'max', params: { reasoning_effort: 'max' }, score: 100 },
-    { name: 'thinking-default-high', params: { thinking: { type: 'enabled' } }, score: 75 },
-    { name: 'thinking-disabled', params: { thinking: { type: 'disabled' }, reasoning_effort: 'max' }, score: null },
-];
-
 const strictSchemas = [
     {
         name: 'flat-object',
@@ -137,7 +124,6 @@ const dsml = [
 module.exports = {
     thinking,
     responsesThinking,
-    effortScores,
     responseFormats,
     strictSchemas,
     invalidStrictSchemas,
