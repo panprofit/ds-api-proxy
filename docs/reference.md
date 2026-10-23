@@ -23,14 +23,15 @@ only non-completion endpoints. The primary consumer is the pi coding agent, whic
 Returns a JSON liveness/readiness report. To a **loopback peer** the full
 report is: `status` (`ok` / `shutting_down`), `uptime_ms`, an
 `accounts` summary (`total` / `usable` / `available` / `cooling`), `sessions`,
-`shutting_down`, and - while the server is up - a `concurrency` block
-(`in_flight` / `limit` / `available`). A non-loopback caller gets only the
-minimal `{ status, shutting_down }` (see the disclosure note below).
+`shutting_down`, a `metrics` block of lifetime counters, and - while the server
+is up - a `concurrency` block (`in_flight` / `limit` / `available`). A
+non-loopback caller gets only the minimal `{ status, shutting_down }` (see the
+disclosure note below).
 
 - `200` while healthy, `503` while draining (so a supervisor stops routing
   work during graceful shutdown), `405` for any method other than `GET`.
-- The full report (uptime, upstream host, account counts, sessions,
-  concurrency) is returned only to a **loopback peer**. Any non-loopback
+- The full report (uptime, account counts, sessions, metrics, concurrency) is
+  returned only to a **loopback peer**. Any non-loopback
   caller gets just `{ status, shutting_down }`, so the endpoint cannot be used
   for reconnaissance on a network-exposed bind.
 
@@ -50,10 +51,9 @@ accepts the top-level `reasoning_effort` for older clients; `thinking` is
 accepted there as a DeepSeek extension. Unknown types or effort values are
 rejected with `400 invalid_request_error`.
 
-The upstream Web API has no per-level reasoning control, so the level is
-forwarded as a `Reasoning Effort: N` line in the system prompt, mirroring the
-V4.1 template: `low`/`minimal` = 50, `high`/`medium`/`xhigh`/unset = 75, and
-`max`/`ultra` = 100.
+The upstream Web API has no per-level reasoning control: the supported effort
+values only decide whether thinking is enabled, and no effort score is sent
+upstream.
 
 ### Structured output and stop sequences
 
@@ -161,10 +161,10 @@ side-channel mitigation. Usage-only and terminal chunks carry no padding.
 
 ### Session routing
 
-The per-agent session key is taken from the first of these request headers that
-is present: `x-agent-session`, `x-session-affinity`, `x-session-id`,
-`session_id`, `x-client-request-id`, the `session`/`user` body fields, or the
-remote address. Use `x-agent-session` to pin a conversation to a specific
+The per-agent session key is taken from the first of these request headers or
+body fields that is present: `x-agent-session`, `x-session-affinity`,
+`x-session-id`, `session_id`, `x-client-request-id`, `session`, `user`.
+Use `x-agent-session` to pin a conversation to a specific
 upstream session; change it to start a fresh one.
 
 ### Anonymous (ephemeral) mode
@@ -228,7 +228,8 @@ fault: the same account is retried in place (`DS_MAX_UPSTREAM_RETRIES`) and only
 then recreated once in a fresh session. When such an error arrives after
 tool-intent reasoning on a thinking request that carries tools, DS is aborting
 the turn exactly as it starts emitting the tool call; the proxy spends one extra
-attempt with thinking disabled before entering that retry path.
+same-session attempt with thinking still enabled before entering that retry
+path.
 
 When every account is parked the request returns HTTP 429 with a
 `retry_in`-style hint until the earliest window opens. When every account's
@@ -350,8 +351,9 @@ vulnerability privately. The hardening below is what the proxy already does.
   > reflected. To allow specific browser origins on a non-loopback bind, set
   > `DS_ALLOWED_ORIGINS` to an explicit allowlist.
 - **`/health` exposure** (`lib/health.js`): unauthenticated. The full report
-  (upstream host, account counts, in-flight concurrency) is served only to a
-  loopback peer; a non-loopback caller receives just `{ status, shutting_down }`.
+  (account/session counts, lifetime metrics, in-flight concurrency) is served
+  only to a loopback peer; a non-loopback caller receives just
+  `{ status, shutting_down }`.
 
 
 ## Troubleshooting

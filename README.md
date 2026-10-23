@@ -13,7 +13,7 @@ tool-call markup) into the OpenAI Chat Completions format.
 > multi-tenant API gateway. It is designed to run on loopback for a single
 > user driving one or a handful of agents (e.g. the pi coding agent — see
 > [Client integration (pi agent)](#client-integration-pi-agent)). It has no
-> auth, no per-user quota and no metrics; `DS_MAX_CONCURRENT` is a self-protection
+> auth or per-user quota; `DS_MAX_CONCURRENT` is a self-protection
 > cap (against exhausting CPU on PoW and getting the DS accounts rate-limited
 > or blocked), not a multi-user quota. If you need to serve many concurrent
 > clients or untrusted users, put an authenticated gateway in front of it.

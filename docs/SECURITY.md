@@ -3,8 +3,8 @@
 ## Scope and threat model
 
 `ds-api-proxy` is a **local proxy for one or a few agents** (e.g. a coding CLI),
-not a public multi-tenant gateway. It has **no authentication**, no per-user
-quota and no metrics. `DS_MAX_CONCURRENT` is a self-protection cap, not a quota.
+not a public multi-tenant gateway. It has **no authentication** and no per-user
+quota. `DS_MAX_CONCURRENT` is a self-protection cap, not a quota.
 
 The intended deployment is `HOST=127.0.0.1` on a single-user machine. The proxy
 holds live DeepSeek credentials (`token` + `cookie` in `DS_AUTH_DIR`), so anyone
@@ -44,8 +44,8 @@ there are no maintained release branches. Run the latest `master`.
 - **Error redaction** (`lib/http.js` `redactError`): bearer tokens, cookies,
   JWTs and long base64 blobs are stripped before errors reach logs/CI.
 - **`/health` minimization** (`lib/health.js`): the full readiness report
-  (upstream host, account counts, concurrency) is returned **only to a loopback
-  peer**; any non-loopback caller gets just `{ status, shutting_down }`.
+  (account/session counts, lifetime metrics, concurrency) is returned **only to
+  a loopback peer**; any non-loopback caller gets just `{ status, shutting_down }`.
 - **Upload cache keying**: keys are scoped to the stable account id (email
   hash, or the legacy token+cookie hash) plus a content hash, so cached
   `file_id`s are never shared between accounts. A token refresh keeps the same
