@@ -692,3 +692,10 @@ test('toInternalParams: a blank or non-string instructions field is ignored', ()
     assert.deepEqual(responses.toInternalParams({ instructions: '   ', input: 'hi' }).messages, [{ role: 'user', content: 'hi' }]);
     assert.deepEqual(responses.toInternalParams({ instructions: 5, input: 'hi' }).messages, [{ role: 'user', content: 'hi' }]);
 });
+
+test('normalizeTools: nested tools without a function name are dropped', () => {
+    assert.deepEqual(responses.normalizeTools([
+        { type: 'function', function: { description: 'no name' } },
+        { type: 'function', function: { name: '' } },
+    ]), []);
+});
