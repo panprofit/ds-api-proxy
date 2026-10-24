@@ -1,10 +1,13 @@
 'use strict';
 
-const test = require('node:test');
+const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createUpstreamSession } = require('../lib/upstream-session');
+const config = require('../lib/config');
 const { estimateTokens } = require('../lib/openai');
+
+afterEach(() => config.reload());
 
 function makeAccount(id = 'a1') {
     return { id, headers: { 'X-Test': '1' }, config: {} };
@@ -384,6 +387,34 @@ test('askDSStream: forwards clientGone into the throttle', async () => {
     await ask({ prompt: 'hi', agentId: 'agent1', clientGone });
     assert.equal(rec.calls.length, 1);
     assert.equal(rec.calls[0].opts.clientGone, clientGone);
+});
+
+test('askDSStream: grows the throttle interval while the parent message id is unchanged', async () => {
+    config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '6000' });
+    const rec = throttleRecorder();
+    const { deps } = makeDeps({
+        session: makeSession({ id: 'existing', accountId: 'a1', parentMessageId: 10 }),
+        waitForCompletionSlot: rec.slot,
+    });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    assert.deepEqual(rec.calls.map(c => c.opts.intervalMs), [6000, 12000, 18000]);
+});
+
+test('askDSStream: resets the throttle interval once the parent message id advances', async () => {
+    config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '6000' });
+    const rec = throttleRecorder();
+    const session = makeSession({ id: 'existing', accountId: 'a1', parentMessageId: 10 });
+    const { deps } = makeDeps({ session, waitForCompletionSlot: rec.slot });
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    session.parentMessageId = 11;
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    await ask({ prompt: 'hi', agentId: 'agent1' });
+    assert.deepEqual(rec.calls.map(c => c.opts.intervalMs), [6000, 12000, 6000, 12000]);
 });
 
 test('askDSStream: aborts with 429 when no completion slot is granted', async () => {

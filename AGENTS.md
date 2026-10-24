@@ -67,6 +67,7 @@ in normal work; `npm run test:coverage` exists but is strict (99% lines,
 | `lib/recovery-continuation.js` | account-affinity-safe continuation call + auto-continue loop |
 | `lib/recovery-failures.js` | terminal failure handlers (auth-expired, muted, transient outage, context-too-long, recoverable give-up) |
 | `lib/recovery-util.js` | shared retry-delay / config helpers for the recovery passes |
+| `lib/backoff.js` | shared completion backoff math: configured base, exponential retry delay, linear parent-streak delay |
 | `lib/recovery-classify.js` | response classification (refusal, context-too-long, ...) |
 | `lib/recovery-completion-check.js` | post-completion DONE/CONTINUE verdict pass |
 | `lib/upstream-session.js` | one completion attempt + expired-session recreation |
