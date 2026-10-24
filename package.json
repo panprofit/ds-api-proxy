@@ -19,6 +19,7 @@
     "start:bg": "sh scripts/start.sh",
     "stop:bg": "sh scripts/stop.sh",
     "auth": "node --env-file-if-exists=.env ./scripts/auth.js",
+    "auth:check": "node --env-file-if-exists=.env ./scripts/auth.js --check",
     "auth:headless": "node --env-file-if-exists=.env ./scripts/auth.js --headless",
     "auth:repair": "node --env-file-if-exists=.env ./scripts/auth.js --repair",
     "sessions:delete": "node --env-file-if-exists=.env ./scripts/delete-sessions.js",

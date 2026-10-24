@@ -151,6 +151,19 @@ to the configured upstream host, and a `401`/`403`/`429` puts that account into
 the usual cooldown. A failure on one account does not abort the others; the script exits
 non-zero if any account failed. `--dry-run` performs no network calls.
 
+### Checking the live bearer token
+
+`npm run auth -- --check` (also exposed as `npm run auth:check`) calls
+`GET /users/current` for every configured account and prints the HTTP status,
+elapsed time and a token-redacted response body, so you can see exactly what DS
+returns for the current token:
+
+A successful response whose `data.biz_data.token` differs from the stored one
+is adopted in memory. The script never writes auth files; the proxy does that
+itself for email-keyed configs on the normal refresh path. A `401`/`403`/`429`
+marks the account as failing (same as the proxy) and the script exits non-zero
+if any account failed.
+
 ### Repairing expired accounts
 
 `npm run auth:repair` probes every account in `DS_AUTH_DIR` with a side-effect
