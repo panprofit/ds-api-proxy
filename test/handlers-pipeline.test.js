@@ -7,6 +7,7 @@ const { EventEmitter } = require('node:events');
 const handlers = require('../lib/handlers');
 const sessions = require('../lib/sessions');
 const accounts = require('../lib/accounts');
+const config = require('../lib/config');
 
 function fakeReq({ headers = {}, remoteAddress = '127.0.0.1' } = {}) {
     return { headers, socket: { remoteAddress }, on: () => {} };
@@ -234,6 +235,8 @@ test('handleChatCompletions: non-thinking tools also use the JSON tool-call prom
 });
 
 test('handleChatCompletions: toggling thinking keeps the session and the JSON tool format', async () => {
+    config.reload({ DS_COMPLETION_CHECK: '0' });
+    try {
     await withAccounts([makeAccount('a1')], async () => {
         const prompts = [];
         const askDSStream = async (args) => {
@@ -261,6 +264,9 @@ test('handleChatCompletions: toggling thinking keeps the session and the JSON to
         assert.ok(!prompts[1].includes('\uFF5CDSML\uFF5C'));
         assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-1');
     });
+    } finally {
+        config.reload();
+    }
 });
 
 test('handleChatCompletions: invalid params are 400 before any upstream call', async () => {

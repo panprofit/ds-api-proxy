@@ -916,7 +916,7 @@ test('runWithRecovery: malformed markup still broken after the re-prompt rotates
 
 test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not rotated', async () => {
     const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => await withAccounts([a1], async () => {
         const calls = [];
         const content = 'Вызовы оборачиваются в `<tool_calls>` с тегами `<invoke>` / `<parameter>`.';
         const ctx = baseCtx({
@@ -928,7 +928,7 @@ test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not 
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, content);
         assert.equal(calls.length, 1);
-    });
+    }));
 });
 
 test('runWithRecovery: auth_expired rotates to the next account and succeeds', async () => {
@@ -1562,7 +1562,7 @@ test('runWithRecovery: stop does not truncate a tool call', async () => {
 });
 
 test('runWithRecovery: short real answer is returned as-is (no re-prompt)', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => await withAccounts([makeAccount('a1')], async () => {
         const calls = [];
         const ctx = baseCtx({
             tools: [{ type: 'function', function: { name: 'read' } }],
@@ -1575,7 +1575,7 @@ test('runWithRecovery: short real answer is returned as-is (no re-prompt)', asyn
         assert.equal(out.ok, true);
         assert.equal(out.fullContent, 'Done.');
         assert.equal(calls.length, 1, 'a real short answer must not be re-prompted');
-    });
+    }));
 });
 
 test('runWithRecovery: rate-limit empty response cools the account via the Retry-After path', async () => {

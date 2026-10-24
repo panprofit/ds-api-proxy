@@ -98,9 +98,11 @@ test('parseVerdict: recognises DONE and CONTINUE only', () => {
     assert.equal(parseVerdict(null), null);
 });
 
-test('shouldCheckCompletion: false while the feature is off', () => {
-    const state = { allowedToolNames: new Set(['read']), toolCall: null, modelError: null, finishReason: 'stop', fullContent: 'hi', completionChecked: false };
-    assert.equal(shouldCheckCompletion(state), false);
+test('shouldCheckCompletion: false while the feature is off', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => {
+        const state = { allowedToolNames: new Set(['read']), toolCall: null, modelError: null, finishReason: 'stop', fullContent: 'hi', completionChecked: false };
+        assert.equal(shouldCheckCompletion(state), false);
+    });
 });
 
 test('runWithRecovery: a final short answer is kept and the model is asked once', async () => {
@@ -236,7 +238,7 @@ function checkDeps(overrides = {}) {
 }
 
 test('shouldCheckCompletion: guards every disqualifying state', async () => {
-    await withConfig({ DS_COMPLETION_CHECK: '1', DS_COMPLETION_CHECK_MAX_CHARS: '50' }, async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_COMPLETION_CHECK_MAX_CHARS: '50', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
         assert.equal(shouldCheckCompletion(checkState()), true);
         assert.equal(shouldCheckCompletion(checkState({ completionChecked: true })), false);
         assert.equal(shouldCheckCompletion(checkState({ allowedToolNames: new Set() })), false);
@@ -249,7 +251,9 @@ test('shouldCheckCompletion: guards every disqualifying state', async () => {
         assert.equal(shouldCheckCompletion(checkState({ fullContent: 'As an AI I cannot continue.' })), false);
         assert.equal(shouldCheckCompletion(checkState({ fullContent: '<tool_result>{"a":1}</tool_result>' })), false);
     });
-    assert.equal(shouldCheckCompletion(checkState()), false);
+    await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => {
+        assert.equal(shouldCheckCompletion(checkState()), false);
+    });
 });
 
 test('runCompletionCheck: skips work when the request is already gone', async () => {
