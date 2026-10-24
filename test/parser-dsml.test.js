@@ -311,3 +311,20 @@ test('parseDsmlToolCall: unwrapping does not apply when the wrapper is inside a 
     assert.ok(tc);
     assert.deepEqual(JSON.parse(tc.arguments), { code: 'x <tool_calls> y' });
 });
+
+test('canonicalizeToolMarkupTag: accepts the localized 工具调用 marker', () => {
+    assert.equal(d.canonicalizeToolMarkupTag('\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C invoke name="f"'), '<invoke name="f">');
+    assert.equal(d.canonicalizeToolMarkupTag('\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C /parameter'), '</parameter>');
+});
+
+test('parseToolCall: parses the localized 工具调用 invoke/parameter block', () => {
+    const { parseToolCall } = require('../lib/parser');
+    const text = '<\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C invoke name="bash">\n'
+        + '<\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C parameter name="command" string="true">git status --short</\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C parameter>\n'
+        + '<\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C /invoke>\n'
+        + '<\uFF5C\u5DE5\u5177\u8C03\u7528\uFF5C\uFF5C /calls>';
+    const tc = parseToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'git status --short' });
+});
