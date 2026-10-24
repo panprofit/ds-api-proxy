@@ -34,11 +34,12 @@ function emailFromFileName(file) {
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 function parseArgs(argv) {
-    const opts = { headless: false, email: '', repair: false, accountId: null, yes: false, help: false };
+    const opts = { headless: false, email: '', repair: false, check: false, accountId: null, yes: false, help: false };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === '--headless' || arg === '-H') opts.headless = true;
         else if (arg === '--repair') opts.repair = true;
+        else if (arg === '--check') opts.check = true;
         else if (arg === '--yes' || arg === '-y') opts.yes = true;
         else if (arg === '--email' || arg === '-e') {
             const value = argv[++i];
@@ -59,16 +60,18 @@ function parseArgs(argv) {
 }
 
 function usage() {
-    console.log(`Usage: npm run auth [-- --headless] [-- --email <email>] [-- --repair]
+    console.log(`Usage: npm run auth [-- --headless] [-- --email <email>] [-- --repair] [-- --check]
 
   npm run auth                       visible browser, interactive login
   npm run auth:headless              headless browser (--headless)
   npm run auth -- --email me@x.com   auto-fill; password is prompted
   npm run auth:repair                check every account; re-login broken ones
+  npm run auth:check                 GET /users/current for every account
 
   --headless, -H    run the browser headless
   --email, -e       account email to auto-fill (with --repair: override it)
   --repair          probe all accounts and offer a headless re-login
+  --check           print the /users/current response per account
   --account <id>    with --repair: only this account (16-char email hash)
   --yes, -y         with --repair: skip the per-account confirmation
   --help, -h        show this help
@@ -609,6 +612,71 @@ async function probeAccount(account) {
     return { status: 'ok' };
 }
 
+function redactToken(text) {
+    return text.replace(/"token"\s*:\s*"[^"]*"/g, '"token":"<redacted>"');
+}
+
+function previewBody(text, max = 400) {
+    const safe = redactToken(text);
+    return safe.length > max ? `${safe.slice(0, max)}... (${text.length} bytes)` : safe;
+}
+
+async function checkAccountToken(account) {
+    const started = Date.now();
+    try {
+        const resp = await dsFetch('/users/current', { headers: account.headers });
+        const text = await resp.text();
+        console.log(`[auth:check] ${account.id}: HTTP ${resp.status} in ${Date.now() - started}ms`);
+        console.log(`[auth:check] ${account.id}: body=${previewBody(text)}`);
+
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; }
+        catch { console.error(`[auth:check] ${account.id}: non-JSON response`); }
+
+        const token = json?.data?.biz_data?.token;
+        if (!resp.ok) {
+            accounts.markAccountFailure(account, resp.status, 'users/current');
+            const expired = resp.status === 401 || resp.status === 403;
+            console.error(`[auth:check] ${account.id}: ${expired ? 'EXPIRED' : 'UNREACHABLE'} (HTTP ${resp.status})`);
+            return { ok: false, expired };
+        }
+        if (typeof token !== 'string' || !token) {
+            console.error(`[auth:check] ${account.id}: EXPIRED (no data.biz_data.token; auth may be expired)`);
+            return { ok: false, expired: true };
+        }
+        const rotated = accounts.setAccountToken(account, token);
+        console.log(`[auth:check] ${account.id}: token ${rotated ? 'ROTATED' : 'unchanged'} (len=${token.length})`);
+        return { ok: true };
+    } catch (e) {
+        console.error(`[auth:check] ${account.id}: UNREACHABLE (${e && e.message})`);
+        return { ok: false };
+    }
+}
+
+async function runCheck() {
+    const cfg = config.get();
+    accounts.loadDSConfig({ fatal: false });
+    const list = accounts.getAccounts();
+    if (list.length === 0) {
+        console.error(`[auth:check] FATAL: no auth accounts loaded from DS_AUTH_DIR=${cfg.authDir}`);
+        process.exitCode = 1;
+        return;
+    }
+
+    console.log(`[auth:check] host=${cfg.remoteHost}, accounts=${list.length}`);
+    const results = [];
+    for (const account of list) results.push(await checkAccountToken(account));
+
+    const failed = results.filter(r => !r.ok);
+    const expired = failed.filter(r => r.expired);
+    if (failed.length > 0) {
+        console.error(`[auth:check] ${failed.length}/${results.length} account(s) failed (${expired.length} expired).`);
+    } else {
+        console.log(`[auth:check] done: ${results.length}/${results.length} account(s) OK.`);
+    }
+    if (expired.length > 0) process.exitCode = 1;
+}
+
 async function runRepair(opts) {
     const cfg = config.get();
     if (!cfg.authDir) throw new Error('DS_AUTH_DIR is not set (check your .env / environment).');
@@ -714,6 +782,11 @@ async function main() {
         return;
     }
     if (opts.help) { usage(); return; }
+
+    if (opts.check) {
+        await runCheck();
+        return;
+    }
 
     if (opts.repair) {
         await runRepair(opts);

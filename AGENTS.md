@@ -36,6 +36,7 @@ npm start                   # run the proxy
 npm run auth                # interactive login -> DS_AUTH_DIR/<email>.json
 npm run auth:headless -- --email me@example.com   # headless login (password prompt)
 npm run auth:repair         # probe all accounts; offer headless re-login for expired ones
+npm run auth:check          # GET /users/current per account (scripts/auth.js --check)
 npm run sessions:delete     # wipe remote chat sessions (see scripts/delete-sessions.js)
 ```
 
