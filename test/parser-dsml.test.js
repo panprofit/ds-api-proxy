@@ -350,3 +350,29 @@ test('parseToolCall: parses the localized 工具调用 invoke/parameter block', 
     assert.equal(tc.name, 'bash');
     assert.deepEqual(JSON.parse(tc.arguments), { command: 'git status --short' });
 });
+
+test('parseDsmlToolCall: accepts a bare closing marker as an invoke close', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="bash">\n<${t} parameter name="command">ls</${t} parameter>\n</${t}>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls' });
+});
+
+test('parseDsmlToolCall: recovers the tool name from a nameless invoke body', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke>\n<${t} parameter name="name">bash</${t} parameter>\n<${t} parameter name="command">ls</${t} parameter>\n</${t} invoke>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls' });
+});
+
+test('parseDsmlToolCalls: keeps both invokes when a bare marker closes the first', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="a">\n<${t} parameter name="x">1</${t} parameter>\n</${t}>\n<${t} invoke name="b">\n<${t} parameter name="y">2</${t} parameter>\n</${t} invoke>\n</${t} calls>`;
+    const calls = d.parseDsmlToolCalls(text, () => {});
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map(c => c.name), ['a', 'b']);
+});
