@@ -486,6 +486,33 @@ test('handleChatCompletions: an account change re-uploads the full attachment hi
     });
 });
 
+test('handleChatCompletions: re-resolving file ids for the same account reuses the first result', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const resolveCalls = [];
+        let captured = null;
+        const deps = withDeps({
+            resolveMessageAttachments: async (msgs, account) => {
+                resolveCalls.push(account.id);
+                return { fileIds: [`f-${resolveCalls.length}`], uploads: [], failures: [] };
+            },
+            askDSStream: async (args) => {
+                captured = args;
+                return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+            },
+        });
+        const messages = [
+            { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] },
+        ];
+        await handlers.handleChatCompletions(req, res, JSON.stringify({ messages }), deps);
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(await captured.resolveFileIds(makeAccount('a1'), {}), ['f-1']);
+        assert.deepEqual(await captured.resolveFileIds(makeAccount('a1'), {}), ['f-1']);
+        assert.deepEqual(resolveCalls, ['a1'], 'the same account must not re-resolve its attachments');
+    });
+});
+
 test('handleChatCompletions: attachment failures are logged but do not fail the request', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
