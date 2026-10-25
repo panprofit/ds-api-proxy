@@ -42,6 +42,12 @@ test('parseDsmlToolCall: every DSML delimiter variant parses', () => {
     }
 });
 
+test('canonicalizeToolMarkupTag: repairs a mistyped parameter name token', () => {
+    assert.equal(d.canonicalizeToolMarkupTag('timeout" string="false"'), '<parameter name="timeout" string="false">');
+    assert.equal(d.canonicalizeToolMarkupTag('timeout string="true"'), '<parameter name="timeout" string="true">');
+    assert.equal(d.canonicalizeToolMarkupTag('timeout'), null);
+});
+
 test('readDsmlTagAt: reads a one-sided marker tag', () => {
     assert.equal(d.readDsmlTagAt('<\uFF5CDSML invoke name="f">', 0).name, 'invoke');
     assert.equal(d.readDsmlTagAt('<DSML\uFF5C invoke name="f">', 0).name, 'invoke');
@@ -384,6 +390,15 @@ test('parseDsmlToolCall: recovers a marked attribute-only tag as a parameter', (
     assert.ok(tc);
     assert.equal(tc.name, 'bash');
     assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls', timeout: '600' });
+});
+
+test('parseDsmlToolCall: a slashless trailing invoke tag closes the invoke', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="bash">\n<${t} parameter name="command" string="true">cd /x && git commit -m "a\n\n-b" && git log</${t} parameter>\n<${t} invoke>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'cd /x && git commit -m "a\n\n-b" && git log' });
 });
 
 test('parseDsmlToolCall: a bare marked attribute outside an invoke stays unparsed', () => {
