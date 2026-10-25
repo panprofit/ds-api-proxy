@@ -988,3 +988,28 @@ test('stripToolCallMarkup: removes wrapped tool tags but keeps ordinary markup',
   assert.equal(parser.stripToolCallMarkup('before <bash>pwd</bash> after').replace(/\s+/g, ' '), 'before after');
   assert.equal(parser.stripToolCallMarkup('<bash>pwd</bash>'), '');
 });
+
+test('parseToolCall: assistant wrapper uses the to attribute as the tool name', () => {
+  const tc = parser.parseToolCall('<assistant to="write" path="/tmp/x">hi</assistant>', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'write');
+  assert.deepEqual(JSON.parse(tc.arguments), { path: '/tmp/x', command: 'hi' });
+});
+
+test('parseToolCall: assistant wrapper routes parameter body into args', () => {
+  const tc = parser.parseToolCall('<assistant to="write" path="/tmp/x"><parameter name="content">abc</parameter></assistant>', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'write');
+  assert.deepEqual(JSON.parse(tc.arguments), { path: '/tmp/x', content: 'abc' });
+});
+
+test('parseToolCall: assistant wrapper without a valid to is not a call', () => {
+  assert.equal(parser.parseToolCall('<assistant to="">hi</assistant>', silentLog), null);
+  assert.equal(parser.parseToolCall('<assistant path="/tmp/x">hi</assistant>', silentLog), null);
+});
+
+test('parseToolCall: to is not an argument on non-assistant wrappers', () => {
+  const tc = parser.parseToolCall('<read to="x">body</read>', silentLog);
+  assert.ok(tc);
+  assert.deepEqual(JSON.parse(tc.arguments), { command: 'body' });
+});
