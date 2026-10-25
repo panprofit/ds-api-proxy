@@ -137,6 +137,25 @@ test('readRequestBody: a stream error is reported as errored, not tooLarge', asy
     assert.equal(errored, true);
 });
 
+test('readRequestBody: a client disconnect settles as errored instead of waiting for the body timeout', async () => {
+    const req = new EventEmitter();
+    req.resume = () => {};
+    process.nextTick(() => {
+        req.emit('data', Buffer.from('partial'));
+        req.emit('close');
+    });
+    const keepAlive = setInterval(() => {}, 1000);
+    let result;
+    try {
+        result = await handlers.readRequestBody(req, 1024, { timeoutMs: 60000 });
+    } finally {
+        clearInterval(keepAlive);
+    }
+    assert.equal(result.errored, true);
+    assert.equal(result.timedOut, false);
+    assert.equal(result.body, '');
+});
+
 test('readRequestBody: times out without destroying the socket (router writes the 408)', async () => {
 
     const req = new EventEmitter();

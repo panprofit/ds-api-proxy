@@ -824,6 +824,20 @@ test('waitForCompletionSlot: clientGone aborts the wait', async () => {
     assert.equal(await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep, clientGone: () => true }), false);
 });
 
+test('waitForCompletionSlot: an aborted wait releases the reserved slot', async () => {
+    const a1 = makeAccount('a1');
+    const clock = fakeClock();
+    await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    assert.equal(a1.nextCompletionAt, clock.now() + 5000);
+
+    clock.advance(1000);
+    const aborted = await accounts.waitForCompletionSlot(a1, {
+        intervalMs: 5000, now: clock.now, sleep: clock.sleep, clientGone: () => true,
+    });
+    assert.equal(aborted, false);
+    assert.equal(a1.nextCompletionAt, clock.now() + 4000, 'the unserved reservation must not delay the next request');
+});
+
 test('resetAccountState clears nextCompletionAt too', () => {
     const a1 = makeAccount('a1');
     setAccounts([a1]);
