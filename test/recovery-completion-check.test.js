@@ -390,6 +390,7 @@ test('runCompletionCheck: CONTINUE adopts the follow-up tool call and reasoning'
         const deps = checkDeps({ readDSResponse: async () => responses.shift() });
         assert.equal(await runCompletionCheck(state, deps), null);
         assert.equal(state.toolCall.name, 'read');
+        assert.equal(state.fullContent, `Let me check.\n\n{"tool_call":{"name":"read","arguments":{"path":"/x"}}}`);
         assert.equal(state.reasoningContent, 'thinking');
         assert.equal(state.finishReason, 'tool_calls');
         assert.equal(state.modelError, 'transient');
