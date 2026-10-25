@@ -115,11 +115,12 @@ truncated markup.
 
 If the parsed call names a tool that is **not** in the request's `tools` list,
 the proxy does **not** treat it as broken markup (the JSON was valid — the model
-just hallucinated a name). It records the name and rotates to another account,
-since a hallucinated name is deterministic for that account+session. If no
-account is available, the request ends with a terminal `502 unknown_tool` error
-rather than returning the raw `{"tool_call":…}` markup as assistant text (which
-would strand the consuming agent).
+just hallucinated a name). It records the name and re-prompts the same session,
+telling the model which tools are available; an account is rotated only if that
+re-prompt yields no usable call. If no account is available, the request ends
+with a terminal `502 unknown_tool` error rather than returning the raw
+`{"tool_call":…}` markup as assistant text (which would strand the consuming
+agent).
 
 ### Streaming `obfuscation`
 

@@ -680,7 +680,32 @@ test('runWithRecovery: unknown tool name is not leaked as text (rotation unavail
     });
 });
 
-test('runWithRecovery: unknown tool rotates the account immediately', async () => {
+test('runWithRecovery: unknown tool re-prompts the same account instead of rotating', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const unknown = '{"tool_call":{"name":"nope","arguments":{}}}';
+        const valid = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [
+                { type: 'function', function: { name: 'read' } },
+                { type: 'function', function: { name: 'write' } },
+            ],
+            askDSStream: askStub([makeAccount('a1')], calls),
+            readDSResponse: sseOnce([
+                { content: unknown, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: valid, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+            ]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.toolCall.name, 'read');
+        assert.equal(calls.length, 2);
+        assert.match(calls[1].prompt, /nope/);
+        assert.match(calls[1].prompt, /read, write/);
+    });
+});
+
+test('runWithRecovery: unknown tool rotates the account after one re-prompt', async () => {
     const accountsArr = accounts.getAccounts();
     const saved = accountsArr.slice();
     accountsArr.length = 0;
@@ -712,15 +737,16 @@ test('runWithRecovery: unknown tool rotates the account immediately', async () =
                 askDSStream: accountStub,
                 readDSResponse: sseOnce([
                     { content: unknown, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
-                    { content: valid, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: unknown, reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: valid, reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
                 ]),
             });
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.toolCall.name, 'read');
-            assert.equal(calls.length, 2);
+            assert.equal(calls.length, 3);
 
-            assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a2']);
+            assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a1', 'a2']);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
         });
