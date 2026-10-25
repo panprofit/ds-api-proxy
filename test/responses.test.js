@@ -218,6 +218,27 @@ test('sendResponseStream: tool call emits function_call events and empty output_
     assert.equal(completed.data.response.output[0].call_id, 'call_1');
 });
 
+test('sendResponseStream: prose before a tool call emits a message item then the function_call', () => {
+    const res = makeFakeRes();
+    responses.sendResponseStream(res, {
+        content: 'Let me look.',
+        toolCall: { id: 'call_1', name: 'read', arguments: '{}' },
+        contextTokens: 5,
+    });
+    const events = res.events();
+    const deltas = events.filter(e => e.event === 'response.output_text.delta').map(e => e.data.delta);
+    assert.equal(deltas.join(''), 'Let me look.');
+    const completed = events.find(e => e.event === 'response.completed');
+    assert.equal(completed.data.response.output_text, 'Let me look.');
+    assert.deepEqual(completed.data.response.output.map(i => i.type), ['message', 'function_call']);
+});
+
+test('buildResponse: prose before a tool call emits a message item then the function_call', () => {
+    const resp = responses.buildResponse({ content: 'Let me look.', toolCall: { id: 'c', name: 'read', arguments: '{}' } });
+    assert.deepEqual(resp.output.map(i => i.type), ['message', 'function_call']);
+    assert.equal(resp.output_text, 'Let me look.');
+});
+
 test('sendResponseStream: reasoning content emits reasoning item before the message', () => {
     const res = makeFakeRes();
     responses.sendResponseStream(res, { content: 'answer', reasoningContent: 'thinking...', contextTokens: 3 });
