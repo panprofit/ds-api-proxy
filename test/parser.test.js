@@ -983,3 +983,8 @@ test('parseToolCalls: multiple wrapped tags yield multiple calls', () => {
   const calls = parser.parseToolCalls('<bash>ls</bash>\n<read>/a</read>', silentLog);
   assert.deepEqual(calls.map(call => call.name), ['bash', 'read']);
 });
+
+test('stripToolCallMarkup: removes wrapped tool tags but keeps ordinary markup', () => {
+  assert.equal(parser.stripToolCallMarkup('before <bash>pwd</bash> after').replace(/\s+/g, ' '), 'before after');
+  assert.equal(parser.stripToolCallMarkup('<bash>pwd</bash>'), '');
+});
