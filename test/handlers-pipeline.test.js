@@ -513,6 +513,28 @@ test('handleChatCompletions: re-resolving file ids for the same account reuses t
     });
 });
 
+test('handleChatCompletions: a rotated account reports its own uploads and failures', async () => {
+    await withAccounts([makeAccount('a1'), makeAccount('a2')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        let captured = null;
+        const deps = withDeps({
+            resolveMessageAttachments: async (msgs, account) => (account.id === 'a1'
+                ? { fileIds: ['f1'], uploads: [], failures: [] }
+                : { fileIds: ['f2'], uploads: [{ id: 'f2', filename: 'b.png' }], failures: [{ url: 'u', error: 'boom' }] }),
+            askDSStream: async (args) => {
+                captured = args;
+                return { resp: { body: {} }, account: makeAccount('a1'), promptUsed: args.prompt || 'p', freshSessionReset: false };
+            },
+        });
+        await handlers.handleChatCompletions(req, res, JSON.stringify({
+            messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] }],
+        }), deps);
+        assert.deepEqual(await captured.resolveFileIds(makeAccount('a2'), {}), ['f2']);
+        assert.equal(res.statusCode, 200);
+    });
+});
+
 test('handleChatCompletions: attachment failures are logged but do not fail the request', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();

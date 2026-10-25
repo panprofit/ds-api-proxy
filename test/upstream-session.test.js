@@ -99,6 +99,24 @@ test('askDSStream: recreates the session on HTTP 400 and retries once', async ()
     assert.equal(session.id, 'sess-1');
 });
 
+test('askDSStream: the retry after a session recreate takes a completion slot too', async () => {
+    const slots = [];
+    const { deps, session } = makeDeps({
+        session: makeSession({ id: 'stale', accountId: 'a1' }),
+        waitForCompletionSlot: async (account) => { slots.push(account.id); return true; },
+    });
+    let n = 0;
+    deps.dsChatCompletionWithPow = async () => {
+        n++;
+        if (n === 1) return { status: 400, ok: false, headers: { get: () => null }, text: async () => 'expired' };
+        return { status: 200, ok: true, headers: { get: () => null }, text: async () => '' };
+    };
+    const ask = createUpstreamSession(deps);
+    await ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh' });
+    assert.deepEqual(slots, ['a1', 'a1'], 'both completions must reserve a throttle slot');
+    assert.equal(session.id, 'sess-1');
+});
+
 test('askDSStream: throws a mapped error on non-recoverable statuses', async () => {
     const { deps } = makeDeps({
         session: makeSession({ id: 's1', accountId: 'a1' }),
