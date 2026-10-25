@@ -175,22 +175,6 @@ function askCapture() {
     };
 }
 
-test('handleChatCompletions: thinking + tools prompts plain JSON tool calls', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const req = fakeReq();
-        const res = fakeRes();
-        const capture = askCapture();
-        await handlers.handleChatCompletions(req, res, JSON.stringify({
-            messages: [{ role: 'user', content: 'hi' }],
-            reasoning_effort: 'high',
-            tools: [{ type: 'function', function: { name: 'read' } }],
-        }), withDeps({ askDSStream: capture.askDSStream }));
-        assert.equal(res.statusCode, 200);
-        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"<function_name>"'));
-        assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C'));
-    });
-});
-
 test('handleChatCompletions: reasoning effort is not rendered into the prompt', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
@@ -219,22 +203,7 @@ test('handleChatCompletions: reasoning_effort none adds no effort prompt', async
     });
 });
 
-test('handleChatCompletions: non-thinking tools also use the JSON tool-call prompt', async () => {
-    await withAccounts([makeAccount('a1')], async () => {
-        const req = fakeReq();
-        const res = fakeRes();
-        const capture = askCapture();
-        await handlers.handleChatCompletions(req, res, JSON.stringify({
-            messages: [{ role: 'user', content: 'hi' }],
-            tools: [{ type: 'function', function: { name: 'read' } }],
-        }), withDeps({ askDSStream: capture.askDSStream }));
-        assert.equal(res.statusCode, 200);
-        assert.ok(!capture.args.prompt.includes('\uFF5CDSML\uFF5C calls'));
-        assert.ok(capture.args.prompt.includes('{"tool_call":{"name":"<function_name>"'));
-    });
-});
-
-test('handleChatCompletions: toggling thinking keeps the session and the JSON tool format', async () => {
+test('handleChatCompletions: toggling thinking keeps the session', async () => {
     config.reload({ DS_COMPLETION_CHECK: '0' });
     try {
     await withAccounts([makeAccount('a1')], async () => {
@@ -258,10 +227,7 @@ test('handleChatCompletions: toggling thinking keeps the session and the JSON to
         await send({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'high', tools });
         await send({ messages: [{ role: 'user', content: 'again' }], tools });
         assert.equal(prompts.length, 2);
-        assert.ok(prompts[0].includes('{"tool_call":'));
-        assert.ok(!prompts[0].includes('<tool_call>'));
         assert.ok(!prompts[0].includes('\uFF5CDSML\uFF5C'));
-        assert.ok(!prompts[1].includes('\uFF5CDSML\uFF5C'));
         assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-1');
     });
     } finally {

@@ -74,10 +74,9 @@ unchanged.
 - **`stop`** (a string or array of strings) is applied locally to the assembled
 answer: the response is truncated at the earliest matching sequence. A parsed
 tool call is never truncated.
-- **`tool_choice`** is a prompt instruction: `none` omits the tool schemas
-entirely, `required` and a named `{type:"function", function:{name}}` add a
-mandatory-call rule, and `auto` (the default) keeps the normal wording. The
-proxy also verifies the parsed result: an unmet `required`/named choice rotates
+- **`tool_choice`** is not rendered into the prompt: the tool schemas are not
+advertised to DS. The proxy verifies the parsed result instead: an unmet
+`required`/named `{type:"function", function:{name}}` choice rotates
 the account and, if every account fails, returns `502 tool_choice_unmet` instead
 of silently returning text. The legacy `functions` / `function_call` fields are
 translated to the current `tools` / `tool_choice` shape.

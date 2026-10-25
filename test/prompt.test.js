@@ -63,24 +63,6 @@ test('appendPromptInstruction: appends a blank-line-separated suffix', () => {
     assert.equal(prompt.appendPromptInstruction('body', 'go'), 'body\n\ngo');
 });
 
-test('formatToolDefinitions: empty tools -> empty string', () => {
-    assert.equal(prompt.formatToolDefinitions([]), '');
-    assert.equal(prompt.formatToolDefinitions(null), '');
-});
-
-test('formatToolDefinitions: requests an inline tool_call JSON object', () => {
-    const out = prompt.formatToolDefinitions([{
-        type: 'function',
-        function: { name: 'read', description: 'Read a file', parameters: { type: 'object' } },
-    }]);
-    assert.ok(out.includes('<tool_calling>'));
-    assert.ok(out.includes('{"tool_call":{"name":"<function_name>","arguments":{...}}}'));
-    assert.ok(out.includes('REMEMBER: Request tools only with strict JSON format'));
-    assert.ok(out.includes('Each call is a separate JSON object'));
-    assert.ok(out.includes('## read'));
-    assert.ok(out.includes('Parameters: {"type":"object"}'));
-});
-
 test('formatMessages: renders historical calls as inline tool_call JSON', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ function: { name: 'read', arguments: '{"path":"/x"}' } }] },
@@ -90,59 +72,11 @@ test('formatMessages: renders historical calls as inline tool_call JSON', () => 
     assert.ok(!conversation.includes('\uFF5CDSML\uFF5C'));
 });
 
-test('formatToolDefinitions: skips non-function entries', () => {
-    assert.equal(prompt.formatToolDefinitions([{ type: 'other' }]), '');
-    assert.equal(prompt.formatToolDefinitions([{ type: 'function', function: { description: 'no name' } }]), '');
-});
-
-test('formatToolDefinitions: renders namespaced tools with a qualified name', () => {
-    const out = prompt.formatToolDefinitions([{
-        type: 'function',
-        namespace: { name: 'search', description: 'Search tools.' },
-        function: { name: 'lookup', description: 'Look up a value' },
-    }]);
-    assert.ok(out.includes('## search::lookup'));
-    assert.ok(!out.includes('"description"'));
-});
-
-test('formatToolDefinitions: accepts namespace inside function and qualified names', () => {
-    const nested = prompt.formatToolDefinitions([{
-        type: 'function',
-        function: { name: 'lookup', namespace: 'search' },
-    }]);
-    assert.ok(nested.includes('## search::lookup'));
-    const qualified = prompt.formatToolDefinitions([{
-        type: 'function',
-        function: { name: 'search::lookup' },
-    }]);
-    assert.ok(qualified.includes('## search::lookup'));
-});
-
 test('formatMessages: renders a namespaced assistant call with the qualified name', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ namespace: 'search', function: { name: 'lookup', arguments: '{}' } }] },
     ], []);
     assert.ok(conversation.includes('"name":"search::lookup"'));
-});
-
-test('formatToolDefinitions: tool_choice=none omits all tool instructions', () => {
-    const tools = [{ type: 'function', function: { name: 'read' } }];
-    assert.equal(prompt.formatToolDefinitions(tools, 'none'), '');
-});
-
-test('formatToolDefinitions: required and named tool_choice add a mandatory instruction', () => {
-    const tools = [{ type: 'function', function: { name: 'read' } }];
-    assert.ok(prompt.formatToolDefinitions(tools, 'required').includes('MUST invoke one of the available tools'));
-    assert.ok(prompt.formatToolDefinitions(tools, { name: 'read' }).includes('MUST invoke the tool "read"'));
-    assert.ok(!prompt.formatToolDefinitions(tools, 'auto').includes('MUST invoke'));
-});
-
-test('formatMessages: forwards tool_choice into the system prompt', () => {
-    const tools = [{ type: 'function', function: { name: 'read' } }];
-    const { systemPrompt } = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, { name: 'read' });
-    assert.ok(systemPrompt.includes('MUST invoke the tool "read"'));
-    const none = prompt.formatMessages([{ role: 'user', content: 'hi' }], tools, null, 'none');
-    assert.equal(none.systemPrompt.includes('<tool_schemas>'), false);
 });
 
 test('messageFingerprint: stable for identical content, differs by role', () => {
@@ -386,14 +320,6 @@ test('formatMessages: unparseable arguments are passed through as a string', () 
         { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: 'not json' } }] },
     ], []);
     assert.ok(conversation.includes('{"tool_call":{"name":"f","arguments":"not json"}}'));
-});
-
-test('formatMessages: includes tool definitions in the system prompt', () => {
-    const { systemPrompt } = prompt.formatMessages([], [
-        { type: 'function', function: { name: 'read', description: 'Read' } },
-    ]);
-    assert.ok(systemPrompt.includes('## read'));
-    assert.ok(systemPrompt.includes('<tool_calling>'));
 });
 
 test('extractScreenshotPaths: collects structured screenshot_path JSON fields', () => {
