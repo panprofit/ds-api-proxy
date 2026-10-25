@@ -48,6 +48,30 @@ test('parseNativeToolCalls: parses a JSON array of calls', () => {
     assert.deepEqual(tc, { name: 'get_weather', arguments: '{"city":"\u5317\u4eac"}' });
 });
 
+test('parseNativeToolCallList: parses every call in a JSON array', () => {
+    const body = JSON.stringify([
+        { name: 'get_weather', arguments: { city: 'Moscow' } },
+        { name: 'read', arguments: { path: '/x' } },
+    ]);
+    assert.deepEqual(n.parseNativeToolCallList(M + body + E), [
+        { name: 'get_weather', arguments: '{"city":"Moscow"}' },
+        { name: 'read', arguments: '{"path":"/x"}' },
+    ]);
+});
+
+test('parseNativeToolCallList: parses every call in a tool_calls wrapper', () => {
+    const body = JSON.stringify({
+        tool_calls: [
+            { name: 'get_weather', arguments: { city: 'Moscow' } },
+            { name: 'read', arguments: { path: '/x' } },
+        ],
+    });
+    assert.deepEqual(n.parseNativeToolCallList(M + body + E), [
+        { name: 'get_weather', arguments: '{"city":"Moscow"}' },
+        { name: 'read', arguments: '{"path":"/x"}' },
+    ]);
+});
+
 test('parseNativeToolCalls: parses a single bare object', () => {
     const body = JSON.stringify({ name: 'Bash', arguments: { command: 'ls' } });
     const tc = n.parseNativeToolCalls(M + body + E);

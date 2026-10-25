@@ -28,6 +28,26 @@ module.exports = [
         call: { name: 'read', args: { path: '/z' } },
     },
     {
+        name: 'pipe-prefixed XML <| tool_call> wrapper',
+        input: '<| tool_call>{"name":"read","arguments":{"path":"/p"}}</| tool_call>',
+        call: { name: 'read', args: { path: '/p' } },
+    },
+    {
+        name: 'pipe-prefixed XML without a space',
+        input: '<|tool_call>{"name":"bash","arguments":{"command":"ls"}}</|tool_call>',
+        call: { name: 'bash', args: { command: 'ls' } },
+    },
+    {
+        name: 'pipe-delimited XML <| tool_call |>',
+        input: '<| tool_call |>{"name":"read","arguments":{"path":"/q"}}</| tool_call |>',
+        call: { name: 'read', args: { path: '/q' } },
+    },
+    {
+        name: 'pipe-delimited XML with the slash inside',
+        input: '<| tool_call |>{"name":"bash","arguments":{"command":"pwd"}}<| /tool_call |>',
+        call: { name: 'bash', args: { command: 'pwd' } },
+    },
+    {
         name: 'lone fenced bash (whole message)',
         input: '```bash\nls -la\n```',
         call: { name: 'bash', args: { command: 'ls -la' } },

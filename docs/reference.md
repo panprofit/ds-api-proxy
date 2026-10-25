@@ -85,10 +85,10 @@ translated to the current `tools` / `tool_choice` shape.
 ### Tool-call parsing
 
 DS does not expose native function calling over its Web API; the proxy prompts
-for a strict inline JSON call —
-`{"tool_call":{"name":…,"arguments":{…}}}`, one call per response — and
-parses it back into OpenAI `tool_calls`. Historical assistant turns are
-rendered in the same JSON shape so the prompt shows one format only. A tool
+for strict inline JSON calls — `{"tool_call":{"name":…,"arguments":{…}}}`,
+each call in its own object — and parses them back into OpenAI `tool_calls`.
+Historical assistant turns are rendered in the same JSON shape so the prompt
+shows one format only. A tool
 declared with a `namespace` (or a qualified `namespace::name`) is advertised
 and invoked in the qualified form.
 
@@ -96,6 +96,9 @@ The parser accepts, in order:
 
 1. **DSML/XML markup** — `｜DSML｜ calls` / `｜DSML｜ invoke` and the
 `<tool_call>{"name","arguments"}</tool_call>` / `<invoke>`/`<parameter>` grammar.
+The bare XML wrapper also accepts pipe-prefixed and pipe-delimited forms:
+`<| tool_call>…</| tool_call>`, `<|tool_call>…</|tool_call>`,
+`<| tool_call |>…</| tool_call |>`, `<| /tool_call |>`.
 2. **Strict / fenced JSON** — `{"tool_call":{"name","arguments"}}` inline or in
 a ```json fence (with the usual JSON repair heuristics for truncated or
 mis-escaped output); kept as a fallback for older upstream behavior.

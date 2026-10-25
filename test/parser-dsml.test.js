@@ -220,6 +220,26 @@ test('parseDsmlToolCall: parses an open-ended <direct name=...> tag', () => {
     assert.deepEqual(JSON.parse(tc.arguments), { p: '1' });
 });
 
+test('parseDsmlToolCalls: parses every invoke in a wrapper', () => {
+    const text = `<tool_calls>\n<invoke name="read"><parameter name="path">/x</parameter></invoke>\n<invoke name="bash"><parameter name="command">ls</parameter></invoke>\n</tool_calls>`;
+    const calls = d.parseDsmlToolCalls(text, () => {});
+    assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+    assert.deepEqual(calls.map(call => JSON.parse(call.arguments)), [{ path: '/x' }, { command: 'ls' }]);
+});
+
+test('parseDsmlToolCalls: parses every bare invoke', () => {
+    const text = '<invoke name="read"><parameter name="path">/x</parameter></invoke>\n<invoke name="bash"><parameter name="command">ls</parameter></invoke>';
+    const calls = d.parseDsmlToolCalls(text, () => {});
+    assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
+test('parseDsmlToolCalls: literal invokes inside a parameter are not separate calls', () => {
+    const text = `<tool_calls>\n<invoke name="f"><parameter name="code" string="true">see <invoke name="g"></parameter></invoke>\n<invoke name="h"><parameter name="p">1</parameter></invoke>\n</tool_calls>`;
+    const calls = d.parseDsmlToolCalls(text, () => {});
+    assert.deepEqual(calls.map(call => call.name), ['f', 'h']);
+    assert.deepEqual(JSON.parse(calls[0].arguments), { code: 'see <invoke name="g">' });
+});
+
 test('parseDsmlToolCall: returns null when there is no markup', () => {
     assert.equal(d.parseDsmlToolCall('just prose', () => {}), null);
     assert.equal(d.parseDsmlToolCall('', () => {}), null);
@@ -269,6 +289,8 @@ test('parseDsmlToolCall: recovers a tool name from a leading name parameter', ()
 
 test('looksLikeToolCallMarkup: true for real tag forms', () => {
     assert.equal(d.looksLikeToolCallMarkup('<tool_call>...'), true);
+    assert.equal(d.looksLikeToolCallMarkup('<| tool_call>...'), true);
+    assert.equal(d.looksLikeToolCallMarkup('</| tool_call>'), true);
     assert.equal(d.looksLikeToolCallMarkup('<invoke name="f">'), true);
     assert.equal(d.looksLikeToolCallMarkup('<|DSML| invoke name="f">'), true);
     assert.equal(d.looksLikeToolCallMarkup('<\uFF5CDSML invoke name="f">'), true);

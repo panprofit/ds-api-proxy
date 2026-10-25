@@ -182,6 +182,34 @@ test('coerceToolCallObject: tool_calls must hold exactly one entry', () => {
     assert.equal(jr.coerceToolCallObject({ tool_calls: [{ name: 'a' }, { name: 'b' }] }), null);
 });
 
+test('coerceToolCallList: unwraps every entry of a tool_calls array', () => {
+    const calls = jr.coerceToolCallList({
+        tool_calls: [
+            { function: { name: 'a', arguments: { x: 1 } } },
+            { function: { name: 'b', arguments: { y: 2 } } },
+        ],
+    });
+    assert.deepEqual(calls, [
+        { name: 'a', arguments: '{"x":1}' },
+        { name: 'b', arguments: '{"y":2}' },
+    ]);
+});
+
+test('coerceToolCallList: parses a bare array when allowBare', () => {
+    const calls = jr.coerceToolCallList([
+        { name: 'a', arguments: {} },
+        { name: 'b', arguments: {} },
+    ], { allowBare: true });
+    assert.deepEqual(calls.map(call => call.name), ['a', 'b']);
+});
+
+test('coerceToolCallList: a single call becomes a one-entry list', () => {
+    assert.deepEqual(jr.coerceToolCallList({ tool_call: { name: 'a', arguments: {} } }), [
+        { name: 'a', arguments: '{}' },
+    ]);
+    assert.equal(jr.coerceToolCallList({ tool_calls: [] }), null);
+});
+
 test('coerceToolCallObject: bare objects only when allowBare', () => {
     assert.equal(jr.coerceToolCallObject({ name: 'a', arguments: {} }), null);
     assert.equal(jr.coerceToolCallObject({ name: 'a', arguments: {} }, { allowBare: true }).name, 'a');

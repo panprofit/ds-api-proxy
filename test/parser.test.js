@@ -507,6 +507,51 @@ test('parseToolCall: <tool_call> XML', () => {
   assert.equal(tc.name, 'f');
 });
 
+test('parseToolCall: pipe-prefixed <| tool_call> XML', () => {
+  const tc = parser.parseToolCall(
+    '<| tool_call>{"name":"f","arguments":{"x":1}}</| tool_call>',
+    silentLog,
+  );
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+  assert.deepEqual(JSON.parse(tc.arguments), { x: 1 });
+});
+
+test('parseToolCall: pipe-prefixed XML without spaces', () => {
+  const tc = parser.parseToolCall(
+    '<|tool_call>{"name":"f","arguments":{}}</|tool_call>',
+    silentLog,
+  );
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+});
+
+test('parseToolCall: pipe-delimited <| tool_call |> XML', () => {
+  const tc = parser.parseToolCall(
+    '<| tool_call |>{"name":"f","arguments":{"x":1}}</| tool_call |>',
+    silentLog,
+  );
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+  assert.deepEqual(JSON.parse(tc.arguments), { x: 1 });
+});
+
+test('parseToolCall: pipe-delimited XML with the slash inside the pipe', () => {
+  const tc = parser.parseToolCall(
+    '<| tool_call |>{"name":"f","arguments":{}}<| /tool_call |>',
+    silentLog,
+  );
+  assert.ok(tc);
+  assert.equal(tc.name, 'f');
+});
+
+test('parseToolCalls: returns every pipe-prefixed XML call', () => {
+  const text = '<| tool_call>{"name":"read","arguments":{"path":"/a"}}</| tool_call>\n'
+    + '<| tool_call>{"name":"bash","arguments":{"command":"ls"}}</| tool_call>';
+  const calls = parser.parseToolCalls(text, silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
 test('parseToolCall: DSML', () => {
   const text =
     '<tool_calls><invoke name="f"><parameter name="x">1</parameter></invoke></tool_calls>';
@@ -858,3 +903,42 @@ test('hasProseOutsideFences: false for a whole-message fence, true otherwise', (
   assert.equal(parser.hasProseOutsideFences('no fence at all'), false);
 });
 
+test('parseToolCalls: returns every DSML invoke', () => {
+  const text = '<tool_calls>\n<invoke name="read"><parameter name="path">/x</parameter></invoke>\n'
+    + '<invoke name="bash"><parameter name="command">ls</parameter></invoke>\n</tool_calls>';
+  const calls = parser.parseToolCalls(text, silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
+test('parseToolCalls: returns every native marker call', () => {
+  const body = JSON.stringify([
+    { name: 'read', arguments: { path: '/x' } },
+    { name: 'bash', arguments: { command: 'ls' } },
+  ]);
+  const calls = parser.parseToolCalls(`<|tool\u2581calls\u2581begin|>${body}<|tool\u2581calls\u2581end|>`, silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
+test('parseToolCalls: falls back to a single JSON tool call', () => {
+  const calls = parser.parseToolCalls('{"tool_call":{"name":"read","arguments":{"path":"/f"}}}', silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read']);
+});
+
+test('parseToolCalls: returns every inline JSON tool call', () => {
+  const text = '{"tool_call":{"name":"read","arguments":{"path":"/f"}}}\n\n'
+    + '{"tool_call":{"name":"bash","arguments":{"command":"ls"}}}';
+  const calls = parser.parseToolCalls(text, silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
+test('parseToolCalls: expands a tool_calls array', () => {
+  const text = '{"tool_calls":[{"function":{"name":"read","arguments":{"path":"/f"}}},'
+    + '{"function":{"name":"bash","arguments":{"command":"ls"}}}]}';
+  const calls = parser.parseToolCalls(text, silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['read', 'bash']);
+});
+
+test('parseToolCalls: ignores DSML markup inside a fenced example surrounded by prose', () => {
+  const input = 'Example:\n```xml\n<tool_calls><invoke name="read"><parameter name="path">/f</parameter></invoke></tool_calls>\n```\ndone';
+  assert.deepEqual(parser.parseToolCalls(input, silentLog), []);
+});

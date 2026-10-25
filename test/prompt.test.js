@@ -76,6 +76,7 @@ test('formatToolDefinitions: requests an inline tool_call JSON object', () => {
     assert.ok(out.includes('<tool_calling>'));
     assert.ok(out.includes('{"tool_call":{"name":"<function_name>","arguments":{...}}}'));
     assert.ok(out.includes('REMEMBER: Request tools only with strict JSON format'));
+    assert.ok(out.includes('Each call is a separate JSON object'));
     assert.ok(out.includes('## read'));
     assert.ok(out.includes('Parameters: {"type":"object"}'));
 });
