@@ -376,3 +376,18 @@ test('parseDsmlToolCalls: keeps both invokes when a bare marker closes the first
     assert.equal(calls.length, 2);
     assert.deepEqual(calls.map(c => c.name), ['a', 'b']);
 });
+
+test('parseDsmlToolCall: recovers a marked attribute-only tag as a parameter', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="bash">\n<${t} parameter name="command" string="true">ls</${t} parameter>\n<${t} timeout="600">\n</${t} invoke>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls', timeout: '600' });
+});
+
+test('parseDsmlToolCall: a bare marked attribute outside an invoke stays unparsed', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `hello <${t} timeout="600"> world`;
+    assert.equal(d.parseDsmlToolCall(text, () => {}), null);
+});
