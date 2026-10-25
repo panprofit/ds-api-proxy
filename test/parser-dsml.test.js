@@ -320,6 +320,23 @@ test('looksLikeToolCallMarkup: ignores tag names quoted in inline code', () => {
     assert.equal(d.looksLikeToolCallMarkup('<tool_calls>\n<invoke name="bash">\nsee `<invoke>` above'), true);
 });
 
+test('toolMarkupStartIndex: points at the first markup marker, after any prose', () => {
+    const prose = 'Vot chto ya nashel: /x.\n\n';
+    assert.equal(d.toolMarkupStartIndex(prose + '<tool_calls>'), prose.length);
+    assert.equal(d.toolMarkupStartIndex('<invoke name="f">'), 0);
+    assert.equal(d.toolMarkupStartIndex('prose <|tool\u2581calls\u2581begin|>{}'), 'prose '.length);
+    assert.equal(d.toolMarkupStartIndex('{"tool_call":{"name":"read"}}'), 1);
+    assert.equal(d.toolMarkupStartIndex('plain text, no markup'), -1);
+});
+
+test('toolMarkupStartIndex: ignores markers quoted in inline code', () => {
+    assert.equal(d.toolMarkupStartIndex('use `<invoke name="read">` for a read'), -1);
+});
+
+test('looksLikeTaggedToolMarkup: a bare DSML pipe pair is not markup', () => {
+    assert.equal(d.looksLikeTaggedToolMarkup('|DSML| invoke name="f"'), false);
+});
+
 test('blankInlineCodeSpans: blanks single-backtick spans but not ``` fences', () => {
     assert.equal(d.blankInlineCodeSpans('a `b` c'), 'a     c');
     assert.equal(d.blankInlineCodeSpans('a ```json\n{}\n``` b'), 'a ```json\n{}\n``` b');
