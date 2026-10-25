@@ -132,6 +132,18 @@ test('completeJsonClosers: null when not a plausible truncated body', () => {
     assert.equal(jr.completeJsonClosers('{"a":"open'), null, 'ends inside a string');
 });
 
+test('repairTrailingClosers: drops one surplus closer', () => {
+    assert.equal(jr.repairTrailingClosers('[{"a":"b"}]}'), '[{"a":"b"}]');
+    assert.equal(jr.repairTrailingClosers('{"a":1}}'), '{"a":1}');
+});
+
+test('repairTrailingClosers: leaves valid JSON and lone closers alone', () => {
+    const ok = '{"a":[1,2]}';
+    assert.equal(jr.repairTrailingClosers(ok), ok);
+    assert.equal(jr.repairTrailingClosers('[{"a":1}]'), '[{"a":1}]');
+    assert.equal(jr.repairTrailingClosers('nope}'), 'nope}');
+});
+
 test('splitConcatenatedToolCalls: splits two glued calls into a comma-joined pair', () => {
     const a = '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}';
     const b = '{"tool_call":{"name":"bash","arguments":{"command":"ls"}}}';
