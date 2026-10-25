@@ -391,3 +391,12 @@ test('parseDsmlToolCall: a bare marked attribute outside an invoke stays unparse
     const text = `hello <${t} timeout="600"> world`;
     assert.equal(d.parseDsmlToolCall(text, () => {}), null);
 });
+
+test('parseDsmlToolCall: a missing invoke close falls back to the wrapper close', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="edit">\n<${t} parameter name="edits">[{"newText": "a"}]</${t} parameter>\n<${t} parameter name="path">/a.js</${t} parameter>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'edit');
+    assert.deepEqual(JSON.parse(tc.arguments), { edits: '[{"newText": "a"}]', path: '/a.js' });
+});
