@@ -950,3 +950,36 @@ test('stripToolCallMarkup: removes DSML markup and keeps surrounding prose', () 
     assert.equal(parser.stripToolCallMarkup('plain prose'), 'plain prose');
     assert.equal(parser.stripToolCallMarkup(`<${t} calls>\n<${t} invoke name="read">\n<${t} parameter name="path">/a.js</${t} parameter>\n</${t} invoke>\n</${t} calls>`), '');
 });
+
+test('parseToolCall: <bash>...</bash> becomes a bash call', () => {
+  const tc = parser.parseToolCall('<bash>pwd && ls</bash>', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'bash');
+  assert.deepEqual(JSON.parse(tc.arguments), { command: 'pwd && ls' });
+});
+
+test('parseToolCall: wrapped tag keeps multi-line command and shell metacharacters', () => {
+  const tc = parser.parseToolCall('<bash>\ncd /x\ngrep -r "a<b" . | head -3\n</bash>', silentLog);
+  assert.ok(tc);
+  assert.deepEqual(JSON.parse(tc.arguments), { command: 'cd /x\ngrep -r "a<b" . | head -3' });
+});
+
+test('parseToolCall: wrapped tag works for any tool name', () => {
+  const tc = parser.parseToolCall('<read>/home/user/file.js</read>', silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'read');
+  assert.deepEqual(JSON.parse(tc.arguments), { command: '/home/user/file.js' });
+});
+
+test('parseToolCall: an unterminated wrapped tag is not a tool call', () => {
+  assert.equal(parser.parseToolCall('<bash>pwd', silentLog), null);
+});
+
+test('parseToolCall: an empty wrapped tag is not a tool call', () => {
+  assert.equal(parser.parseToolCall('<bash>   </bash>', silentLog), null);
+});
+
+test('parseToolCalls: multiple wrapped tags yield multiple calls', () => {
+  const calls = parser.parseToolCalls('<bash>ls</bash>\n<read>/a</read>', silentLog);
+  assert.deepEqual(calls.map(call => call.name), ['bash', 'read']);
+});
