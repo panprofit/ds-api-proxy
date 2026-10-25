@@ -17,6 +17,11 @@ async function withFetch(impl, fn) {
     }
 }
 
+function virtualClock() {
+    let t = 0;
+    return { now: () => t, sleep: async (ms) => { t += ms; } };
+}
+
 function jsonResponse(body, { status = 200, headers = {} } = {}) {
     return {
         ok: status >= 200 && status < 300,
@@ -240,7 +245,8 @@ test('waitForFileReady: retries after a transient poll error, then succeeds', as
         if (n === 1) throw new Error('network blip');
         return jsonResponse({ data: { biz_data: { files: [{ id: 'f1', status: 'SUCCESS' }] } } });
     }, async () => {
-        const file = await upstream.waitForFileReady('f1', { headers: {} }, '');
+        const clock = virtualClock();
+        const file = await upstream.waitForFileReady('f1', { headers: {} }, '', clock);
         assert.equal(file.status, 'SUCCESS');
     });
 });
@@ -265,7 +271,8 @@ test('waitForFileReady: logs and retries while the file is not visible yet', asy
         if (n === 1) return jsonResponse({ data: { biz_data: { files: [] } } });
         return jsonResponse({ data: { biz_data: { files: [{ id: 'f1', status: 'SUCCESS' }] } } });
     }, async () => {
-        const file = await upstream.waitForFileReady('f1', { headers: {} }, '[t]');
+        const clock = virtualClock();
+        const file = await upstream.waitForFileReady('f1', { headers: {} }, '[t]', clock);
         assert.equal(file.status, 'SUCCESS');
     });
 });

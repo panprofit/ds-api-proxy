@@ -691,17 +691,23 @@ test('waitForAvailableAccount: returns false when shouldStop is true', async () 
 test('waitForAvailableAccount: resolves true as soon as a cooldown expires', async () => {
     const a = makeAccount('a1', { cooldownUntil: Date.now() + 60 });
     setAccounts([a]);
-    const ok = await waitForAvailableAccount(() => false, { maxWaitMs: 2000, pollMs: 10 });
+    let clock = Date.now();
+    const ok = await waitForAvailableAccount(() => false, {
+        maxWaitMs: 2000, pollMs: 10, now: () => clock, sleep: async (ms) => { clock += ms; },
+    });
     assert.equal(ok, true);
 });
 
 test('waitForAvailableAccount: stops polling once shouldStop flips', async () => {
     setAccounts([makeAccount('a1', { cooldownUntil: Date.now() + 300 })]);
-    const start = Date.now();
-    const ok = await waitForAvailableAccount(() => Date.now() - start >= 50, { maxWaitMs: 1000, pollMs: 10 });
+    let clock = Date.now();
+    let polls = 0;
+    const ok = await waitForAvailableAccount(() => ++polls >= 5, {
+        maxWaitMs: 1000, pollMs: 10, now: () => clock, sleep: async (ms) => { clock += ms; },
+    });
     assert.equal(ok, false);
-    assert.ok(Date.now() - start >= 40, 'should have polled until shouldStop flipped');
-    assert.ok(Date.now() - start < 1000, 'should not wait until the cooldown expires');
+    assert.equal(polls, 5, 'should have polled until shouldStop flipped');
+    assert.ok(clock - Date.now() < 1000, 'should not wait until the cooldown expires');
 });
 
 test('waitForAvailableAccount: returns immediately when no cooldown can expire within maxWaitMs', async () => {

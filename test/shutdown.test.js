@@ -156,10 +156,13 @@ test('waitForDrain: resolves true immediately when already empty', async () => {
 
 test('waitForDrain: resolves true once size reaches 0', async () => {
     let n = 1;
-    setTimeout(() => { n = 0; }, 10);
-    assert.equal(await waitForDrain(() => n, 1000, 5), true);
+    let t = 0;
+    const sleep = async (ms) => { t += ms; n = 0; };
+    assert.equal(await waitForDrain(() => n, 1000, 5, { now: () => t, sleep }), true);
 });
 
 test('waitForDrain: resolves false on timeout', async () => {
-    assert.equal(await waitForDrain(() => 1, 20, 5), false);
+    let t = 0;
+    const sleep = async (ms) => { t += ms; };
+    assert.equal(await waitForDrain(() => 1, 20, 5, { now: () => t, sleep }), false);
 });

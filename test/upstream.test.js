@@ -280,7 +280,7 @@ test('waitForFileReady: resolves once the file reports SUCCESS', async () => {
         n++;
         return jsonResponse({ data: { biz_data: { files: [{ id: 'f1', status: n === 1 ? 'PENDING' : 'SUCCESS', file_name: 'a.png' }] } } });
     }, async () => {
-        const file = await upstream.waitForFileReady('f1', { headers: {} }, '');
+        const file = await upstream.waitForFileReady('f1', { headers: {} }, '', { now: () => 0, sleep: async () => {} });
         assert.equal(file.status, 'SUCCESS');
     });
 });
