@@ -451,21 +451,21 @@ test('parseDsmlToolCall: parses the bare function=/parameter= dialect', () => {
 });
 
 test('normalizeToolMarkupTags: doubled DSML marker before the closing angle bracket', () => {
-  const out = parser.normalizeToolMarkupTags(
+  const out = d.normalizeToolMarkupTags(
     '<｜DSML｜DSML｜> calls>\n<｜DSML｜DSML｜> invoke name="bash">\n</｜DSML｜DSML｜> invoke>\n</｜DSML｜DSML｜> calls>',
   );
   assert.equal(out, '<tool_calls>\n<invoke name="bash">\n</invoke>\n</tool_calls>');
 });
 
 test('normalizeToolMarkupTags: a split-marker tag with a non-tool name is left verbatim', () => {
-  assert.equal(parser.normalizeToolMarkupTags('<｜DSML｜> div>'), '<｜DSML｜> div>');
+  assert.equal(d.normalizeToolMarkupTags('<｜DSML｜> div>'), '<｜DSML｜> div>');
 });
 
 test('parseToolCall: doubled DSML marker before the angle bracket still yields a call', () => {
   const input = '<｜DSML｜DSML｜> calls>\n<｜DSML｜DSML｜> invoke name="bash">\n'
     + '<｜DSML｜DSML｜> parameter name="command" string="true">ls -la</｜DSML｜DSML｜> parameter>\n'
     + '</｜DSML｜DSML｜> invoke>\n</｜DSML｜DSML｜> calls>';
-  const tc = parser.parseToolCall(input, silentLog);
+  const tc = require('../lib/parser').parseToolCall(input, () => {});
   assert.ok(tc);
   assert.equal(tc.name, 'bash');
   assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls -la' });
