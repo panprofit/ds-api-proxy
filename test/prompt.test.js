@@ -63,20 +63,22 @@ test('appendPromptInstruction: appends a blank-line-separated suffix', () => {
     assert.equal(prompt.appendPromptInstruction('body', 'go'), 'body\n\ngo');
 });
 
-test('formatMessages: renders historical calls as inline tool_call JSON', () => {
+test('formatMessages: renders historical calls as a DSML calls block', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ function: { name: 'read', arguments: '{"path":"/x"}' } }] },
         { role: 'tool', content: 'ok' },
     ], []);
-    assert.ok(conversation.includes('{"tool_call":{"name":"read","arguments":{"path":"/x"}}}'));
-    assert.ok(!conversation.includes('\uFF5CDSML\uFF5C'));
+    assert.ok(conversation.includes('<｜DSML｜ calls>'));
+    assert.ok(conversation.includes('<｜DSML｜ invoke name="read">'));
+    assert.ok(conversation.includes('<｜DSML｜ parameter name="path" string="true">/x</｜DSML｜ parameter>'));
+    assert.ok(!conversation.includes('tool_call'));
 });
 
 test('formatMessages: renders a namespaced assistant call with the qualified name', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ namespace: 'search', function: { name: 'lookup', arguments: '{}' } }] },
     ], []);
-    assert.ok(conversation.includes('"name":"search::lookup"'));
+    assert.ok(conversation.includes('<｜DSML｜ invoke name="search::lookup">'));
 });
 
 test('messageFingerprint: stable for identical content, differs by role', () => {
@@ -266,12 +268,46 @@ test('collectPendingTurns: forwards a mid-conversation system message, not the l
     assert.deepEqual(prompt.collectPendingTurns(messages, session), []);
 });
 
-test('formatMessages: renders assistant tool_calls as inline tool_call JSON', () => {
+test('formatToolDefinitions: empty tools -> empty string', () => {
+    assert.equal(prompt.formatToolDefinitions([]), '');
+    assert.equal(prompt.formatToolDefinitions(null), '');
+});
+
+test('formatToolDefinitions: renders schemas in the DSML grammar', () => {
+    const out = prompt.formatToolDefinitions([{
+        type: 'function',
+        function: { name: 'read', description: 'Read a file', parameters: { type: 'object' } },
+    }]);
+    assert.ok(out.includes('<\uFF5CDSML\uFF5C calls>'));
+    assert.ok(out.includes('<\uFF5CDSML\uFF5C invoke name="$TOOL_NAME">'));
+    assert.ok(out.includes('<\uFF5CDSML\uFF5C parameter name="$PARAMETER_NAME" string="true|false">'));
+    assert.ok(out.includes('{"name":"read","description":"Read a file","parameters":{"type":"object"}}'));
+    assert.ok(!out.includes('{"tool_call":'));
+});
+
+test('formatToolDefinitions: renders namespaced tools with a qualified name', () => {
+    const out = prompt.formatToolDefinitions([{
+        type: 'function',
+        namespace: { name: 'search' },
+        function: { name: 'lookup' },
+    }]);
+    assert.ok(out.includes('{"name":"search::lookup"}'));
+});
+
+test('formatMessages: folds tool definitions into the system prompt', () => {
+    const { systemPrompt } = prompt.formatMessages([], [
+        { type: 'function', function: { name: 'read' } },
+    ]);
+    assert.ok(systemPrompt.includes('<\uFF5CDSML\uFF5C calls>'));
+});
+
+test('formatMessages: renders assistant tool_calls as DSML invokes', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'user', content: 'go' },
         { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"path":"a"}' } }] },
     ], []);
-    assert.ok(conversation.includes('{"tool_call":{"name":"read","arguments":{"path":"a"}}}'));
+    assert.ok(conversation.includes('<｜DSML｜ invoke name="read">'));
+    assert.ok(!conversation.includes('tool_call'));
 });
 
 test('formatMessages: never folds assistant reasoning into the prompt', () => {
@@ -304,22 +340,23 @@ test('formatMessages: reasoning is dropped next to a tool call', () => {
     assert.ok(!conversation.includes('need the file'));
     assert.ok(!conversation.includes('after tool'));
     assert.ok(!conversation.includes('<think>'));
-    assert.ok(conversation.includes('"name":"read"'));
+    assert.ok(conversation.includes('invoke name="read"'));
     assert.ok(conversation.includes('final'));
 });
 
-test('formatMessages: non-string arguments are JSON-encoded', () => {
+test('formatMessages: non-string arguments get string="false" parameters', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: { n: 1, ok: true } } }] },
     ], []);
-    assert.ok(conversation.includes('{"tool_call":{"name":"f","arguments":{"n":1,"ok":true}}}'));
+    assert.ok(conversation.includes('<｜DSML｜ parameter name="n" string="false">1</｜DSML｜ parameter>'));
+    assert.ok(conversation.includes('<｜DSML｜ parameter name="ok" string="false">true</｜DSML｜ parameter>'));
 });
 
-test('formatMessages: unparseable arguments are passed through as a string', () => {
+test('formatMessages: unparseable arguments become a raw string parameter', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: 'not json' } }] },
     ], []);
-    assert.ok(conversation.includes('{"tool_call":{"name":"f","arguments":"not json"}}'));
+    assert.ok(conversation.includes('<｜DSML｜ parameter name="arguments" string="true">not json</｜DSML｜ parameter>'));
 });
 
 test('extractScreenshotPaths: collects structured screenshot_path JSON fields', () => {

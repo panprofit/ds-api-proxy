@@ -74,8 +74,9 @@ unchanged.
 - **`stop`** (a string or array of strings) is applied locally to the assembled
 answer: the response is truncated at the earliest matching sequence. A parsed
 tool call is never truncated.
-- **`tool_choice`** is not rendered into the prompt: the tool schemas are not
-advertised to DS. The proxy verifies the parsed result instead: an unmet
+- **`tool_choice`** is not rendered into the prompt (the tool schemas are
+always advertised in the DSML format described below, `none` and `required`
+included). The proxy verifies the parsed result instead: an unmet
 `required`/named `{type:"function", function:{name}}` choice rotates
 the account and, if every account fails, returns `502 tool_choice_unmet` instead
 of silently returning text. The legacy `functions` / `function_call` fields are
@@ -84,10 +85,13 @@ translated to the current `tools` / `tool_choice` shape.
 ### Tool-call parsing
 
 DS does not expose native function calling over its Web API; the proxy prompts
-for strict inline JSON calls — `{"tool_call":{"name":…,"arguments":{…}}}`,
-each call in its own object — and parses them back into OpenAI `tool_calls`.
-Historical assistant turns are rendered in the same JSON shape so the prompt
-shows one format only. A tool
+for DSML tool calls and parses them back into OpenAI `tool_calls`. The system
+prompt advertises every declared tool (name, description, JSON Schema) plus the
+`｜DSML｜ calls` / `｜DSML｜ invoke` / `｜DSML｜ parameter` grammar, with
+`string="true"` for verbatim strings and `string="false"` for JSON-encoded
+numbers, booleans, arrays and objects. Historical assistant turns are rendered
+as DSML `calls` blocks so the prompt shows one format only. This is the only
+requested format — there is no JSON tool-call mode to switch to. A tool
 declared with a `namespace` (or a qualified `namespace::name`) is advertised
 and invoked in the qualified form.
 

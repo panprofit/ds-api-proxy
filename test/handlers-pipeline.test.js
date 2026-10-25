@@ -227,7 +227,7 @@ test('handleChatCompletions: toggling thinking keeps the session', async () => {
         await send({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'high', tools });
         await send({ messages: [{ role: 'user', content: 'again' }], tools });
         assert.equal(prompts.length, 2);
-        assert.ok(!prompts[0].includes('\uFF5CDSML\uFF5C'));
+        assert.ok(prompts[0].includes('\uFF5CDSML\uFF5C calls'));
         assert.equal(sessions.getOrCreateAgentSession('agent-x').id, 'sess-1');
     });
     } finally {
