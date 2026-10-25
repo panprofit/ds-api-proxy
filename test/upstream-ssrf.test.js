@@ -68,6 +68,14 @@ test('isBlockedAddress: IPv4-mapped IPv6 is classified by its embedded IPv4', ()
     assert.equal(upstream.isBlockedAddress('::ffff:8.8.8.8'), false);
 });
 
+test('isBlockedAddress: IPv4-embedding transition prefixes are classified by their embedded IPv4', () => {
+    for (const ip of ['64:ff9b::7f00:1', '64:ff9b::a00:1', '2002:7f00:1::', '2002:a00:1::']) {
+        assert.equal(upstream.isBlockedAddress(ip), true, `${ip} should be blocked`);
+    }
+    assert.equal(upstream.isBlockedAddress('64:ff9b::808:808'), false);
+    assert.equal(upstream.isBlockedAddress('2002:808:808::'), false);
+});
+
 test('isBlockedAddress: a non-IP string is treated as unsafe', () => {
     assert.equal(upstream.isBlockedAddress('not-an-ip'), true);
     assert.equal(upstream.isBlockedAddress(''), true);
