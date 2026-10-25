@@ -400,3 +400,20 @@ test('parseDsmlToolCall: a missing invoke close falls back to the wrapper close'
     assert.equal(tc.name, 'edit');
     assert.deepEqual(JSON.parse(tc.arguments), { edits: '[{"newText": "a"}]', path: '/a.js' });
 });
+
+test('canonicalizeToolMarkupTag: folds the bare function=/parameter= dialect', () => {
+    assert.equal(d.canonicalizeToolMarkupTag('function=edit'), '<invoke name="edit">');
+    assert.equal(d.canonicalizeToolMarkupTag('/function'), '</invoke>');
+    assert.equal(d.canonicalizeToolMarkupTag('parameter=path'), '<parameter name="path">');
+    assert.equal(d.canonicalizeToolMarkupTag('/parameter'), '</parameter>');
+    assert.equal(d.canonicalizeToolMarkupTag('function='), null);
+});
+
+test('parseDsmlToolCall: parses the bare function=/parameter= dialect', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<function=edit>\n<parameter=path>/a.js</parameter>\n<parameter=edits>[{"oldText":"a","newText":"b"}]</parameter>\n</function>\n</${t} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'edit');
+    assert.deepEqual(JSON.parse(tc.arguments), { path: '/a.js', edits: '[{"oldText":"a","newText":"b"}]' });
+});
