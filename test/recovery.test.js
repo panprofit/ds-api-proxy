@@ -855,6 +855,31 @@ test('runWithRecovery: malformed markup on the only account reports all-cooling 
     });
 });
 
+test('runWithRecovery: prose preceding malformed markup survives the tool-call re-prompt', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const prose = 'Вот что я нашёл: файл лежит в /x.';
+            const malformed = '<tool_calls>{"name":"read","arguments":{"path":';
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: `${prose}\n\n${malformed}`, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.match(out.fullContent, /Вот что я нашёл/);
+            assert.match(out.fullContent, /"name":"read"/);
+        });
+    });
+});
+
 test('runWithRecovery: malformed markup re-prompts the same session before rotating', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
