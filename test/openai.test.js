@@ -185,3 +185,14 @@ test('obfuscationPadLength: an already-large chunk gets the minimum pad', () => 
     assert.equal(obfuscationPadLength(OBFUSCATION_TARGET_LEN + 100), OBFUSCATION_MIN_PAD);
     assert.equal(obfuscationPadLength(OBFUSCATION_TARGET_LEN), OBFUSCATION_MIN_PAD);
 });
+
+test('buildToolCallResponseFromTokens: keeps the prose next to the tool call', () => {
+    const resp = buildToolCallResponseFromTokens({ name: 'read', arguments: '{}' }, 10, '', 'm', 'Let me look.');
+    assert.equal(resp.choices[0].message.content, 'Let me look.');
+    assert.equal(resp.choices[0].message.tool_calls[0].function.name, 'read');
+    assert.equal(resp.choices[0].message.content ?? null, 'Let me look.');
+});
+
+test('buildToolCallResponseFromTokens: no prose keeps content null', () => {
+    assert.equal(buildToolCallResponseFromTokens({ name: 'read', arguments: '{}' }).choices[0].message.content, null);
+});

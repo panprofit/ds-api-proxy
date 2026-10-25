@@ -262,6 +262,21 @@ test('sendOpenAIStream: every chunk carries the response model', () => {
     assert.ok(models.every(m => m === 'my-model'));
 });
 
+test('sendOpenAIStream: streams prose before tool calls', () => {
+    const res = fakeRes();
+    handlers.sendOpenAIStream(res, {
+        id: 'ds-p', created: 5,
+        choices: [{ message: { role: 'assistant', content: 'Let me look.', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }] }, finish_reason: 'tool_calls' }],
+    });
+    const deltas = res.chunks
+        .map(c => c.replace(/^data: /, '').trim())
+        .filter(c => c && c !== '[DONE]')
+        .map(c => JSON.parse(c).choices[0].delta)
+        .filter(Boolean);
+    assert.equal(deltas.map(d => d.content).filter(Boolean).join(''), 'Let me look.');
+    assert.ok(deltas.some(d => d.tool_calls));
+});
+
 test('sendOpenAIStream: tool_calls emit a tool_calls finish reason', () => {
     const res = fakeRes();
     handlers.sendOpenAIStream(res, {

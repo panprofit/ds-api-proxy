@@ -942,3 +942,11 @@ test('parseToolCalls: ignores DSML markup inside a fenced example surrounded by 
   const input = 'Example:\n```xml\n<tool_calls><invoke name="read"><parameter name="path">/f</parameter></invoke></tool_calls>\n```\ndone';
   assert.deepEqual(parser.parseToolCalls(input, silentLog), []);
 });
+
+test('stripToolCallMarkup: removes DSML markup and keeps surrounding prose', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `Let me look.\n\n<${t} calls>\n<${t} invoke name="read">\n<${t} parameter name="path">/a.js</${t} parameter>\n</${t} invoke>\n</${t} calls>\nDone.`;
+    assert.equal(parser.stripToolCallMarkup(text), 'Let me look.\n\nDone.');
+    assert.equal(parser.stripToolCallMarkup('plain prose'), 'plain prose');
+    assert.equal(parser.stripToolCallMarkup(`<${t} calls>\n<${t} invoke name="read">\n<${t} parameter name="path">/a.js</${t} parameter>\n</${t} invoke>\n</${t} calls>`), '');
+});
