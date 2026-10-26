@@ -435,6 +435,24 @@ test('askDSStream: resets the throttle interval once the parent message id advan
     assert.deepEqual(rec.calls.map(c => c.opts.intervalMs), [6000, 12000, 6000, 12000]);
 });
 
+test('askDSStream: aborts with 429 when the post-recreate slot is not granted', async () => {
+    let grants = 0;
+    let powSolved = 0;
+    const { deps, calls } = makeDeps({
+        session: makeSession({ id: 'stale', accountId: 'a1' }),
+        waitForCompletionSlot: async () => ++grants === 1,
+    });
+    deps.solvePowForPath = async () => { powSolved++; return 'pow'; };
+    deps.dsChatCompletionWithPow = async (args) => {
+        calls.completions.push(args);
+        return { status: 400, ok: false, headers: { get: () => null }, text: async () => 'expired' };
+    };
+    const ask = createUpstreamSession(deps);
+    await assert.rejects(() => ask({ prompt: 'hi', agentId: 'agent1', freshSessionPrompt: 'fresh' }), /DS upstream HTTP 429/);
+    assert.equal(powSolved, 1, 'no fresh PoW after a denied slot');
+    assert.equal(calls.completions.length, 1);
+});
+
 test('askDSStream: aborts with 429 when no completion slot is granted', async () => {
     const rec = throttleRecorder(false);
     const { deps, calls } = makeDeps({ waitForCompletionSlot: rec.slot });
