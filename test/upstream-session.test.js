@@ -183,6 +183,27 @@ test('askDSStream: a client disconnect stops transient 5xx retries', async () =>
     assert.equal(calls.completions.length, 1);
 });
 
+test('askDSStream: a client disconnect during transient retries does not mark the account', async () => {
+    const { deps, calls } = makeDeps({
+        session: makeSession({ id: 's1', accountId: 'a1' }),
+        sleep: async () => {},
+    });
+    const failures = [];
+    deps.markAccountFailure = (acct, status, label) => { failures.push({ status, label }); };
+    deps.dsChatCompletionWithPow = async (args) => {
+        calls.completions.push(args);
+        return { status: 503, ok: false, headers: { get: () => null }, text: async () => 'unavailable' };
+    };
+    const ask = createUpstreamSession(deps);
+
+    await assert.rejects(
+        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
+        /DS upstream HTTP 503/
+    );
+    assert.equal(calls.completions.length, 1);
+    assert.deepEqual(failures, []);
+});
+
 test('askDSStream: recreates the session on 409/410 as well', async () => {
     for (const status of [409, 410]) {
         const { deps, calls, session } = makeDeps({
