@@ -166,9 +166,10 @@ test('askDSStream: gives up on persistent 5xx after bounded retries', async () =
 });
 
 test('askDSStream: a client disconnect stops transient 5xx retries', async () => {
+    let gone = false;
     const { deps, calls } = makeDeps({
         session: makeSession({ id: 's1', accountId: 'a1' }),
-        sleep: async () => {},
+        sleep: async () => { gone = true; },
     });
     deps.dsChatCompletionWithPow = async (args) => {
         calls.completions.push(args);
@@ -177,16 +178,17 @@ test('askDSStream: a client disconnect stops transient 5xx retries', async () =>
     const ask = createUpstreamSession(deps);
 
     await assert.rejects(
-        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
+        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => gone }),
         /DS upstream HTTP 503/
     );
     assert.equal(calls.completions.length, 1);
 });
 
 test('askDSStream: a client disconnect during transient retries does not mark the account', async () => {
+    let gone = false;
     const { deps, calls } = makeDeps({
         session: makeSession({ id: 's1', accountId: 'a1' }),
-        sleep: async () => {},
+        sleep: async () => { gone = true; },
     });
     const failures = [];
     deps.markAccountFailure = (acct, status, label) => { failures.push({ status, label }); };
@@ -197,7 +199,7 @@ test('askDSStream: a client disconnect during transient retries does not mark th
     const ask = createUpstreamSession(deps);
 
     await assert.rejects(
-        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => true }),
+        () => ask({ prompt: 'hi', agentId: 'agent1', clientGone: () => gone }),
         /DS upstream HTTP 503/
     );
     assert.equal(calls.completions.length, 1);
@@ -524,7 +526,10 @@ test('askDSStream: skips the token refresh when the client is gone', async () =>
         refreshAccountToken: async () => { refreshed = true; return true; },
     });
     const ask = createUpstreamSession(deps);
-    await ask({ prompt: 'hello', agentId: 'agent1', clientGone: () => true });
+    await assert.rejects(
+        () => ask({ prompt: 'hello', agentId: 'agent1', clientGone: () => true }),
+        /DS upstream HTTP 429/
+    );
     assert.equal(refreshed, false);
 });
 
@@ -541,6 +546,10 @@ test('askDSStream: refreshes client headers before creating a session and can be
     let refreshed = false;
     const skipped = makeDeps({ refreshClientHeaders: async () => { refreshed = true; } });
     const askSkipped = createUpstreamSession(skipped.deps);
-    await askSkipped({ prompt: 'hello', agentId: 'agent1', clientGone: () => true });
+    await assert.rejects(
+        () => askSkipped({ prompt: 'hello', agentId: 'agent1', clientGone: () => true }),
+        /DS upstream HTTP 429/
+    );
     assert.equal(refreshed, false);
+    assert.equal(skipped.calls.completions.length, 0);
 });
