@@ -993,6 +993,37 @@ test('runWithRecovery: distinct malformed markup is retried up to three times be
     });
 });
 
+test('runWithRecovery: the broken-markup retry budget resets after rotating to a new account', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const broken = (n) => `<tool_calls>{"name":"read","arguments":{"path":"/${n}"`;
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1, a1, a1, a1, a2, a2, a2, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: broken(1), reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: broken(2), reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: broken(3), reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                    { content: broken(4), reasoningContent: '', messageId: 'm4', finishReason: 'stop', modelError: null },
+                    { content: broken(5), reasoningContent: '', messageId: 'm5', finishReason: 'stop', modelError: null },
+                    { content: broken(6), reasoningContent: '', messageId: 'm6', finishReason: 'stop', modelError: null },
+                    { content: broken(7), reasoningContent: '', messageId: 'm7', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm8', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 8);
+            assert.equal(calls.filter(c => /malformed tool-call markup/i.test(c.prompt)).length, 6);
+        });
+    });
+});
+
 test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not rotated', async () => {
     const a1 = makeAccount('a1');
     await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => await withAccounts([a1], async () => {
