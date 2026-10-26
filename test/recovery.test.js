@@ -934,7 +934,7 @@ test('runWithRecovery: malformed markup re-prompts the same session before rotat
     });
 });
 
-test('runWithRecovery: malformed markup still broken after the re-prompt rotates the account', async () => {
+test('runWithRecovery: identical malformed markup after the re-prompt rotates the account', async () => {
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');
     await withAccounts([a1, a2], async () => {
@@ -956,11 +956,39 @@ test('runWithRecovery: malformed markup still broken after the re-prompt rotates
             assert.equal(out.toolCall.name, 'read');
             assert.equal(calls.length, 3);
             assert.match(calls[1].prompt, /malformed tool-call markup/i);
-            assert.match(calls[2].prompt, /long reasoning A/);
-            assert.match(calls[2].prompt, /emit the tool call immediately/i);
-            assert.equal(calls[2].prompt, calls[2].freshSessionPrompt);
+            assert.match(calls[1].freshSessionPrompt, /long reasoning A/);
+            assert.match(calls[1].freshSessionPrompt, /emit the tool call immediately/i);
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
+        });
+    });
+});
+
+test('runWithRecovery: distinct malformed markup is retried up to three times before rotating', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const broken = (n) => `<tool_calls>{"name":"read","arguments":{"path":"/${n}"`;
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1, a1, a1, a1, a2], calls),
+                readDSResponse: sseOnce([
+                    { content: broken(1), reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: broken(2), reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: broken(3), reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                    { content: broken(4), reasoningContent: '', messageId: 'm4', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm5', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.toolCall.name, 'read');
+            assert.equal(calls.length, 5);
+            for (const call of calls.slice(1, 4)) assert.match(call.prompt, /malformed tool-call markup/i);
+            assert.doesNotMatch(calls[4].prompt, /malformed tool-call markup/i);
         });
     });
 });
