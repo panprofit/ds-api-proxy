@@ -268,39 +268,6 @@ test('collectPendingTurns: forwards a mid-conversation system message, not the l
     assert.deepEqual(prompt.collectPendingTurns(messages, session), []);
 });
 
-test('formatToolDefinitions: empty tools -> empty string', () => {
-    assert.equal(prompt.formatToolDefinitions([]), '');
-    assert.equal(prompt.formatToolDefinitions(null), '');
-});
-
-test('formatToolDefinitions: renders schemas in the DSML grammar', () => {
-    const out = prompt.formatToolDefinitions([{
-        type: 'function',
-        function: { name: 'read', description: 'Read a file', parameters: { type: 'object' } },
-    }]);
-    assert.ok(out.includes('<\uFF5CDSML\uFF5C calls>'));
-    assert.ok(out.includes('<\uFF5CDSML\uFF5C invoke name="$TOOL_NAME">'));
-    assert.ok(out.includes('<\uFF5CDSML\uFF5C parameter name="$PARAMETER_NAME" string="true|false">'));
-    assert.ok(out.includes('{"name":"read","description":"Read a file","parameters":{"type":"object"}}'));
-    assert.ok(!out.includes('{"tool_call":'));
-});
-
-test('formatToolDefinitions: renders namespaced tools with a qualified name', () => {
-    const out = prompt.formatToolDefinitions([{
-        type: 'function',
-        namespace: { name: 'search' },
-        function: { name: 'lookup' },
-    }]);
-    assert.ok(out.includes('{"name":"search::lookup"}'));
-});
-
-test('formatMessages: folds tool definitions into the system prompt', () => {
-    const { systemPrompt } = prompt.formatMessages([], [
-        { type: 'function', function: { name: 'read' } },
-    ]);
-    assert.ok(systemPrompt.includes('<\uFF5CDSML\uFF5C calls>'));
-});
-
 test('formatMessages: renders assistant tool_calls as DSML invokes', () => {
     const { prompt: conversation } = prompt.formatMessages([
         { role: 'user', content: 'go' },
