@@ -15,7 +15,7 @@
   textarea, button { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--field-line); border-radius: 8px; }
   label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
   input[type=checkbox] { accent-color: #2b5bd7; }
-  #log { flex: 1; width: 100%; max-width: 812px; margin: 0 auto; padding: 16px 16px 88px; display: flex; flex-direction: column; gap: 12px; }
+  #log { flex: 1; width: 100%; max-width: 812px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   .msg { max-width: 780px; width: fit-content; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 auto; }
   .user { background: #2b5bd7; color: #fff; margin: 0 0 0 auto; }
   .assistant { background: var(--bubble); width: 100%; margin: 0 auto; }
@@ -73,6 +73,10 @@ window.addEventListener('scroll', () => {
   atBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight < 40;
 }, { passive: true });
 
+function syncFooterSpace() {
+  log.style.paddingBottom = form.offsetHeight + 24 + 'px';
+}
+
 function renderFiles() {
   fileList.replaceChildren(...pending.map((f, i) => {
     const chip = document.createElement('div');
@@ -105,6 +109,7 @@ fileInput.addEventListener('change', () => {
   }
   fileInput.value = '';
   renderFiles();
+  syncFooterSpace();
 });
 
 function bubble(role, text) {
@@ -197,6 +202,7 @@ function reset() {
 input.addEventListener('input', () => {
   input.style.height = 'auto';
   input.style.height = input.scrollHeight + 'px';
+  syncFooterSpace();
 });
 
 input.addEventListener('keydown', (e) => {
@@ -251,6 +257,7 @@ form.addEventListener('submit', async (e) => {
     }
   }
   history.push({ role: 'user', content });
+  atBottom = true;
   const shown = bubble('user', text || '');
   if (attached.length > 0) {
     const note = document.createElement('span');
@@ -269,7 +276,10 @@ form.addEventListener('submit', async (e) => {
   let reasonText = '';
   let dirty = false;
   const follow = () => {
-    if (atBottom) window.scrollTo(0, document.documentElement.scrollHeight);
+    if (!atBottom) return;
+    const el = document.documentElement;
+    window.scrollTo(0, el.scrollHeight);
+    atBottom = el.scrollHeight - window.scrollY - window.innerHeight < 40;
   };
   const answerText = document.createTextNode('');
   const reasonNode = document.createTextNode('');
@@ -373,7 +383,9 @@ thinking.checked = localStorage.getItem(THINKING_KEY) === 'on';
 thinking.addEventListener('change', () => localStorage.setItem(THINKING_KEY, thinking.checked ? 'on' : 'off'));
 
 window.addEventListener('pageshow', (e) => { if (e.persisted) reset(); });
+window.addEventListener('resize', syncFooterSpace);
 reset();
+syncFooterSpace();
 </script>
 </body>
 </html>
