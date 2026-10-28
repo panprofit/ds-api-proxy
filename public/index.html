@@ -1,38 +1,52 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DS Chat</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light dark; --bg: #14161a; --fg: #e6e6e6; --muted: #8b929c; --line: #2a2d33; --field: #1c1f24; --field-line: #2f343b; --bubble: #22262c; --dash: #3a3f47; --empty: #6b7280; --err-bg: #3a1e1e; --err-fg: #ff9b9b; }
+  :root[data-theme=light] { color-scheme: light; --bg: #fff; --fg: #14161a; --muted: #5b6470; --line: #e3e6ea; --field: #f6f7f9; --field-line: #d8dce2; --bubble: #f1f3f6; --dash: #d8dce2; --empty: #9aa2ac; --err-bg: #fdecec; --err-fg: #b42323; }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100dvh; display: flex; flex-direction: column; font: 15px/1.5 system-ui, sans-serif; background: #14161a; color: #e6e6e6; }
-  header { padding: 10px 16px; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #2a2d33; font-size: 13px; color: #8b929c; }
-  header b { color: #e6e6e6; font-size: 14px; }
-  textarea, button { font: inherit; color: inherit; background: #1c1f24; border: 1px solid #2f343b; border-radius: 8px; }
+  body { margin: 0; height: 100dvh; display: flex; flex-direction: column; font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { padding: 10px 16px; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  header b { color: var(--fg); font-size: 14px; }
+  header .spacer { flex: 1; }
+  textarea, button { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--field-line); border-radius: 8px; }
   label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
   input[type=checkbox] { accent-color: #2b5bd7; }
   #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   .msg { max-width: 780px; width: fit-content; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .user { align-self: flex-end; background: #2b5bd7; color: #fff; }
-  .assistant { align-self: flex-start; background: #22262c; }
-  .msg details { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed #3a3f47; }
-  .msg summary { cursor: pointer; color: #8b929c; font-size: 13px; }
+  .assistant { align-self: flex-start; background: var(--bubble); }
+  .msg details { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed var(--dash); }
+  .msg summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .reasoning { color: #98a0aa; font-size: 14px; white-space: pre-wrap; margin-top: 6px; }
   .assistant > div:empty { display: none; }
-  .err { align-self: flex-start; background: #3a1e1e; color: #ff9b9b; }
-  .empty { margin: auto; color: #6b7280; }
-  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #2a2d33; }
+  .pending { display: flex; gap: 4px; padding: 4px 0; }
+  .pending i { width: 6px; height: 6px; border-radius: 50%; background: #8b929c; animation: blink 1.2s infinite; }
+  .pending i:nth-child(2) { animation-delay: .2s; }
+  .pending i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .err { align-self: flex-start; background: var(--err-bg); color: var(--err-fg); }
+  .empty { margin: auto; color: var(--empty); }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
   textarea { flex: 1; resize: none; padding: 10px 12px; max-height: 40dvh; }
   button { padding: 0 18px; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
+  #attach { padding: 0 12px; }
+  #files { display: none; gap: 6px; flex-wrap: wrap; padding: 0 16px 8px; }
+  #files:not(:empty) { display: flex; }
+  .chip { display: flex; gap: 6px; align-items: center; padding: 4px 8px; background: var(--field); border: 1px solid var(--field-line); border-radius: 6px; font-size: 13px; }
+  .chip button { padding: 0 4px; border: none; background: none; color: var(--muted); }
+  .msg .attach { display: block; margin-top: 6px; font-size: 12px; opacity: .75; }
 </style>
 </head>
 <body>
-<header><b>DS Chat</b><label class="toggle"><input type="checkbox" id="thinking">thinking</label></header>
+<header><b>DS Chat</b><label class="toggle"><input type="checkbox" id="thinking">thinking</label><span class="spacer"></span><label class="toggle" title="Toggle theme"><input type="checkbox" id="theme">dark</label></header>
 <div id="log"></div>
-<form id="form"><textarea id="input" rows="1" placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"></textarea><button id="send">Отправить</button></form>
+<div id="files"></div>
+<form id="form"><input type="file" id="file" multiple hidden><button type="button" id="attach" title="Attach file">📎</button><textarea id="input" rows="1" placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea><button id="send">Send</button></form>
 <script>
 'use strict';
 const sessionId = crypto.randomUUID();
@@ -41,7 +55,47 @@ const form = document.getElementById('form');
 const input = document.getElementById('input');
 const send = document.getElementById('send');
 const thinking = document.getElementById('thinking');
+const theme = document.getElementById('theme');
+const attach = document.getElementById('attach');
+const fileInput = document.getElementById('file');
+const fileList = document.getElementById('files');
 const history = [];
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+let pending = [];
+
+function renderFiles() {
+  fileList.replaceChildren(...pending.map((f, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const name = document.createElement('span');
+    name.textContent = f.name;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '✕';
+    remove.onclick = () => { pending.splice(i, 1); renderFiles(); };
+    chip.append(name, remove);
+    return chip;
+  }));
+}
+
+function readAsDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+attach.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  for (const file of fileInput.files) {
+    if (file.size > MAX_FILE_BYTES) { bubble('err', `File "${file.name}" exceeds 25 MB`); continue; }
+    pending.push(file);
+  }
+  fileInput.value = '';
+  renderFiles();
+});
 
 function bubble(role, text) {
   const empty = log.querySelector('.empty');
@@ -57,9 +111,9 @@ function bubble(role, text) {
 function assistantBubble() {
   const el = bubble('assistant', '');
   const details = document.createElement('details');
-  details.hidden = true;
+  details.open = true;
   const summary = document.createElement('summary');
-  summary.textContent = 'reasoning…';
+  summary.textContent = 'thinking…';
   const reason = document.createElement('div');
   reason.className = 'reasoning';
   details.append(summary, reason);
@@ -71,7 +125,7 @@ function assistantBubble() {
 function reset() {
   history.length = 0;
   log.replaceChildren();
-  bubble('empty', 'История хранится только в памяти. Перезагрузка страницы — новый чат.');
+  bubble('empty', 'History is kept in memory only. Reloading the page starts a new chat.');
 }
 
 input.addEventListener('input', () => {
@@ -86,12 +140,40 @@ input.addEventListener('keydown', (e) => {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text || send.disabled) return;
+  if ((!text && pending.length === 0) || send.disabled) return;
   input.value = '';
   input.style.height = 'auto';
-  history.push({ role: 'user', content: text });
-  bubble('user', text);
+  const attached = pending;
+  pending = [];
+  renderFiles();
+  let content = text;
+  if (attached.length > 0) {
+    content = [];
+    if (text) content.push({ type: 'text', text });
+    try {
+      for (const file of attached) {
+        content.push({ type: 'image_url', image_url: { url: await readAsDataUri(file), detail: file.name } });
+      }
+    } catch (err) {
+      pending = attached;
+      renderFiles();
+      bubble('err', 'File read error: ' + err.message);
+      return;
+    }
+  }
+  history.push({ role: 'user', content });
+  const shown = bubble('user', text || '');
+  if (attached.length > 0) {
+    const note = document.createElement('span');
+    note.className = 'attach';
+    note.textContent = '📎 ' + attached.map(f => f.name).join(', ');
+    shown.append(note);
+  }
   const out = assistantBubble();
+  const pendingDots = document.createElement('div');
+  pendingDots.className = 'pending';
+  pendingDots.innerHTML = '<i></i><i></i><i></i>';
+  out.answer.append(pendingDots);
   send.disabled = true;
   let answer = '';
   try {
@@ -126,8 +208,10 @@ form.addEventListener('submit', async (e) => {
         let chunk;
         try { chunk = JSON.parse(payload); } catch (e) { continue; }
         const delta = chunk.choices?.[0]?.delta || {};
+        if (delta.reasoning_content || delta.content) pendingDots.remove();
         if (delta.reasoning_content) {
           out.details.hidden = false;
+          out.details.open = true;
           out.reason.textContent += delta.reasoning_content;
         }
         if (delta.content) {
@@ -137,19 +221,33 @@ form.addEventListener('submit', async (e) => {
         log.scrollTop = log.scrollHeight;
       }
     }
-    answer = answer.trim() || '(пустой ответ)';
+    answer = answer.trim() || '(empty response)';
     out.answer.textContent = answer;
-    if (out.details.hidden) out.details.remove(); else out.details.open = false;
+    pendingDots.remove();
+    if (!out.reason.textContent) out.details.remove(); else out.details.open = true;
     history.push({ role: 'assistant', content: answer });
   } catch (err) {
     out.el.remove();
-    bubble('err', 'Ошибка: ' + err.message);
+    bubble('err', 'Error: ' + err.message);
   } finally {
     send.disabled = false;
     log.scrollTop = log.scrollHeight;
     input.focus();
   }
 });
+
+const THEME_KEY = 'ds-chat-theme';
+function applyTheme(dark) {
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  theme.checked = dark;
+  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+}
+theme.addEventListener('change', () => applyTheme(theme.checked));
+applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+
+const THINKING_KEY = 'ds-chat-thinking';
+thinking.checked = localStorage.getItem(THINKING_KEY) === 'on';
+thinking.addEventListener('change', () => localStorage.setItem(THINKING_KEY, thinking.checked ? 'on' : 'off'));
 
 window.addEventListener('pageshow', (e) => { if (e.persisted) reset(); });
 reset();
