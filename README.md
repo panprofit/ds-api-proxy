@@ -79,8 +79,8 @@ tool-call markup) into the OpenAI Chat Completions format.
 5. Or open the built-in chat UI: <http://127.0.0.1:9876/> — a minimal page
    that streams from `/v1/chat/completions`, with a `thinking` toggle (kept
    across reloads), a Stop button, file attachments and inline rendering of
-   fenced `html` blocks (each with a `save` button). Useful for manual smoke
-   tests; not a product UI — see
+   fenced `html` blocks (each with `save` and `fullscreen` buttons). Useful for
+   manual smoke tests; not a product UI — see
    [docs/reference.md](docs/reference.md#get-).
 
 6. The same conversation over the Responses API:

@@ -30,9 +30,11 @@ in-memory convenience page for manual testing, not a product UI.
 
 Page behaviour worth knowing:
 
-- **Streaming is rAF-throttled.** SSE deltas accumulate in strings and are
-  flushed to the DOM at most once per animation frame, so long reasoning text
-  does not block the UI.
+- **Streaming is rAF-throttled and incremental.** SSE deltas accumulate in
+  strings and are flushed to the DOM at most once per animation frame into
+  persistent text nodes, so long reasoning text neither blocks the UI nor
+  reflows the bubble. The view auto-scrolls to the bottom only while it is
+  already near the bottom (40px), so scrolling up to read is not interrupted.
 - **Send becomes Stop while a request is in flight.** The button aborts the
   `fetch` via `AbortController`; a partial answer is kept in history, an empty
   one rolls the exchange back. The composer and attach button are disabled
@@ -42,8 +44,11 @@ Page behaviour worth knowing:
 - **Fenced `html` blocks are rendered.** A ```html fence in the answer is shown
   live in a sandboxed `<iframe srcdoc>` (no `allow-same-origin`, so it cannot
   touch the parent's storage or cookies), with the source under an
-  `html source` spoiler that also carries a `save` button (downloads
-  `page.html` via a blob). Only the `html` fence language is recognised.
+  `html source` spoiler that also carries `save` and `fullscreen` buttons
+  (`save` downloads `page.html` via a blob; `fullscreen` calls
+  `requestFullscreen()` on the iframe, so the rendered page fills the screen
+  and `Esc` exits — no-op in browsers without the API, e.g. iOS Safari). Only
+  the `html` fence language is recognised.
 - **Layout.** Messages, composer and attachment chips share one centred 812px
   column; user messages hug its right edge, assistant answers fill it. The
   scrollbar follows `color-scheme`, which tracks the theme toggle (dark by
