@@ -999,6 +999,15 @@ test('stripToolCallMarkup: keeps ordinary HTML outside fences intact', () => {
   assert.equal(parser.stripToolCallMarkup('<html><body>hi</body></html>'), '<html><body>hi</body></html>');
 });
 
+test('parseToolCall: single-form call tag and quoted parameter= are parsed', () => {
+  const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+  const input = '<' + t + ' call>\n<' + t + ' invoke name="bash">\n<' + t + ' parameter="command" string="true">node x.js</' + t + ' parameter>\n</' + t + ' invoke>\n</' + t + ' calls>';
+  const tc = parser.parseToolCall(input, silentLog);
+  assert.ok(tc);
+  assert.equal(tc.name, 'bash');
+  assert.deepEqual(JSON.parse(tc.arguments), { command: 'node x.js' });
+});
+
 test('stripToolCallMarkup: drops bare DSML separators with no tag name', () => {
   const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
   assert.equal(parser.stripToolCallMarkup(`Done.\n\n<${t}>`), 'Done.');
