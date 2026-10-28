@@ -470,3 +470,21 @@ test('parseToolCall: doubled DSML marker before the angle bracket still yields a
   assert.equal(tc.name, 'bash');
   assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls -la' });
 });
+
+test('parseDsmlToolCall: a truncated trailing tag does not void the call', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="bash">\n<${t} parameter name="command" string="true">ls</${t} parameter>\n</${t} invoke>\n</${t} calls>\n</${t} parameter`;
+    const tc = require('../lib/parser').parseToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'ls' });
+});
+
+test('parseToolCall: two back-to-back invokes return the first instead of null', () => {
+    const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+    const text = `<${t} calls>\n<${t} invoke name="a">\n<${t} parameter name="x">1</${t} parameter>\n</${t} invoke>\n<${t} invoke name="b">\n<${t} parameter name="y">2</${t} parameter>\n</${t} invoke>\n</${t} calls>`;
+    const tc = require('../lib/parser').parseToolCall(text, () => {});
+    assert.ok(tc);
+    assert.equal(tc.name, 'a');
+    assert.deepEqual(JSON.parse(tc.arguments), { x: '1' });
+});

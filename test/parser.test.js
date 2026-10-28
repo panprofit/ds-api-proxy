@@ -1013,3 +1013,13 @@ test('parseToolCall: to is not an argument on non-assistant wrappers', () => {
   assert.ok(tc);
   assert.deepEqual(JSON.parse(tc.arguments), { command: 'body' });
 });
+
+test('parseToolCall: plain HTML without attributes is not a wrapped tool call', () => {
+  assert.equal(parser.parseToolCall('<div>x</div>', silentLog), null);
+  assert.equal(parser.parseToolCall('<html><body>hi</body></html>', silentLog), null);
+});
+
+test('parseToolCall: HTML with attributes is not a wrapped tool call', () => {
+  assert.equal(parser.parseToolCall('<span class="a">x</span>', silentLog), null);
+  assert.equal(parser.parseToolCall('<div id="m">x</div>', silentLog), null);
+});
