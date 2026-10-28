@@ -946,6 +946,7 @@ test('runWithRecovery: malformed markup re-prompts the same session before rotat
             assert.equal(calls.length, 2);
             assert.match(calls[1].prompt, /malformed tool-call markup/i);
             assert.match(calls[1].prompt, /emit the tool call again/i);
+            assert.match(calls[1].prompt, /strict JSON: {"tool_call":{"name":"<tool_name>","arguments":{...}}}/);
             assert.doesNotMatch(calls[1].prompt, /long reasoning/);
             assert.match(calls[1].freshSessionPrompt, /long reasoning/);
             assert.match(calls[1].freshSessionPrompt, /emit the tool call immediately/i);
