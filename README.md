@@ -76,7 +76,11 @@ tool-call markup) into the OpenAI Chat Completions format.
      }' | jq
    ```
 
-5. The same conversation over the Responses API:
+5. Or open the built-in chat UI: <http://127.0.0.1:9876/> — a minimal page
+   that streams from `/v1/chat/completions`, with a `thinking` toggle (kept
+   across reloads). Useful for manual smoke tests; not a product UI.
+
+6. The same conversation over the Responses API:
 
    ```bash
    curl -s http://127.0.0.1:9876/v1/responses \

@@ -51,12 +51,13 @@ in normal work; `npm run test:coverage` exists but is strict (99% lines,
 
 ## Architecture
 
-`index.js` sits at the root; every other module lives in `lib/`.
+`index.js` sits at the root; every other module lives in `lib/`. The only
+non-`lib/` asset is `public/index.html`, the built-in chat UI served at `/`.
 
 | Module | Role |
 | --- | --- |
 | `index.js` | process launcher (env guard, auth audit, sweep, signals, concurrency semaphore) |
-| `lib/server.js` | HTTP router, socket hardening, listen/error policy, shutdown wiring |
+| `lib/server.js` | HTTP router (incl. serving `public/index.html` at `/`), socket hardening, listen/error policy, shutdown wiring |
 | `lib/shutdown.js` | graceful-shutdown controller (drain in-flight, close listener) |
 | `lib/config.js` | central env parsing (single source of truth) |
 | `lib/handlers.js` | per-request handling (CORS, body, session, response) |

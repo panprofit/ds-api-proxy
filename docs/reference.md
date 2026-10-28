@@ -13,10 +13,20 @@ threat model see [SECURITY.md](SECURITY.md); for contribution workflow see
 | POST   | `/v1/responses`          | OpenAI Responses API (`stream: true|false`)    |
 | GET    | `/v1/models`             | OpenAI model list (informational; any model name is accepted). |
 | GET    | `/health`                | Liveness/readiness JSON report (see below).    |
+| GET    | `/`                      | Minimal built-in chat UI (`public/index.html`). |
 
-The proxy is meant to run on loopback; `/v1/models` and `/health` are its
-only non-completion endpoints. The primary consumer is the pi coding agent, which uses
+The proxy is meant to run on loopback; `/v1/models`, `/health` and the chat UI
+are its only non-completion endpoints. The primary consumer is the pi coding agent, which uses
 `/v1/responses` — see [Client integration (pi agent)](#client-integration-pi-agent).
+
+### `GET /`
+
+Serves the minimal built-in chat UI from `public/index.html` (`text/html`,
+`Cache-Control: no-store`). It calls `/v1/chat/completions` with streaming on,
+toggles DeepSeek reasoning via a `thinking` checkbox, and remembers the
+thinking and dark-theme toggles in `localStorage` across reloads. Any method
+other than `GET` returns `405`; a missing file returns `500`. It is an
+in-memory convenience page for manual testing, not a product UI.
 
 ### `GET /health`
 
