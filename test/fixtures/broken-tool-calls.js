@@ -50,7 +50,7 @@ module.exports = [
     {
         name: 'lone fenced bash (whole message)',
         input: '```bash\nls -la\n```',
-        call: { name: 'bash', args: { command: 'ls -la' } },
+        call: null,
     },
     {
         name: 'DSML <tool_calls><invoke>',

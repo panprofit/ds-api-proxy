@@ -482,16 +482,12 @@ test('parseToolCall: fenced shell block surrounded by prose is NOT a tool call',
   assert.equal(parser.parseToolCall(text, silentLog), null);
 });
 
-test('parseToolCall: a lone fenced shell block becomes a bash call', () => {
-  const tc = parser.parseToolCall('```bash\npwd && ls\n```', silentLog);
-  assert.ok(tc, 'a lone shell fence is still a real request');
-  assert.equal(tc.name, 'bash');
+test('parseToolCall: a lone fenced shell block is NOT executed', () => {
+  assert.equal(parser.parseToolCall('```bash\npwd && ls\n```', silentLog), null);
 });
 
-test('parseToolCall: lone fenced shell block with a leading blank line still parses', () => {
-  const tc = parser.parseToolCall('\n```sh\necho hi\n```\n', silentLog);
-  assert.ok(tc);
-  assert.equal(tc.name, 'bash');
+test('parseToolCall: lone fenced shell block with a leading blank line is NOT executed', () => {
+  assert.equal(parser.parseToolCall('\n```sh\necho hi\n```\n', silentLog), null);
 });
 
 test('parseToolCall: legacy TOOL_CALL is no longer supported', () => {
