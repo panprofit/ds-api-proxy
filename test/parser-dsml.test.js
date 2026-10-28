@@ -278,6 +278,20 @@ test('parseDsmlToolCall: a nameless closing tag closes the parameter', () => {
     assert.deepEqual(JSON.parse(tc.arguments), { code: 'x' });
 });
 
+test('parseDsmlToolCall: a bare closing marker inside a string argument stays text', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="bash">\n<${P}DSML${P} parameter name="command" string="true">echo </${P}DSML${P}> done</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: `echo </${P}DSML${P}> done` });
+});
+
+test('parseDsmlToolCall: a bare closing marker ends the string parameter', () => {
+    const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="bash">\n<${P}DSML${P} parameter name="command" string="true">echo</${P}DSML${P}>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
+    const tc = d.parseDsmlToolCall(text, () => {});
+    assert.equal(tc.name, 'bash');
+    assert.deepEqual(JSON.parse(tc.arguments), { command: 'echo' });
+});
+
 test('parseDsmlToolCall: literal tags inside a code argument are raw text', () => {
     const text = `<${P}DSML${P} calls>\n<${P}DSML${P} invoke name="f">\n<${P}DSML${P} parameter name="code" string="true">see <${P}DSML${P} invoke name="g"> and </${P}DSML${P}> here</${P}DSML${P} parameter>\n</${P}DSML${P} invoke>\n</${P}DSML${P} calls>`;
     const tc = d.parseDsmlToolCall(text, () => {});
