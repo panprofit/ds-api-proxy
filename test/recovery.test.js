@@ -680,6 +680,25 @@ test('runWithRecovery: unknown tool name is not leaked as text (rotation unavail
     });
 });
 
+test('runWithRecovery: a tool name inside a known call argument does not rotate the account', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const content = '<\uFF5CDSML\uFF5C calls>\n<\uFF5CDSML\uFF5C invoke name="write">\n<\uFF5CDSML\uFF5C parameter name="path" string="true">/tmp/a.html</\uFF5CDSML\uFF5C parameter>\n<\uFF5CDSML\uFF5C parameter name="content" string="true"><html>x</html></\uFF5CDSML\uFF5C parameter>\n</\uFF5CDSML\uFF5C invoke>\n</\uFF5CDSML\uFF5C calls>';
+        const calls = [];
+        const ctx = baseCtx({
+            tools: [
+                { type: 'function', function: { name: 'read' } },
+                { type: 'function', function: { name: 'write' } },
+            ],
+            askDSStream: askStub([makeAccount('a1')], calls),
+            readDSResponse: sseOnce([{ content, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }]),
+        });
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, true);
+        assert.equal(out.toolCall.name, 'write');
+        assert.equal(calls.length, 1);
+    });
+});
+
 test('runWithRecovery: unknown tool re-prompts the same account instead of rotating', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const unknown = '{"tool_call":{"name":"nope","arguments":{}}}';
