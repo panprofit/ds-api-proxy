@@ -999,6 +999,12 @@ test('stripToolCallMarkup: keeps ordinary HTML outside fences intact', () => {
   assert.equal(parser.stripToolCallMarkup('<html><body>hi</body></html>'), '<html><body>hi</body></html>');
 });
 
+test('stripToolCallMarkup: drops bare DSML separators with no tag name', () => {
+  const t = '\uFF5C\uFF5CDSML\uFF5C\uFF5C';
+  assert.equal(parser.stripToolCallMarkup(`Done.\n\n<${t}>`), 'Done.');
+  assert.equal(parser.stripToolCallMarkup(`Done.\n\n</${t}>`), 'Done.');
+});
+
 test('parseToolCall: assistant wrapper uses the to attribute as the tool name', () => {
   const tc = parser.parseToolCall('<assistant to="write" path="/tmp/x">hi</assistant>', silentLog);
   assert.ok(tc);
