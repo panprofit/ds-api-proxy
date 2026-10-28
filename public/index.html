@@ -113,7 +113,7 @@ function assistantBubble() {
   const details = document.createElement('details');
   details.open = true;
   const summary = document.createElement('summary');
-  summary.textContent = 'thinking…';
+  summary.textContent = 'thinking';
   const reason = document.createElement('div');
   reason.className = 'reasoning';
   details.append(summary, reason);
@@ -208,7 +208,7 @@ form.addEventListener('submit', async (e) => {
         let chunk;
         try { chunk = JSON.parse(payload); } catch (e) { continue; }
         const delta = chunk.choices?.[0]?.delta || {};
-        if (delta.reasoning_content || delta.content) pendingDots.remove();
+        if (delta.content) pendingDots.remove();
         if (delta.reasoning_content) {
           out.details.hidden = false;
           out.details.open = true;

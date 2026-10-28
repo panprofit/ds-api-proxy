@@ -989,6 +989,16 @@ test('stripToolCallMarkup: removes wrapped tool tags but keeps ordinary markup',
   assert.equal(parser.stripToolCallMarkup('<bash>pwd</bash>'), '');
 });
 
+test('stripToolCallMarkup: keeps HTML inside a fenced block intact', () => {
+  const html = '<!DOCTYPE html>\n<html><head><title>t</title></head><body><script>let a = 1;</script></body></html>';
+  const input = 'Here:\n' + '```html\n' + html + '\n```\nDone.';
+  assert.equal(parser.stripToolCallMarkup(input), input);
+});
+
+test('stripToolCallMarkup: keeps ordinary HTML outside fences intact', () => {
+  assert.equal(parser.stripToolCallMarkup('<html><body>hi</body></html>'), '<html><body>hi</body></html>');
+});
+
 test('parseToolCall: assistant wrapper uses the to attribute as the tool name', () => {
   const tc = parser.parseToolCall('<assistant to="write" path="/tmp/x">hi</assistant>', silentLog);
   assert.ok(tc);
