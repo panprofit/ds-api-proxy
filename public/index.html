@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DS Chat</title>
 <style>
+  html { scrollbar-gutter: stable; }
   :root { color-scheme: dark; --bg: #14161a; --fg: #e6e6e6; --muted: #8b929c; --line: #2a2d33; --field: #1c1f24; --field-line: #2f343b; --bubble: #22262c; --dash: #3a3f47; --empty: #6b7280; --err-bg: #3a1e1e; --err-fg: #ff9b9b; }
   :root[data-theme=light] { color-scheme: light; --bg: #fff; --fg: #14161a; --muted: #5b6470; --line: #e3e6ea; --field: #f6f7f9; --field-line: #d8dce2; --bubble: #f1f3f6; --dash: #d8dce2; --empty: #9aa2ac; --err-bg: #fdecec; --err-fg: #b42323; }
   * { box-sizing: border-box; }
@@ -15,7 +16,7 @@
   textarea, button { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--field-line); border-radius: 8px; }
   label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
   input[type=checkbox] { accent-color: #2b5bd7; }
-  #log { flex: none; min-height: calc(100dvh - 40px - 69px); justify-content: flex-end; width: 100%; max-width: 812px; margin: 0 auto; padding: 16px 16px 4px; display: flex; flex-direction: column; gap: 12px; }
+  #log { flex: 1; min-height: 0; justify-content: flex-end; width: 100%; max-width: 812px; margin: 0 auto; padding: 16px 16px 4px; display: flex; flex-direction: column; gap: 12px; }
   .msg { max-width: 780px; width: fit-content; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 auto; }
   .user { background: #2b5bd7; color: #fff; margin: 0 0 0 auto; }
   .assistant { background: var(--bubble); width: 100%; margin: 0 auto; }
@@ -30,14 +31,14 @@
   @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
   .err { background: var(--err-bg); color: var(--err-fg); }
   .empty { margin: auto; color: var(--empty); }
-  form { position: sticky; bottom: 0; z-index: 1; background: var(--bg); display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); width: 100%; max-width: 812px; margin: 0 auto; }
+  form { position: sticky; bottom: 0; z-index: 1; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); width: 100%; max-width: 812px; margin: 0 auto; }
   textarea { flex: 1; resize: none; padding: 10px 12px; max-height: 40dvh; }
   button { padding: 0 18px; cursor: pointer; }
   #send { min-width: 92px; }
   .stop-icon { color: #e5484d; }
   button:disabled { opacity: .5; cursor: default; }
   #attach { padding: 0 12px; }
-  #files { display: none; flex: none; background: var(--bg); gap: 6px; flex-wrap: wrap; padding: 8px 16px 0; width: 100%; max-width: 812px; margin: 0 auto; order: 1; }
+  #files { display: none; flex-basis: 100%; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
   #files:not(:empty) { display: flex; }
   .chip { display: flex; gap: 6px; align-items: center; padding: 4px 8px; background: var(--field); border: 1px solid var(--field-line); border-radius: 6px; font-size: 13px; }
   .chip button { padding: 0 4px; border: none; background: none; color: var(--muted); }
@@ -49,10 +50,9 @@
 </style>
 </head>
 <body>
-<header><b>DS Chat</b><label class="toggle"><input type="checkbox" id="thinking">thinking</label><span class="spacer"></span><label class="toggle" title="Toggle theme"><input type="checkbox" id="theme">dark</label></header>
+<header><b>DS Chat</b><label class="toggle"><input type="checkbox" id="thinking">thinking</label><button type="button" id="toggle-reasoning" hidden>collapse all</button><span class="spacer"></span><label class="toggle" title="Toggle theme"><input type="checkbox" id="theme">dark</label></header>
 <div id="log"></div>
-<div id="files"></div>
-<form id="form"><input type="file" id="file" multiple hidden><button type="button" id="attach" title="Attach file">📎</button><textarea id="input" rows="1" placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea><button id="send">Send</button></form>
+<form id="form"><div id="files"></div><input type="file" id="file" multiple hidden><button type="button" id="attach" title="Attach file">📎</button><textarea id="input" rows="1" placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea><button id="send">Send</button></form>
 <script>
 'use strict';
 const sessionId = crypto.randomUUID();
@@ -105,6 +105,7 @@ fileInput.addEventListener('change', () => {
   }
   fileInput.value = '';
   renderFiles();
+  if (atBottom) window.scrollTo(0, document.documentElement.scrollHeight);
 });
 
 function bubble(role, text) {
@@ -374,8 +375,24 @@ theme.addEventListener('change', () => applyTheme(theme.checked));
 applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
 
 const THINKING_KEY = 'ds-chat-thinking';
+const reasoningToggle = document.getElementById('toggle-reasoning');
+function syncReasoningToggle() {
+  const blocks = [...log.querySelectorAll('.msg.assistant > details')];
+  reasoningToggle.hidden = !thinking.checked || blocks.length === 0;
+  const anyOpen = blocks.some((d) => d.open);
+  reasoningToggle.textContent = anyOpen ? 'collapse all' : 'expand all';
+}
+reasoningToggle.addEventListener('click', () => {
+  const open = ![...log.querySelectorAll('.msg.assistant > details')].some((d) => d.open);
+  for (const d of log.querySelectorAll('.msg.assistant > details')) d.open = open;
+  syncReasoningToggle();
+});
+log.addEventListener('toggle', syncReasoningToggle, true);
+const reasoningObserver = new MutationObserver(syncReasoningToggle);
+reasoningObserver.observe(log, { childList: true, subtree: true });
 thinking.checked = localStorage.getItem(THINKING_KEY) === 'on';
-thinking.addEventListener('change', () => localStorage.setItem(THINKING_KEY, thinking.checked ? 'on' : 'off'));
+thinking.addEventListener('change', () => { localStorage.setItem(THINKING_KEY, thinking.checked ? 'on' : 'off'); syncReasoningToggle(); });
+syncReasoningToggle();
 
 window.addEventListener('pageshow', (e) => { if (e.persisted) reset(); });
 reset();
