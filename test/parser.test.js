@@ -1044,3 +1044,23 @@ test('parseToolCall: HTML with attributes is not a wrapped tool call', () => {
   assert.equal(parser.parseToolCall('<span class="a">x</span>', silentLog), null);
   assert.equal(parser.parseToolCall('<div id="m">x</div>', silentLog), null);
 });
+
+test('stripToolCallMarkup: keeps inline code that looks like a tool call', () => {
+  const bt = String.fromCharCode(96);
+  const text = 'before ' + bt + '{"tool_call":{"name":"read"}}' + bt + ' after';
+  assert.equal(parser.stripToolCallMarkup(text), text);
+});
+
+test('stripToolCallMarkup: keeps fenced blocks', () => {
+  const bt = String.fromCharCode(96);
+  const f = bt + bt + bt;
+  const text = 'a ' + f + 'js' + String.fromCharCode(10) + 'code' + String.fromCharCode(10) + f + ' b';
+  assert.equal(parser.stripToolCallMarkup(text), text);
+});
+
+test('stripToolCallMarkup: still drops a real trailing tool call', () => {
+  assert.equal(
+    parser.stripToolCallMarkup('prose {"tool_call":{"name":"read","arguments":{}}}'),
+    'prose'
+  );
+});
