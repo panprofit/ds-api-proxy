@@ -51,7 +51,7 @@ function askStub(accountsSeq, calls = []) {
         calls.push(args);
         const account = accountsSeq[Math.min(i, accountsSeq.length - 1)];
         i++;
-        return { resp: { body: {} }, account, promptUsed: args?.prompt || 'p', freshSessionReset: false };
+        return { resp: { body: {} }, account, accountId: account.id, promptUsed: args?.prompt || 'p', freshSessionReset: false };
     };
 }
 
@@ -175,6 +175,66 @@ test('runWithRecovery: a single account continues reasoning-only turns until a v
     });
 });
 
+test('runWithRecovery: DONE reasoning verdict asks for the tool call with thinking enabled', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const reads = [
+                { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: 'DONE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+            ];
+            let i = 0;
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                thinkingEnabled: true,
+                askDSStream: askStub([a1], calls),
+                readDSResponse: async () => reads[Math.min(i++, reads.length - 1)],
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(calls.length, 3, 'calls=' + calls.length + ' prompts=' + calls.map(c => c.prompt).join('|'));
+            assert.equal(calls[1].thinkingEnabled, false, 'verdict pass disables thinking');
+            assert.match(calls[1].freshSessionPrompt, /reply with exactly one word/i);
+            assert.equal(calls[2].thinkingEnabled, true, 'follow-up restores thinking');
+            assert.match(calls[2].freshSessionPrompt, /emit the tool call now/i);
+            assert.equal(out.toolCalls.length, 1, 'calls=' + calls.length + ' we=' + JSON.stringify(calls.map(c => c.thinkingEnabled)) + ' prompts=' + JSON.stringify(calls.map(c => (c.freshSessionPrompt || '').slice(-60))));
+            assert.equal(out.toolCalls[0].name, 'read');
+        });
+    });
+});
+
+test('runWithRecovery: CONTINUE reasoning verdict resumes thinking in the same session', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const reads = [
+                { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
+                { content: 'CONTINUE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                { content: 'final answer', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                { content: '', reasoningContent: '', messageId: 'm4', finishReason: 'stop', modelError: null },
+            ];
+            let i = 0;
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                thinkingEnabled: true,
+                askDSStream: askStub([a1], calls),
+                readDSResponse: async () => reads[Math.min(i++, reads.length - 1)],
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'final answer');
+            assert.equal(calls[1].thinkingEnabled, false);
+            assert.equal(calls[2].thinkingEnabled, true);
+            assert.match(calls[2].freshSessionPrompt, /continue the reasoning/i);
+        });
+    });
+});
+
 test('runWithRecovery: same-account retries are bounded by DS_MAX_SAME_ACCOUNT_RETRIES', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
@@ -212,44 +272,6 @@ test('runWithRecovery: a completion timeout is recoverable and rotates to the ne
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'recovered after timeout');
             assert.equal(calls.length, 2);
-        });
-    });
-});
-
-test('runWithRecovery: reasoning-only response continues in the same session without rotating', async () => {
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
-            const calls = [];
-            const deltas = [];
-            let reads = 0;
-            const ctx = baseCtx({
-                thinkingEnabled: true,
-                onReasoningDelta: (delta) => deltas.push(delta),
-                askDSStream: askStub([a1], calls),
-                readDSResponse: async (body, session, agentTag, options) => {
-                    const index = reads++;
-                    if (index === 1) options.onReasoningDelta('continued reasoning');
-                    return [
-                        { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
-                        { content: 'Final answer.', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
-                    ][index];
-                },
-            });
-            ctx.session.accountId = a1.id;
-            ctx.session.id = 'remote-1';
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.equal(out.fullContent, 'Final answer.');
-
-            assert.equal(calls.length, 2);
-            assert.equal(calls[1].prompt, 'continue');
-            assert.equal(calls[1].thinkingEnabled, true, 'reasoning-only continuation keeps thinking');
-            assert.deepEqual(deltas, ['continued reasoning'], 'continuation reasoning is streamed live');
-            assert.match(calls[1].freshSessionPrompt, /provide the final answer now/i);
-            assert.equal(ctx.session.id, 'remote-1', 'the remote session is kept');
-            assert.equal(a1.cooldownUntil, 0);
-            assert.equal(a1.failures, 0);
         });
     });
 });
@@ -1247,36 +1269,6 @@ test('backoffDelay: doubles on every consecutive retry', () => {
     assert.equal(backoffDelay(0, 100), 100);
 });
 
-test('runWithRecovery: a reasoning-only continuation error keeps the streamed reasoning', async () => {
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
-            const calls = [];
-            const ctx = baseCtx({
-                askDSStream: async (args) => {
-                    calls.push(args);
-                    if (calls.length === 2) throw new Error('continuation boom');
-                    return {
-                        resp: { body: {} }, account: a1,
-                        promptUsed: args.prompt || 'p', freshSessionReset: false,
-                    };
-                },
-                readDSResponse: sseOnce([
-                    { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
-                ]),
-            });
-            ctx.session.accountId = a1.id;
-            const out = await runWithRecovery(ctx);
-            assert.equal(out.ok, true);
-            assert.equal(out.fullContent, '');
-            assert.equal(out.reasoningContent, 'thinking hard');
-            assert.equal(calls.length, 2);
-            assert.equal(calls[1].prompt, 'continue');
-            assert.equal(a1.cooldownUntil, 0);
-        });
-    });
-});
-
 test('runWithRecovery: several reasoning-only blocks are streamed before the final answer', async () => {
     const a1 = makeAccount('a1');
     await withAccounts([a1], async () => {
@@ -1300,28 +1292,6 @@ test('runWithRecovery: several reasoning-only blocks are streamed before the fin
             assert.equal(a1.cooldownUntil, 0);
             assert.equal(a1.failures, 0);
         });
-    });
-});
-
-test('runWithRecovery: continues reasoning-only turns until the reasoning stops growing', async () => {
-    const a1 = makeAccount('a1');
-    await withAccounts([a1], async () => {
-        const calls = [];
-        const ctx = baseCtx({
-            askDSStream: askStub([a1], calls),
-            readDSResponse: sseOnce([
-                { content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'stop', modelError: null },
-                { content: '', reasoningContent: 'still thinking', messageId: 'm2', finishReason: 'stop', modelError: null },
-                { content: '', reasoningContent: 'thinking forever', messageId: 'm3', finishReason: 'stop', modelError: null },
-            ]),
-        });
-        ctx.session.accountId = a1.id;
-        const out = await runWithRecovery(ctx);
-        assert.equal(out.ok, true);
-        assert.equal(out.fullContent, '');
-        assert.equal(out.reasoningContent, 'thinking hard\nstill thinking\nthinking forever');
-        assert.equal(calls.length, 4, 'the last empty continuation stops the loop');
-        assert.equal(a1.cooldownUntil, 0);
     });
 });
 
