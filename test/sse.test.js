@@ -386,9 +386,9 @@ test('readDSResponse: dumpRawStream logs the streamed assistant text and a path 
     );
     const out = await readDSResponse(streamOf(body), session, '[agent]', { log, dumpRawStream: true });
     assert.equal(out.content, 'hi');
-    const rawLogs = lines.filter(l => l.includes('[SSE raw]'));
+    const rawLogs = lines.filter(l => l.includes('[SSE content]'));
     assert.equal(rawLogs.length, 1);
-    const dumped = rawLogs[0].split('[SSE raw] ')[1];
+    const dumped = rawLogs[0].split('[SSE content] ')[1];
     assert.equal(dumped, 'hi', 'raw dump must be the concatenated text on one line');
     const summary = lines.find(l => l.includes('[SSE dump]'));
     assert.ok(summary, `missing dump summary in: ${lines.join(' | ')}`);
@@ -402,7 +402,7 @@ test('readDSResponse: no raw dump by default', async () => {
     const { log, lines } = collectLog();
     const body = sse({ p: 'response/content', v: 'hi' }, { response_message_id: 'm' });
     await readDSResponse(streamOf(body), session, '[agent]', { log });
-    assert.equal(lines.some(l => l.includes('[SSE raw]')), false);
+    assert.equal(lines.some(l => l.includes('[SSE content]')), false);
     assert.equal(lines.some(l => l.includes('[SSE dump]')), false);
 });
 
@@ -412,7 +412,7 @@ test('readDSResponse: dumpRawStream with zero parsed events logs a body preview'
     const { log, lines } = collectLog();
     const out = await readDSResponse(streamOf(MUTED_BODY), session, '[agent]', { log, dumpRawStream: true });
     assert.ok(out.muted, 'expected the muted payload to be detected');
-    assert.equal(lines.some(l => l.includes('[SSE raw]')), false);
+    assert.equal(lines.some(l => l.includes('[SSE content]')), false);
     const summary = lines.find(l => l.includes('[SSE dump]'));
     assert.ok(summary, `missing dump summary in: ${lines.join(' | ')}`);
     assert.ok(summary.includes('events=0'), `expected events=0 in: ${summary}`);
@@ -497,7 +497,24 @@ test('readDSResponse: dumpRawStream logs the whole stream as one untruncated blo
     const body = sse({ p: 'response/content', v: long });
     const out = await readDSResponse(streamOf(body), session, '[agent]', { log, dumpRawStream: true });
     assert.equal(out.content, long);
-    const rawLogs = lines.filter(l => l.includes('[SSE raw]'));
+    const rawLogs = lines.filter(l => l.includes('[SSE content]'));
     assert.equal(rawLogs.length, 1);
     assert.ok(rawLogs[0].includes(long), 'raw dump must not truncate the payload');
+});
+
+test('readDSResponse: dumpRawStream omits the content line but keeps the summary when there is only reasoning', async () => {
+    const session = SESSION();
+    const { log, lines } = collectLog();
+    const body = sse(
+        { p: 'response/fragments', v: { type: 'THINK', content: 'secret reasoning' } },
+        { response_message_id: 'm' },
+    );
+    const out = await readDSResponse(streamOf(body), session, '[agent]', { log, dumpRawStream: true });
+    assert.equal(out.content, '');
+    assert.equal(out.reasoningContent, 'secret reasoning');
+    assert.equal(lines.some(l => l.includes('[SSE content]')), false);
+    const summary = lines.find(l => l.includes('[SSE dump]'));
+    assert.ok(summary, `missing dump summary in: ${lines.join(' | ')}`);
+    assert.ok(summary.includes(`reasoningChars=${'secret reasoning'.length}`));
+    assert.equal(summary.includes('secret reasoning'), false);
 });
