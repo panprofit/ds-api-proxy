@@ -376,7 +376,7 @@ test('dumpSseEnabled: true for "1"/"true" (any case), false otherwise', () => {
     assert.equal(dumpSseEnabled({}), false);
 });
 
-test('readDSResponse: dumpRawStream logs each raw data line and a path summary', async () => {
+test('readDSResponse: dumpRawStream logs the streamed assistant text and a path summary', async () => {
     const session = SESSION();
     const { log, lines } = collectLog();
     const body = sse(
@@ -386,7 +386,10 @@ test('readDSResponse: dumpRawStream logs each raw data line and a path summary',
     );
     const out = await readDSResponse(streamOf(body), session, '[agent]', { log, dumpRawStream: true });
     assert.equal(out.content, 'hi');
-    assert.equal(lines.filter(l => l.includes('[SSE raw]')).length, 3);
+    const rawLogs = lines.filter(l => l.includes('[SSE raw]'));
+    assert.equal(rawLogs.length, 1);
+    const dumped = rawLogs[0].split('[SSE raw] ')[1];
+    assert.equal(dumped, 'hi', 'raw dump must be the concatenated text on one line');
     const summary = lines.find(l => l.includes('[SSE dump]'));
     assert.ok(summary, `missing dump summary in: ${lines.join(' | ')}`);
     assert.ok(summary.includes('response/content\u00d71'));
@@ -485,4 +488,16 @@ test('readDSResponse: emits reasoning deltas incrementally without snapshot dupl
     });
     assert.deepEqual(deltas, ['ab', 'c', 'd']);
     assert.equal(out.reasoningContent, 'abcd');
+});
+
+test('readDSResponse: dumpRawStream logs the whole stream as one untruncated block', async () => {
+    const session = SESSION();
+    const { log, lines } = collectLog();
+    const long = 'x'.repeat(1200);
+    const body = sse({ p: 'response/content', v: long });
+    const out = await readDSResponse(streamOf(body), session, '[agent]', { log, dumpRawStream: true });
+    assert.equal(out.content, long);
+    const rawLogs = lines.filter(l => l.includes('[SSE raw]'));
+    assert.equal(rawLogs.length, 1);
+    assert.ok(rawLogs[0].includes(long), 'raw dump must not truncate the payload');
 });
