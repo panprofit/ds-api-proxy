@@ -397,6 +397,39 @@ test('runCompletionCheck: CONTINUE adopts the follow-up tool call and reasoning'
     });
 });
 
+test('runCompletionCheck: a transient upstream abort on the follow-up retries in the same session', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0', DS_MAX_UPSTREAM_RETRIES: '2' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            { content: '', reasoningContent: '', finishReason: 'generation_err', modelError: { type: 'error', content: '', finish_reason: 'generation_err' } },
+            { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', finishReason: 'stop' },
+        ];
+        const logs = [];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift(), log: message => logs.push(message) });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(responses.length, 0);
+        assert.equal(state.toolCall.name, 'read');
+        assert.ok(logs.some(message => /retrying in the same session/.test(message)));
+    });
+});
+
+test('runCompletionCheck: gives up after the follow-up retry budget is spent', async () => {
+    await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0', DS_MAX_UPSTREAM_RETRIES: '1' }, async () => {
+        const responses = [
+            { content: 'CONTINUE' },
+            { content: '', reasoningContent: '', finishReason: 'generation_err', modelError: { type: 'error', content: '', finish_reason: 'generation_err' } },
+            { content: '', reasoningContent: '', finishReason: 'generation_err', modelError: { type: 'error', content: '', finish_reason: 'generation_err' } },
+        ];
+        const state = checkState();
+        const deps = checkDeps({ readDSResponse: async () => responses.shift() });
+        assert.equal(await runCompletionCheck(state, deps), null);
+        assert.equal(responses.length, 0);
+        assert.equal(state.toolCall, null);
+        assert.equal(state.fullContent, 'Let me check.');
+    });
+});
+
 test('runWithRecovery: a throwing follow-up keeps the original answer instead of failing', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         await withConfig({ DS_COMPLETION_CHECK: '1', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
