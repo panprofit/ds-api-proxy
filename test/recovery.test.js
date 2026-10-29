@@ -378,11 +378,11 @@ test('runWithRecovery: no thinking fallback without reasoning or tools', async (
             });
             await runWithRecovery(ctx);
 
-            assert.equal(calls.length, 4);
+            assert.equal(calls.length, 3);
             assert.equal(calls[0].thinkingEnabled, true);
             assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[1].thinkingEnabled, false);
             assert.equal(calls[2].thinkingEnabled, true);
-            assert.equal(calls[3].thinkingEnabled, true);
         });
     });
 });
@@ -1341,14 +1341,17 @@ test('runWithRecovery: transient outage after reasoning continues instead of res
                         content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'generation_err',
                         modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
                     },
-                    { content: 'the answer', reasoningContent: 'thinking again', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'DONE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'the answer', reasoningContent: 'thinking again', messageId: 'm3', finishReason: 'stop', modelError: null },
                 ]),
             });
             const out = await runWithRecovery(ctx);
             assert.equal(out.ok, true);
             assert.equal(out.fullContent, 'the answer');
-            assert.equal(calls.length, 2);
+            assert.equal(calls.length, 3);
             assert.equal(calls[1].prompt, 'continue');
+            assert.equal(calls[1].thinkingEnabled, false);
+            assert.equal(calls[2].prompt, 'continue');
         });
     });
 });
@@ -1379,6 +1382,35 @@ test('runWithRecovery: transient outage after reasoning falls back to the same-s
             assert.equal(calls.length, 3);
             assert.equal(calls[1].prompt, 'continue');
             assert.equal(calls[2].prompt, 'SYS\n\nUser: hi');
+        });
+    });
+});
+
+test('runWithRecovery: transient outage after reasoning asks DONE/CONTINUE with thinking off', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await withConfig({ DS_MAX_UPSTREAM_RETRIES: '3', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' }, async () => {
+            const calls = [];
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    {
+                        content: '', reasoningContent: 'thinking hard', messageId: 'm1', finishReason: 'generation_err',
+                        modelError: { type: 'error', content: 'Сервер временно недоступен.', finish_reason: 'generation_err' },
+                    },
+                    { content: 'CONTINUE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'thinking more', reasoningContent: 'thinking more', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(calls.length, 3);
+            assert.equal(calls[1].thinkingEnabled, false);
+            assert.match(calls[1].freshSessionPrompt, /DONE/);
+            assert.equal(calls[2].thinkingEnabled, true);
+            assert.match(calls[2].freshSessionPrompt, /more to think about/);
         });
     });
 });
@@ -1809,7 +1841,8 @@ test('runWithRecovery: a generation_err abort after reasoning re-prompts the sam
                 askDSStream: askStub([a1], calls),
                 readDSResponse: sseOnce([
                     { content: '', reasoningContent: 'thinking hard', messageId: null, finishReason: null, modelError: { type: 'error', content: 'generation_err', finish_reason: 'generation_err' } },
-                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'DONE', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"read","arguments":{"path":"/x"}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
                 ]),
             });
             const sessionIdBefore = ctx.session.id;
@@ -1817,11 +1850,11 @@ test('runWithRecovery: a generation_err abort after reasoning re-prompts the sam
             assert.equal(out.ok, true);
             assert.ok(out.toolCall, 'the tool call must be recovered');
             assert.equal(out.toolCall.name, 'read');
-            assert.equal(calls.length, 2, 'one original call plus one re-prompt');
-            assert.equal(calls[1].thinkingEnabled, true, 'thinking stays enabled');
+            assert.equal(calls.length, 3, 'original call, DONE/CONTINUE verdict, resumed call');
+            assert.equal(calls[1].thinkingEnabled, false, 'the verdict runs with thinking off');
+            assert.equal(calls[2].thinkingEnabled, true, 'thinking resumes after the verdict');
             assert.equal(sessionIdBefore, null, 'the first attempt had no remote session yet');
-            assert.equal(calls[1].freshSessionReset || false, false, 'the re-prompt does not reset the session');
-            assert.match(calls[1].prompt, /emit the tool call now/i, 'the re-prompt asks for the tool call');
+            assert.match(calls[2].freshSessionPrompt, /emit the tool call now/i, 'the resumed turn asks for the tool call');
             assert.equal(a1.cooldownUntil, 0);
         });
     });
