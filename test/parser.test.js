@@ -678,7 +678,7 @@ test('parseJsonToolCandidate: fixes a raw newline in an argument', () => {
 
 test('parseJsonToolCandidate: unrepairable JSON -> null', () => {
   assert.equal(
-    parser.parseJsonToolCandidate('{"tool_call":{"name":"f"', 'inline', {}, silentLog),
+    parser.parseJsonToolCandidate('{"tool_call":{"name":"f"}', 'inline', {}, silentLog),
     null,
   );
   assert.equal(

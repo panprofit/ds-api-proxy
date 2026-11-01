@@ -127,7 +127,7 @@ module.exports = [
     {
         name: 'truncated mid arguments (recovery repairs)',
         input: '{"tool_call":{"name":"read","arguments":{"path":"/m"}}',
-        call: null,
+        call: { name: 'read', args: { path: '/m' } },
     },
     {
         name: 'truncated mid string (recovery repairs)',
