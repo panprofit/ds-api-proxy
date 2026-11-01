@@ -605,6 +605,31 @@ test('handleChatCompletions: a request with a session id keeps its session', asy
     });
 });
 
+test('handleResponses: prose before unrecoverable broken markup is delivered before response.failed', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const req = fakeReq();
+        const res = fakeRes();
+        const prose = 'Сейчас посмотрю файл.';
+        const deps = withDeps({
+            readDSResponse: async () => ({
+                content: prose + '\n<tool_call>{"name":"read","arguments":{"path":',
+                reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null,
+            }),
+        });
+        await handlers.handleResponses(req, res, JSON.stringify({
+            input: 'hi',
+            stream: true,
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), deps);
+        assert.equal(res.statusCode, 200);
+        const body = res.body();
+        const proseAt = body.indexOf(prose);
+        assert.ok(proseAt !== -1, 'the prose must reach the client');
+        assert.ok(proseAt < body.indexOf('event: response.failed'), 'prose must precede response.failed');
+        assert.doesNotMatch(body, /partial_content/);
+    });
+});
+
 test('handleResponses: a post-commit overflow is NOT the legacy event: error frame', async () => {
     await withAccounts([makeAccount('a1')], async () => {
         const req = fakeReq();
