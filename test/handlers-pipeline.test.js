@@ -282,7 +282,7 @@ test('handleChatCompletions: a terminal recovery failure (non-stream) is written
         assert.equal(res.statusCode, 502);
         assert.equal(res.headers['Content-Type'], 'application/json');
 
-        assert.equal(res.json().error.type, 'empty_response');
+        assert.equal(res.json().error.type, 'malformed_tool_call');
     });
 });
 

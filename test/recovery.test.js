@@ -1083,6 +1083,24 @@ test('runWithRecovery: prose quoting DSML tags in inline code is delivered, not 
     }));
 });
 
+test('runWithRecovery: prose before unrecoverable broken markup is preserved on the terminal error', async () => {
+    const a1 = makeAccount('a1');
+    await withConfig({ DS_COMPLETION_CHECK: '0' }, async () => await withAccounts([a1], async () => {
+        const prose = 'Сейчас посмотрю файл.';
+        const broken = prose + '\n<tool_calls>{"name":"read","arguments":{"path":';
+        const ctx = baseCtx({
+            tools: [{ type: 'function', function: { name: 'read' } }],
+            askDSStream: askStub([a1, a1, a1, a1]),
+            readDSResponse: async () => ({ content: broken, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null }),
+        });
+        ctx.session.accountId = a1.id;
+        const out = await runWithRecovery(ctx);
+        assert.equal(out.ok, false);
+        assert.equal(out.error.body.type, 'malformed_tool_call');
+        assert.equal(out.error.body.partial_content, prose);
+    }));
+});
+
 test('runWithRecovery: auth_expired rotates to the next account and succeeds', async () => {
 
     const accountsArr = accounts.getAccounts();
