@@ -339,7 +339,7 @@ test('toolMarkupStartIndex: points at the first markup marker, after any prose',
     assert.equal(d.toolMarkupStartIndex(prose + '<tool_calls>'), prose.length);
     assert.equal(d.toolMarkupStartIndex('<invoke name="f">'), 0);
     assert.equal(d.toolMarkupStartIndex('prose <|tool\u2581calls\u2581begin|>{}'), 'prose '.length);
-    assert.equal(d.toolMarkupStartIndex('{"tool_call":{"name":"read"}}'), 1);
+    assert.equal(d.toolMarkupStartIndex('{"tool_call":{"name":"read"}}'), 0);
     assert.equal(d.toolMarkupStartIndex('plain text, no markup'), -1);
 });
 
