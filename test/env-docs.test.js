@@ -11,7 +11,7 @@ const ENV_EXAMPLE = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
 
 const UNDOCUMENTED_IN_EXAMPLE = new Set([]);
 
-const LAZY_ENV_KEYS = new Set(['DS_DEBUG', 'DS_DUMP_SSE']);
+const LAZY_ENV_KEYS = new Set(['DS_DEBUG']);
 
 function configKeys() {
     const keys = new Set(LAZY_ENV_KEYS);

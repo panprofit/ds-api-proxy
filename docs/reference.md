@@ -329,11 +329,10 @@ ordering. Because writes are periodic, an abrupt crash can lose up to
 | `DS_STREAM_KEEPALIVE_MS`             | `15000`                     | SSE keep-alive interval in ms; `0` disables.                                                                                                                                                                                                                       |
 | `DS_DEFAULT_SEARCH_ENABLED`          | `1`                         | Upstream `search_enabled` default when the client does not send `web_search_options`. `0` gives strict OpenAI semantics (absent == off); an explicit `web_search_options` always forces search on.                                                                  |
 | `DS_SHUTDOWN_GRACE_MS`               | `15000`                     | Grace period for draining in-flight requests on SIGTERM/SIGINT, and for the final best-effort deletion of every remote chat session.                                                                                                                               |
-| `DS_DEBUG`                           | —                           | Set to `1`/`true` for verbose SSE/parser debug logging (read lazily in `lib/debug.js`).                                                                                                                                                                            |
-| `DS_DUMP_SSE`                        | —                           | Set to `1`/`true` to dump every raw upstream SSE `data:` line plus a path histogram (diagnostic; read lazily in `lib/sse.js`).                                                                                                                                     |
+| `DS_DEBUG`                           | —                           | Set to `1`/`true` for verbose SSE/parser debug logging and a dump of every raw upstream SSE `data:` line plus a path histogram (read lazily in `lib/debug.js` / `lib/sse.js`).                                                                                      |
 
 All values are parsed centrally in `lib/config.js`, with two deliberate
-exceptions: the diagnostic switches `DS_DEBUG` / `DS_DUMP_SSE` are read lazily
+exception: the diagnostic switch `DS_DEBUG` is read lazily
 per call (see [AGENTS.md -> Architecture](AGENTS.md#architecture)). The
 auth-helper and process-management scripts
 read their own variables (see below).

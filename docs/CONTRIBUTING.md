@@ -64,7 +64,7 @@ Formatting is pinned by `.editorconfig` (4-space indent, LF, final newline).
 - CommonJS (`require`/`module.exports`); the project has no build step.
 - Match the surrounding code: 4-space indent, single quotes, semicolons.
 - Keep modules focused; `lib/config.js` is the single source of truth for env
-  parsing (the diagnostic switches `DS_DEBUG` / `DS_DUMP_SSE` are the only
+  parsing (the diagnostic switch `DS_DEBUG` is the only
   deliberate lazy exceptions).
 - Comments are banned: regular `//` and `/* */` comments fail
   `ban-comments/ban-comments`. Only JSDoc type annotations (required by `tsc`)

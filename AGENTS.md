@@ -104,7 +104,7 @@ adding, renaming or removing a module.
 `lib/config.js` is the single source of truth for env parsing. Modules read it
 lazily via `config.get()`; the exported constants in `sessions.js`/`upstream.js`
 are load-time snapshots kept for tests. The one deliberate exception is the
-diagnostic switches `DS_DEBUG` (`lib/debug.js`) and `DS_DUMP_SSE` (`lib/sse.js`),
+diagnostic switch `DS_DEBUG` (`lib/debug.js`, also consulted by `lib/sse.js`),
 which are read lazily per call from `process.env` so tests can toggle them via an
 injected env object.
 

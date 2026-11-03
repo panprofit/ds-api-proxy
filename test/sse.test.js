@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readDSResponse, dumpSseEnabled, parseMutedBody } = require('../lib/sse');
+const { readDSResponse, parseMutedBody } = require('../lib/sse');
 
 function streamOf(...chunks) {
     return {
@@ -365,15 +365,6 @@ test('readDSResponse: realistic mixed stream produces full result', async () => 
     assert.equal(session.parentMessageId, 'final-1');
     assert.equal(session.messageCount, 1);
     assert.equal(lines.length, 0, `unexpected log lines: ${lines.join(' | ')}`);
-});
-
-test('dumpSseEnabled: true for "1"/"true" (any case), false otherwise', () => {
-    assert.equal(dumpSseEnabled({ DS_DUMP_SSE: '1' }), true);
-    assert.equal(dumpSseEnabled({ DS_DUMP_SSE: 'TRUE' }), true);
-    assert.equal(dumpSseEnabled({ DS_DUMP_SSE: 'true' }), true);
-    assert.equal(dumpSseEnabled({ DS_DUMP_SSE: '0' }), false);
-    assert.equal(dumpSseEnabled({ DS_DUMP_SSE: '' }), false);
-    assert.equal(dumpSseEnabled({}), false);
 });
 
 test('readDSResponse: dumpRawStream logs the streamed assistant text and a path summary', async () => {
