@@ -720,3 +720,35 @@ test('normalizeTools: nested tools without a function name are dropped', () => {
         { type: 'function', function: { name: '' } },
     ]), []);
 });
+
+test('responses.sendResponseStream: empty content with no calls emits an empty message item', () => {
+    const chunks = [];
+    const res = {
+        headersSent: false, statusCode: null, ended: false,
+        setHeader() {}, writeHead(s) { this.statusCode = s; this.headersSent = true; },
+        write(c) { chunks.push(String(c)); }, end() { this.ended = true; },
+    };
+    responses.sendResponseStream(res, { content: '', reasoningContent: '', finishReason: 'stop' });
+    const text = chunks.join('');
+    assert.match(text, /response\.output_text\.done/);
+    assert.match(text, /"text":""/);
+});
+
+test('responses.sendResponseStream: a live reasoning stream that never started still emits reasoning text', () => {
+    const chunks = [];
+    const res = {
+        headersSent: false, statusCode: null, ended: false,
+        setHeader() {}, writeHead(s) { this.statusCode = s; this.headersSent = true; },
+        write(c) { chunks.push(String(c)); }, end() { this.ended = true; },
+    };
+    responses.sendResponseStream(res, { content: 'x', reasoningContent: 'think' }, { liveReasoning: null });
+    assert.match(chunks.join(''), /response\.reasoning_summary_text\.done/);
+});
+
+test('responses.normalizeInput: reasoning content parts are collected as reasoning text', () => {
+    const out = responses.normalizeInput([
+        { type: 'reasoning', content: [{ type: 'reasoning_text', text: 'deep thought' }] },
+        { role: 'user', content: 'hi' },
+    ]);
+    assert.equal(out[0].reasoning_content, 'deep thought');
+});

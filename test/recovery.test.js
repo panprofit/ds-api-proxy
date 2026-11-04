@@ -1971,3 +1971,196 @@ test('runWithRecovery: a native <tool_result> echo gives up with a terminal 502 
         assert.equal(a1.cooldownUntil, 0);
     });
 });
+
+test('runWithRecovery: a reasoning-verdict call that throws falls back to same-session continuation', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        await config.reloadAsync?.({});
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            let n = 0;
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                askDSStream: async (args) => {
+                    n++;
+                    if (n === 2) throw new Error('verdict boom');
+                    return { resp: { body: {} }, account: a1, accountId: a1.id, promptUsed: args.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'answer', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'answer');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: a verdict follow-up that throws keeps the reasoning-only answer', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            let n = 0;
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                askDSStream: async (args) => {
+                    n++;
+                    if (n === 3) throw new Error('follow-up boom');
+                    return { resp: { body: {} }, account: a1, accountId: a1.id, promptUsed: args.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'DONE', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'more', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, '');
+            assert.equal(out.reasoningContent, 'thinking\nmore');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: reasoning-only continuation that throws stops the loop and keeps the reasoning', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            let n = 0;
+            const ctx = baseCtx({
+                thinkingEnabled: true,
+                askDSStream: async (args) => {
+                    n++;
+                    if (n === 2) throw new Error('continuation boom');
+                    return { resp: { body: {} }, account: a1, accountId: a1.id, promptUsed: args.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([
+                    { content: '', reasoningContent: 'thinking', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '', reasoningContent: 'hmm', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'CONTINUE-ish', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.reasoningContent, 'thinking\nhmm');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: a continuation that returns only reasoning keeps it and stops', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_MAX_CONTINUATION: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: 'part1', reasoningContent: '', messageId: 'm1', finishReason: 'length', modelError: null },
+                    { content: '', reasoningContent: 'r2', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'part1');
+            assert.equal(out.reasoningContent, '');
+            assert.equal(calls.length, 2);
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: a malformed-markup re-prompt whose askDSStream throws falls through', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            let n = 0;
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: async (args) => {
+                    n++;
+                    if (n > 1) throw new Error('reprompt boom');
+                    return { resp: { body: {} }, account: a1, accountId: a1.id, promptUsed: args.prompt || 'p', freshSessionReset: false };
+                },
+                readDSResponse: sseOnce([
+                    { content: '<tool_call>{"name":"read","arguments":{"path":', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.status, 502);
+            assert.equal(out.error.body.type, 'malformed_tool_call');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: a malformed-markup re-prompt that yields no response gives up', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1]),
+                readDSResponse: sseOnce([
+                    { content: '<tool_call>{"name":"read","arguments":{"path":', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    null,
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'malformed_tool_call');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: a malformed-markup re-prompt that recovers an unknown tool records it', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: askStub([a1]),
+                readDSResponse: sseOnce([
+                    { content: '<tool_call>{"name":"read","arguments":{"path":', reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: '{"tool_call":{"name":"nope","arguments":{}}}', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, false);
+            assert.equal(out.error.body.type, 'empty_response');
+        } finally { config.reload(); }
+    });
+});
+
+test('runWithRecovery: auto-continuation carries reasoning that continues reasoning-only', async () => {
+    const a1 = makeAccount('a1');
+    await withAccounts([a1], async () => {
+        config.reload({ DS_MAX_CONTINUATION: '2', DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0' });
+        try {
+            const calls = [];
+            const ctx = baseCtx({
+                askDSStream: askStub([a1], calls),
+                readDSResponse: sseOnce([
+                    { content: 'a', reasoningContent: 'r1', messageId: 'm1', finishReason: 'length', modelError: null },
+                    { content: 'b', reasoningContent: 'r2', messageId: 'm2', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            ctx.session.accountId = a1.id;
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.reasoningContent, 'r1\nr2');
+        } finally { config.reload(); }
+    });
+});

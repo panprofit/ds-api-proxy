@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const dns = require('node:dns');
 
 const upstream = require('../lib/upstream');
+const upstreamFetch = require('../lib/upstream-fetch');
 
 const rf = (url, maxBytes) => upstream.fetchRemoteFile(url, maxBytes, { request: async (u) => globalThis.fetch(u) });
 
@@ -362,4 +363,31 @@ test('fetchRemoteFile: the request is pinned to the validated address', async ()
         });
         assert.deepEqual(seen, [{ url: 'https://example.com/a.png', address: '93.184.216.34' }]);
     });
+});
+
+test('upstream-fetch: a bare IPv6 without a compression group is parsed', () => {
+    assert.equal(upstream.isBlockedAddress('2001:4860:4860:0:0:0:0:8888'), false);
+});
+
+test('upstream-fetch.readBodyWithLimit: a body that cannot be cancelled is destroyed instead', async () => {
+    let destroyed = false;
+    const resp = {
+        headers: { get: () => null },
+        body: {
+            [Symbol.asyncIterator]: async function* () { yield Buffer.from('xx'); yield Buffer.from('yy'); },
+            destroy() { destroyed = true; },
+        },
+    };
+    await assert.rejects(() => upstreamFetch.readBodyWithLimit(resp, 1, 'u'), /exceeds 1 bytes/);
+    assert.equal(destroyed, true);
+});
+
+test('upstream-fetch: the redirect loop exit throws too many redirects', async () => {
+    const body = { destroy() {} };
+    await assert.rejects(
+        () => upstream.fetchRemoteFile('https://8.8.8.8/a.png', 10, {
+            request: async () => ({ status: 302, ok: false, headers: { get: (k) => (k === 'location' ? 'https://8.8.8.8/b.png' : null) }, body }),
+        }),
+        /too many redirects/,
+    );
 });

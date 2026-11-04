@@ -480,3 +480,12 @@ test('round-trip: a rendered tool result is recognized as a harness envelope', (
     assert.equal(isToolResultEcho(rendered), true);
     assert.equal(isToolResultEcho(rendered.trimEnd()), true);
 });
+
+test('prompt.normalizeMessageContent: a non-array, non-string part falls back to String()', () => {
+    assert.equal(prompt.normalizeMessageContent(42), '42');
+});
+
+test('prompt.resolveToolNamespace: an object namespace with a name and description', () => {
+    const ns = prompt.resolveToolNamespace({ namespace: { name: 'ns', description: 'desc' } });
+    assert.deepEqual(ns, { name: 'ns', description: 'desc' });
+});
