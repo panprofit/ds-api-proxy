@@ -20,10 +20,19 @@ function fakeRes() {
     res.headers = null;
     res.chunks = [];
     res.ended = false;
+    res.writeAfterEnd = false;
     res.writeHead = (status, hdrs) => { res.statusCode = status; res.headers = hdrs || {}; res.headersSent = true; };
     res.flushHeaders = () => {};
-    res.write = (chunk) => { res.chunks.push(String(chunk)); return true; };
-    res.end = (chunk) => { if (chunk !== undefined) res.chunks.push(String(chunk)); res.ended = true; };
+    res.write = (chunk) => {
+        if (res.ended) res.writeAfterEnd = true;
+        res.chunks.push(String(chunk));
+        return true;
+    };
+    res.end = (chunk) => {
+        if (res.ended) res.writeAfterEnd = true;
+        if (chunk !== undefined) res.chunks.push(String(chunk));
+        res.ended = true;
+    };
     res.body = () => res.chunks.join('');
     res.json = () => JSON.parse(res.body());
     return res;
@@ -627,6 +636,80 @@ test('handleResponses: prose before unrecoverable broken markup is delivered bef
         assert.ok(proseAt !== -1, 'the prose must reach the client');
         assert.ok(proseAt < body.indexOf('event: response.failed'), 'prose must precede response.failed');
         assert.doesNotMatch(body, /partial_content/);
+        assert.doesNotMatch(body, /event: response\.completed/, 'a failed response must not also complete');
+        assert.equal(res.writeAfterEnd, false, 'the response must be ended exactly once');
+    });
+});
+
+test('handleChatCompletions: prose before unrecoverable broken markup does not write after end', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const res = fakeRes();
+        const prose = 'Сейчас посмотрю файл.';
+        const deps = withDeps({
+            readDSResponse: async () => ({
+                content: prose + '\n<tool_call>{"name":"read","arguments":{"path":',
+                reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null,
+            }),
+        });
+        await handlers.handleChatCompletions(fakeReq(), res, JSON.stringify({
+            stream: true,
+            messages: [{ role: 'user', content: 'hi' }],
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), deps);
+        assert.equal(res.statusCode, 200);
+        const body = res.body();
+        assert.ok(body.indexOf(prose) !== -1, 'the prose must reach the client');
+        assert.match(body, /event: error/);
+        assert.equal(res.writeAfterEnd, false, 'the response must be ended exactly once');
+        assert.equal(res.ended, true);
+    });
+});
+
+test('handleResponses: a non-stream terminal tool error with prose returns a Responses object', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const res = fakeRes();
+        const prose = 'Сейчас посмотрю файл.';
+        const deps = withDeps({
+            readDSResponse: async () => ({
+                content: prose + '\n<tool_call>{"name":"read","arguments":{"path":',
+                reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null,
+            }),
+        });
+        await handlers.handleResponses(fakeReq(), res, JSON.stringify({
+            input: 'hi',
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), deps);
+        assert.equal(res.statusCode, 200);
+        const json = res.json();
+        assert.equal(json.object, 'response');
+        assert.equal(json.status, 'completed');
+        assert.equal(json.output_text, prose);
+        assert.equal(json.choices, undefined);
+    });
+});
+
+test('handleResponses: a partial stream failure reuses the live reasoning stream', async () => {
+    await withAccounts([makeAccount('a1')], async () => {
+        const res = fakeRes();
+        const prose = 'Думаю.';
+        const deps = withDeps({
+            readDSResponse: async (_body, _session, _tag, options) => {
+                if (options && typeof options.onReasoningDelta === 'function') options.onReasoningDelta('think');
+                return {
+                    content: prose + '\n<tool_call>{"name":"read","arguments":{"path":',
+                    reasoningContent: 'think', messageId: 'm1', finishReason: 'stop', modelError: null,
+                };
+            },
+        });
+        await handlers.handleResponses(fakeReq(), res, JSON.stringify({
+            input: 'hi',
+            stream: true,
+            tools: [{ type: 'function', function: { name: 'read' } }],
+        }), deps);
+        const body = res.body();
+        assert.equal((body.match(/event: response\.created/g) || []).length, 1);
+        assert.match(body, /event: response\.failed/);
+        assert.equal(res.writeAfterEnd, false);
     });
 });
 

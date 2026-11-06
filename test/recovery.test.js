@@ -797,6 +797,44 @@ test('runWithRecovery: unknown tool rotates the account after one re-prompt', as
     }
 });
 
+test('runWithRecovery: a stale unknown tool from a prior account attempt does not discard the next answer', async () => {
+    const a1 = makeAccount('a1');
+    const a2 = makeAccount('a2');
+    await withAccounts([a1, a2], async () => {
+        await withConfig({ DS_ACCOUNT_MIN_COMPLETION_INTERVAL_MS: '0', DS_COMPLETION_CHECK: '0' }, async () => {
+            const unknown = '{"tool_call":{"name":"nope","arguments":{}}}';
+            const calls = [];
+            let rr = 0;
+            const accountStub = async (args) => {
+                const session = sessions.getOrCreateAgentSession(args.agentId);
+                let account;
+                if (session.accountId) {
+                    account = [a1, a2].find(a => a.id === session.accountId) || a1;
+                } else {
+                    account = [a1, a2][rr % 2];
+                    rr++;
+                    session.accountId = account.id;
+                }
+                calls.push({ accountId: account.id, prompt: args.prompt });
+                return { resp: { body: {} }, account, promptUsed: args.prompt || 'p', freshSessionReset: false };
+            };
+            const ctx = baseCtx({
+                tools: [{ type: 'function', function: { name: 'read' } }],
+                askDSStream: accountStub,
+                readDSResponse: sseOnce([
+                    { content: unknown, reasoningContent: '', messageId: 'm1', finishReason: 'stop', modelError: null },
+                    { content: 'still not a tool call', reasoningContent: '', messageId: 'm2', finishReason: 'stop', modelError: null },
+                    { content: 'hello final', reasoningContent: '', messageId: 'm3', finishReason: 'stop', modelError: null },
+                ]),
+            });
+            const out = await runWithRecovery(ctx);
+            assert.equal(out.ok, true);
+            assert.equal(out.fullContent, 'hello final');
+            assert.deepEqual(calls.map(c => c.accountId), ['a1', 'a1', 'a2']);
+        });
+    });
+});
+
 test('runWithRecovery: tool_choice required rotates then accepts a call', async () => {
     const a1 = makeAccount('a1');
     const a2 = makeAccount('a2');

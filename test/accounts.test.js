@@ -795,9 +795,9 @@ test('waitForCompletionSlot: first call on a fresh account does not wait', async
 test('waitForCompletionSlot: second call waits out the interval since the first', async () => {
     const a = makeAccount('a1');
     const clock = fakeClock();
-    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep, pollMs: 60000 });
     clock.advance(2000);
-    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep });
+    await accounts.waitForCompletionSlot(a, { intervalMs: 5000, now: clock.now, sleep: clock.sleep, pollMs: 60000 });
     assert.deepEqual(clock.slept, [3000]);
     assert.equal(a.nextCompletionAt, clock.now() + 5000);
 });
@@ -807,7 +807,7 @@ test('waitForCompletionSlot: reserves the slot before sleeping (concurrent calls
 
     const t = 1_000_000;
     const slept = [];
-    const opts = { intervalMs: 5000, now: () => t, sleep: async (ms) => { slept.push(ms); } };
+    const opts = { intervalMs: 5000, now: () => t, sleep: async (ms) => { slept.push(ms); }, pollMs: 60000 };
     await Promise.all([
         accounts.waitForCompletionSlot(a, opts),
         accounts.waitForCompletionSlot(a, opts),
@@ -822,6 +822,26 @@ test('waitForCompletionSlot: clientGone aborts the wait', async () => {
     const clock1 = fakeClock();
     await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep });
     assert.equal(await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock1.now, sleep: clock1.sleep, clientGone: () => true }), false);
+});
+
+test('waitForCompletionSlot: clientGone during the wait aborts the sleep and releases the slot', async () => {
+    const a1 = makeAccount('a1');
+    const clock = fakeClock();
+    await accounts.waitForCompletionSlot(a1, { intervalMs: 5000, now: clock.now, sleep: clock.sleep, pollMs: 60000 });
+    assert.equal(a1.nextCompletionAt, clock.now() + 5000);
+
+    clock.advance(1000);
+    let checks = 0;
+    const aborted = await accounts.waitForCompletionSlot(a1, {
+        intervalMs: 5000,
+        now: clock.now,
+        sleep: clock.sleep,
+        pollMs: 100,
+        clientGone: () => ++checks > 1,
+    });
+    assert.equal(aborted, false);
+    assert.equal(a1.nextCompletionAt, clock.now() + 3900, 'the unserved reservation must not delay the next request');
+    assert.deepEqual(clock.slept, [100], 'the wait must stop after the first poll once the client is gone');
 });
 
 test('waitForCompletionSlot: an aborted wait releases the reserved slot', async () => {
